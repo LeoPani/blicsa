@@ -1,0 +1,35 @@
+# Generated outputs
+blicsa_mapa.html
+blicsa_plotly.html
+
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.Python
+*.egg-info/
+dist/
+build/
+*.egg
+
+# Virtual environments
+.venv/
+venv/
+env/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Secrets / config with API keys
+*.env
+.env*
+
+# User config files (may contain API keys)
+blicsa_config.json

@@ -1,0 +1,16 @@
+pandas
+networkx
+pyvis
+groq
+customtkinter
+bibtexparser
+python-louvain
+matplotlib
+scipy
+fa2-modified
+plotly
+pywebview
+numpy
+wordcloud
+openpyxl
+tkinterdnd2
