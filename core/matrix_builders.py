@@ -1,4 +1,5 @@
 import json
+import re
 import math
 import networkx as nx
 from pyvis.network import Network
@@ -17,10 +18,50 @@ CLUSTER_PALETTE = [
 ]
 
 
-def _apply_louvain(G: nx.Graph) -> dict[str, int]:
+def _apply_clustering(G: nx.Graph, algorithm: str = "louvain", resolution: float = 1.0) -> dict[str, int]:
     if G.number_of_nodes() == 0:
         return {}
-    partition = community_louvain.best_partition(G, weight="weight", random_state=42)
+        
+    if algorithm == "leiden":
+        try:
+            import igraph as ig
+            import leidenalg
+            
+            nodelist = list(G.nodes())
+            node_index = {name: i for i, name in enumerate(nodelist)}
+            
+            g_ig = ig.Graph(len(nodelist))
+            g_ig.vs["name"] = nodelist
+            
+            edges = []
+            weights = []
+            for u, v, data in G.edges(data=True):
+                edges.append((node_index[u], node_index[v]))
+                weights.append(data.get("weight", 1.0))
+                
+            g_ig.add_edges(edges)
+            g_ig.es["weight"] = weights
+            
+            partition_leiden = leidenalg.find_partition(
+                g_ig,
+                leidenalg.RBConfigurationVertexPartition,
+                weights=g_ig.es["weight"],
+                resolution_parameter=resolution,
+                seed=42
+            )
+            
+            partition = {}
+            for cluster_idx, nodes_in_cluster in enumerate(partition_leiden):
+                for node_idx in nodes_in_cluster:
+                    node_name = g_ig.vs[node_idx]["name"]
+                    partition[node_name] = cluster_idx
+                    
+            nx.set_node_attributes(G, partition, "group")
+            return partition
+        except ImportError:
+            print("[Blicsa] igraph ou leidenalg não instalados. Usando Louvain como fallback.")
+            
+    partition = community_louvain.best_partition(G, weight="weight", resolution=resolution, random_state=42)
     nx.set_node_attributes(G, partition, "group")
     return partition
 
@@ -101,6 +142,71 @@ class NetworkGenerator:
         self._term_counts: Counter = Counter()
         self._term_doc_freq: Counter = Counter()
         self._term_scores: dict[str, float] = {}
+        self.clustering_algorithm = "louvain"
+        self.clustering_resolution = 1.0
+
+    def apply_clustering(self) -> dict[str, int]:
+        partition = _apply_clustering(
+            self.G, 
+            algorithm=self.clustering_algorithm, 
+            resolution=self.clustering_resolution
+        )
+        _color_nodes(self.G, partition)
+        return partition
+
+    def compute_overlay_scores(self):
+        import re
+        for node in self.G.nodes:
+            node_lower = str(node).lower().strip()
+            matches = pd.DataFrame()
+            
+            # Match keywords
+            if "keywords" in self.df.columns:
+                kw_series = self.df["keywords"].fillna("").astype(str).str.lower()
+                matches_kw = kw_series.apply(lambda x: any(t.strip() == node_lower for t in re.split(r"[;\n,]", x)))
+                if matches_kw.any():
+                    matches = self.df[matches_kw]
+            
+            # Match authors
+            if len(matches) == 0 and "authors" in self.df.columns:
+                auth_series = self.df["authors"].fillna("").astype(str).str.lower()
+                matches_auth = auth_series.apply(lambda x: any(t.strip() == node_lower for t in re.split(r"[;\n,]", x)))
+                if matches_auth.any():
+                    matches = self.df[matches_auth]
+                    
+            # Match title
+            if len(matches) == 0:
+                title_series = self.df["title"].fillna("").astype(str).str.lower()
+                matches_title = title_series.str.contains(node_lower, regex=False)
+                if matches_title.any():
+                    matches = self.df[matches_title]
+                else:
+                    match_yr = re.search(r'\b(19\d\d|20\d\d)\b', str(node))
+                    if match_yr:
+                        year_val = int(match_yr.group(1))
+                        year_df = self.df[self.df["year"] == year_val]
+                        if not year_df.empty:
+                            node_cleaned = re.sub(r'\d+', '', str(node)).strip("() ,").lower()
+                            matches_yr_auth = year_df["authors"].fillna("").astype(str).str.lower().str.contains(node_cleaned, regex=False)
+                            if matches_yr_auth.any():
+                                matches = year_df[matches_yr_auth]
+            
+            if len(matches) > 0:
+                years = matches["year"].dropna()
+                years = years[years > 0]
+                mean_year = float(years.mean()) if not years.empty else 0.0
+                
+                cits = matches["citations"].dropna()
+                mean_cits = float(cits.mean()) if not cits.empty else 0.0
+                sum_cits = float(cits.sum()) if not cits.empty else 0.0
+                
+                self.G.nodes[node]["year_mean"] = round(mean_year, 1)
+                self.G.nodes[node]["citations_mean"] = round(mean_cits, 1)
+                self.G.nodes[node]["citations_sum"] = int(sum_cits)
+            else:
+                self.G.nodes[node]["year_mean"] = self.G.nodes[node].get("year_mean", 0.0)
+                self.G.nodes[node]["citations_mean"] = self.G.nodes[node].get("citations_mean", 0.0)
+                self.G.nodes[node]["citations_sum"] = self.G.nodes[node].get("citations_sum", 0)
 
     # ------------------------------------------------------------------ #
     #  Pre-computation / preview                                           #
@@ -240,8 +346,8 @@ class NetworkGenerator:
         if normalize_strength:
             _normalize_association_strength(self.G, counts)
 
-        partition = _apply_louvain(self.G)
-        _color_nodes(self.G, partition)
+        partition = self.apply_clustering()
+        self.compute_overlay_scores()
         print(
             f"[Engine] {self.G.number_of_nodes()} nós · "
             f"{self.G.number_of_edges()} arestas · "
@@ -294,8 +400,8 @@ class NetworkGenerator:
         for (a, b), w in colab.items():
             self.G.add_edge(a, b, weight=round(w, 4), title=f"Coautorias: {w:.2f}")
 
-        partition = _apply_louvain(self.G)
-        _color_nodes(self.G, partition)
+        partition = self.apply_clustering()
+        self.compute_overlay_scores()
         return self.G
 
     # ------------------------------------------------------------------ #
@@ -334,8 +440,8 @@ class NetworkGenerator:
             self.G.add_edge(a, b, weight=valid_pairs[(a, b)],
                             title=f"Co-citações: {valid_pairs[(a, b)]}")
 
-        partition = _apply_louvain(self.G)
-        _color_nodes(self.G, partition)
+        partition = self.apply_clustering()
+        self.compute_overlay_scores()
         return self.G
 
     # ------------------------------------------------------------------ #
@@ -383,8 +489,8 @@ class NetworkGenerator:
             deg = self.G.degree(n, weight="weight")
             self.G.nodes[n]["size"] = int(8 + deg * 0.5)
 
-        partition = _apply_louvain(self.G)
-        _color_nodes(self.G, partition)
+        partition = self.apply_clustering()
+        self.compute_overlay_scores()
         return self.G
 
     # ------------------------------------------------------------------ #
@@ -478,8 +584,8 @@ class NetworkGenerator:
         for n in self.G.nodes():
             self.G.nodes[n]["size"] = int(8 + self.G.degree(n, weight="weight") * 1.5)
 
-        partition = _apply_louvain(self.G)
-        _color_nodes(self.G, partition)
+        partition = self.apply_clustering()
+        self.compute_overlay_scores()
         print(f"[Citação Direta] {self.G.number_of_nodes()} nós · {self.G.number_of_edges()} arestas\n")
         return self.G
 
@@ -532,8 +638,8 @@ class NetworkGenerator:
         for (a, b), w in cooc.items():
             self.G.add_edge(a, b, weight=w, title=f"Co-ocorrências: {w}")
 
-        partition = _apply_louvain(self.G)
-        _color_nodes(self.G, partition)
+        partition = self.apply_clustering()
+        self.compute_overlay_scores()
         print(f"[IPC] {self.G.number_of_nodes()} códigos · {self.G.number_of_edges()} arestas\n")
         return self.G
 
@@ -761,8 +867,44 @@ class NetworkGenerator:
         nx.write_pajek(self.G, output_path)
 
     def export_gexf(self, output_path: str):
-        """GEXF — native Gephi format with full node attributes."""
-        nx.write_gexf(self.G, output_path)
+        """GEXF — compatible with Gephi, native Gephi format with full node attributes."""
+        G = self.G.copy()
+        for n, data in G.nodes(data=True):
+            data.pop("title", None)
+            data.pop("color", None)
+            data["year_mean"] = float(data.get("year_mean", 0.0))
+            data["citations_mean"] = float(data.get("citations_mean", 0.0))
+            data["citations_sum"] = int(data.get("citations_sum", 0))
+        nx.write_gexf(G, output_path)
+
+    def export_vosviewer(self, map_path: str, network_path: str, positions: dict | None = None):
+        """Export VOSviewer map and network files (tab-separated txt)."""
+        map_rows = []
+        map_rows.append("id\tlabel\tx\ty\tcluster\tweight\tscore<mean pub year>\tscore<mean citations>")
+        
+        pos = positions or {}
+        for idx, node in enumerate(self.G.nodes(), 1):
+            x, y = 0.0, 0.0
+            if node in pos:
+                x, y = pos[node][0], pos[node][1]
+            cluster = self.G.nodes[node].get("group", 0)
+            weight = self.G.nodes[node].get("occurrence", self.G.degree(node, weight="weight"))
+            mean_yr = self.G.nodes[node].get("year_mean", 0.0)
+            mean_cits = self.G.nodes[node].get("citations_mean", 0.0)
+            
+            map_rows.append(f"{idx}\t{node}\t{x}\t{y}\t{cluster}\t{weight}\t{mean_yr}\t{mean_cits}")
+            
+        with open(map_path, "w", encoding="utf-8") as f:
+            f.write("\n".join(map_rows))
+            
+        net_rows = []
+        node_ids = {node: i for i, node in enumerate(self.G.nodes(), 1)}
+        for u, v, d in self.G.edges(data=True):
+            w = d.get("weight", 1.0)
+            net_rows.append(f"{node_ids[u]}\t{node_ids[v]}\t{w}")
+            
+        with open(network_path, "w", encoding="utf-8") as f:
+            f.write("\n".join(net_rows))
 
     def export_excel(self, output_path: str, df_raw=None):
         """Xlsx with Rankings sheet + raw DataFrame sheet."""
@@ -970,3 +1112,104 @@ class NetworkGenerator:
             .sort_values("weight", ascending=False)
             .to_csv(output_path, index=False, encoding="utf-8-sig")
         )
+
+    def get_thematic_map(self) -> dict:
+        """Calculate Callon centrality & density for each cluster."""
+        partition = nx.get_node_attributes(self.G, "group")
+        if not partition:
+            return {}
+        clusters: dict[int, list[str]] = {}
+        for node, grp in partition.items():
+            clusters.setdefault(grp, []).append(node)
+            
+        data = {}
+        for grp, nodes in clusters.items():
+            ext_edges = []
+            for u in nodes:
+                for v in self.G.neighbors(u):
+                    if v not in nodes:
+                        ext_edges.append(self.G[u][v].get("weight", 1.0))
+            centrality = sum(ext_edges)
+            
+            int_edges = []
+            for u in nodes:
+                for v in self.G.neighbors(u):
+                    if v in nodes:
+                        int_edges.append(self.G[u][v].get("weight", 1.0))
+            density = (sum(int_edges) / 2.0) / len(nodes) if len(nodes) > 0 else 0.0
+            
+            top_term = sorted(nodes, key=lambda n: self.G.degree(n, weight="weight"), reverse=True)[0]
+            
+            data[grp] = {
+                "label": top_term,
+                "centrality": centrality,
+                "density": density,
+                "size": len(nodes)
+            }
+            
+        return data
+
+    def get_sankey_data(self, left_field="source", middle_field="authors", right_field="keywords", top_n=10) -> dict:
+        """Build flows for three-field Sankey diagram: left -> middle -> right."""
+        def get_top_values(field):
+            counts = Counter()
+            for val in self.df[field].dropna():
+                sep = ";" if ";" in str(val) else ","
+                parts = [p.strip() for p in str(val).split(sep) if p.strip()]
+                counts.update(parts)
+            return set(name for name, _ in counts.most_common(top_n))
+
+        left_set = get_top_values(left_field)
+        middle_set = get_top_values(middle_field)
+        right_set = get_top_values(right_field)
+
+        left_to_middle = Counter()
+        middle_to_right = Counter()
+
+        for _, row in self.df.iterrows():
+            l_val = str(row.get(left_field, "") or "")
+            m_val = str(row.get(middle_field, "") or "")
+            r_val = str(row.get(right_field, "") or "")
+
+            l_sep = ";" if ";" in l_val else ","
+            m_sep = ";" if ";" in m_val else ","
+            r_sep = ";" if ";" in r_val else ","
+
+            l_parts = [p.strip() for p in l_val.split(l_sep) if p.strip() and p.strip() in left_set]
+            m_parts = [p.strip() for p in m_val.split(m_sep) if p.strip() and p.strip() in middle_set]
+            r_parts = [p.strip() for p in r_val.split(r_sep) if p.strip() and p.strip() in right_set]
+
+            for l in l_parts:
+                for m in m_parts:
+                    left_to_middle[(l, m)] += 1
+            for m in m_parts:
+                for r in r_parts:
+                    middle_to_right[(m, r)] += 1
+
+        nodes = list(left_set) + list(middle_set) + list(right_set)
+        node_indices = {name: i for i, name in enumerate(nodes)}
+
+        sources = []
+        targets = []
+        values = []
+
+        for (u, v), w in left_to_middle.items():
+            sources.append(node_indices[u])
+            targets.append(node_indices[v])
+            values.append(w)
+
+        for (u, v), w in middle_to_right.items():
+            sources.append(node_indices[u])
+            targets.append(node_indices[v])
+            values.append(w)
+
+        return {
+            "nodes": nodes,
+            "sources": sources,
+            "targets": targets,
+            "values": values,
+            "raw_flows": {
+                "left_to_middle": dict(left_to_middle),
+                "middle_to_right": dict(middle_to_right)
+            }
+        }

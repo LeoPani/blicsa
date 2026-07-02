@@ -1,0 +1,134 @@
+import urllib.parse
+import json
+import logging
+import re
+from typing import Iterator, Dict, Any, Optional, Callable
+from core.sources.base import SearchProvider
+
+logger = logging.getLogger("CrossrefProvider")
+
+class CrossrefProvider(SearchProvider):
+    def search(
+        self,
+        query: str,
+        filters: Optional[Dict[str, Any]] = None,
+        max_results: int = 100,
+        progress_cb: Optional[Callable[[int, int], None]] = None,
+        cancel_event = None
+    ) -> Iterator[Dict[str, Any]]:
+        base_url = "https://api.crossref.org/works"
+        
+        # Build filters
+        filter_parts = []
+        if filters:
+            if filters.get("year_start"):
+                filter_parts.append(f"from-pub-date:{filters['year_start']}-01-01")
+            if filters.get("year_end"):
+                filter_parts.append(f"until-pub-date:{filters['year_end']}-12-31")
+            if filters.get("type"):
+                # Map typical types to Crossref schema type
+                t = filters["type"]
+                if t == "journal-article":
+                    filter_parts.append("type:journal-article")
+                elif t == "book":
+                    filter_parts.append("type:book")
+                else:
+                    filter_parts.append(f"type:{t}")
+            if filters.get("language"):
+                filter_parts.append(f"language:{filters['language']}")
+
+        params: Dict[str, Any] = {
+            "rows": min(100, max_results),
+            "cursor": "*"
+        }
+        if query.strip():
+            params["query"] = query.strip()
+        if filter_parts:
+            params["filter"] = ",".join(filter_parts)
+
+        # Crossref politeness
+        params["mailto"] = self.mailto
+
+        count_fetched = 0
+        total_results = None
+
+        while count_fetched < max_results:
+            if cancel_event and cancel_event.is_set():
+                raise InterruptedError("Search cancelled by user")
+
+            query_str = urllib.parse.urlencode(params)
+            url = f"{base_url}?{query_str}"
+            
+            try:
+                raw_data = self.fetch_url(url, cancel_event=cancel_event)
+                data = json.loads(raw_data)
+            except Exception as e:
+                logger.error(f"Error fetching from Crossref: {e}")
+                break
+
+            message = data.get("message", {})
+            results = message.get("items", [])
+            
+            if total_results is None:
+                total_results = message.get("total-results", len(results))
+
+            if not results:
+                break
+
+            for w in results:
+                if count_fetched >= max_results:
+                    break
+
+                # Post-filter Open Access in Python for Crossref if requested
+                if filters and filters.get("is_oa") is not None:
+                    # Check if there is licensing info containing "creative-commons"
+                    has_cc_license = False
+                    licenses = w.get("license", [])
+                    for lic in licenses:
+                        url_lic = lic.get("URL", "")
+                        if "creative-commons" in url_lic.lower() or "creativecommons" in url_lic.lower():
+                            has_cc_license = True
+                            break
+                    if filters["is_oa"] and not has_cc_license:
+                        continue
+                    if not filters["is_oa"] and has_cc_license:
+                        continue
+
+                authors = "; ".join(
+                    f"{a.get('family', '')} {a.get('given', '')}".strip()
+                    for a in w.get("author", [])
+                )
+                
+                issued = (w.get("issued") or {}).get("date-parts", [[0]])[0]
+                year = issued[0] if issued else 0
+                title = " ".join(w.get("title", [""]))
+                source = " ".join(w.get("container-title", [""]))
+                kws = "; ".join(w.get("subject", []))
+                abstract = re.sub(r"<[^>]+>", " ", w.get("abstract", "") or "").strip()
+                
+                refs = "; ".join(
+                    r.get("DOI", "") for r in w.get("reference", []) if r.get("DOI")
+                )
+
+                record = {
+                    "authors":    authors,
+                    "title":      title,
+                    "year":       int(year or 0),
+                    "source":     source,
+                    "keywords":   kws,
+                    "abstract":   abstract,
+                    "citations":  int(w.get("is-referenced-by-count", 0)),
+                    "doi":        (w.get("DOI", "") or "").strip(),
+                    "references": refs,
+                    "origin":     "Crossref",
+                }
+                yield record
+                count_fetched += 1
+
+            if progress_cb and total_results:
+                progress_cb(count_fetched, min(max_results, total_results))
+
+            next_cursor = message.get("next-cursor")
+            if not next_cursor or next_cursor == params.get("cursor"):
+                break
+            params["cursor"] = next_cursor

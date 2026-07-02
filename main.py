@@ -16,8 +16,10 @@ import tempfile
 from pathlib import Path
 from collections import Counter
 import networkx as nx
+import pandas as pd
 
 import customtkinter as ctk
+from core.i18n import t
 import tkinter.ttk as ttk
 from tkinter import filedialog, messagebox
 try:
@@ -101,10 +103,15 @@ class BlicsaApp(ctk.CTk):
         self._year_max_var = ctk.StringVar(value="")
         self._extra_sw_var = ctk.StringVar(value="")
         self._plotly_mode_var = ctk.StringVar(value="cluster")
-        self._api_key_var = ctk.StringVar(value=os.environ.get("GROQ_API_KEY", ""))
+        self._api_key_var = ctk.StringVar(value=os.environ.get("AI_API_KEY", os.environ.get("GROQ_API_KEY", "")))
+        self._ai_provider_var = ctk.StringVar(value=os.environ.get("AI_PROVIDER", "groq"))
+        self._ai_base_url_var = ctk.StringVar(value=os.environ.get("AI_BASE_URL", "https://api.groq.com/openai/v1"))
+        self._ai_model_var = ctk.StringVar(value=os.environ.get("AI_MODEL", "llama-3.3-70b-versatile"))
         self._show_ai_modal = False
         self._prune_isolated_var = ctk.BooleanVar(value=True)
         self._prune_largest_var = ctk.BooleanVar(value=False)
+        self._cluster_alg_var = ctk.StringVar(value="louvain")
+        self._cluster_res_var = ctk.DoubleVar(value=1.0)
 
         self._build_layout()
         sys.stdout = LogWriter(self._log_box)
@@ -144,13 +151,14 @@ class BlicsaApp(ctk.CTk):
             row=0, column=0, padx=22, pady=(30, 22), sticky="w")
 
         self._nav_btns: dict[str, ctk.CTkButton] = {}
-        for i, (key, icon, label) in enumerate([
-            ("import",  "📂", "Importação"),
-            ("viz",     "🗺️", "Mapa & IA"),
-            ("ranking", "📊", "Rankings"),
-            ("export",  "💾", "Exportar"),
-            ("stats",   "📈", "Estatísticas"),
+        for i, (key, icon, label_key) in enumerate([
+            ("import",  "📂", "tab_import"),
+            ("viz",     "🗺️", "tab_map_ai"),
+            ("ranking", "📊", "tab_rankings"),
+            ("export",  "💾", "tab_export"),
+            ("stats",   "📈", "tab_stats"),
         ], start=1):
+            label = t(label_key)
             btn = ctk.CTkButton(
                 sb, text=f"{icon}  {label}", anchor="w",
                 font=ctk.CTkFont(size=13),
@@ -276,7 +284,7 @@ class BlicsaApp(ctk.CTk):
             background=bg_col,
             fieldbackground=bg_col,
             foreground=fg_col,
-            rowheight=26,
+            rowheight=28,
             font=("Inter", 11),
             borderwidth=0,
         )
@@ -285,11 +293,13 @@ class BlicsaApp(ctk.CTk):
             foreground=ACCENT,
             font=("Inter", 11, "bold"),
             relief="flat",
+            padding=(0, 5)
         )
         _ts.map("Blicsa.Treeview",
             background=[("selected", sel_bg)],
             foreground=[("selected", sel_fg)],
         )
+        
         _ts.map("Blicsa.Treeview.Heading",
             background=[("active", ACCENT_HOV)],
         )
@@ -324,7 +334,7 @@ class BlicsaApp(ctk.CTk):
     # ── Tab: Importação ────────────────────────────────────────────────
     def _build_tab_import(self) -> ctk.CTkFrame:
         frame = self._tab()
-        frame.grid_rowconfigure(3, weight=1)
+        frame.grid_rowconfigure(4, weight=1)
         self._h1(frame, "Importação de Dados", 0)
 
         card = self._card(frame, 1)
@@ -374,15 +384,75 @@ class BlicsaApp(ctk.CTk):
 
         act_f = ctk.CTkFrame(card, fg_color="transparent")
         act_f.grid(row=2, column=0, columnspan=3, padx=16, pady=(12, 16), sticky="ew")
-        act_f.grid_columnconfigure((0, 1), weight=1)
+        act_f.grid_columnconfigure((0, 1, 2), weight=1)
         self._btn(act_f, "⚡  Carregar e Combinar", self._load_data).grid(
-            row=0, column=0, padx=(0, 6), sticky="ew")
+            row=0, column=0, padx=(0, 4), sticky="ew")
         self._btn(act_f, "🔍  Deduplicar", self._run_dedup,
                   color=TEAL, hover=TEAL_HOV).grid(
-            row=0, column=1, padx=(6, 0), sticky="ew")
+            row=0, column=1, padx=4, sticky="ew")
+        self._btn(act_f, "📂  Abrir Projeto (.blicsa)", self._load_project_gui,
+                  color=GREEN, hover=GREEN_HOV).grid(
+            row=0, column=2, padx=(4, 0), sticky="ew")
 
-        self._h1(frame, "Log", 2)
-        lc = self._card(frame, 3)
+        # Search card (Row 2)
+        scard = self._card(frame, 2)
+        scard.grid_columnconfigure(1, weight=1)
+        
+        ctk.CTkLabel(scard, text="Busca Online:", font=ctk.CTkFont(size=13, weight="bold")).grid(
+            row=0, column=0, padx=16, pady=8, sticky="w")
+            
+        self._search_provider_var = ctk.StringVar(value="openalex")
+        sp_f = ctk.CTkFrame(scard, fg_color="transparent")
+        sp_f.grid(row=0, column=1, padx=8, pady=8, sticky="w")
+        for lbl, val in [("Todas as Bases", "all"), ("OpenAlex", "openalex"), ("Crossref", "crossref"), ("PubMed", "pubmed")]:
+            ctk.CTkRadioButton(sp_f, text=lbl, variable=self._search_provider_var,
+                               value=val, fg_color=ACCENT, hover_color=ACCENT_HOV).pack(side="left", padx=8)
+                               
+        ctk.CTkLabel(scard, text="Termo / Query:", font=ctk.CTkFont(size=12)).grid(
+            row=1, column=0, padx=16, pady=4, sticky="w")
+        self._search_query_entry = ctk.CTkEntry(scard, placeholder_text="Ex: 'deep learning'")
+        self._search_query_entry.grid(row=1, column=1, padx=8, pady=4, sticky="ew")
+        
+        act_sf = ctk.CTkFrame(scard, fg_color="transparent")
+        act_sf.grid(row=1, column=2, padx=16, pady=4, sticky="e")
+        
+        ctk.CTkLabel(act_sf, text="Qtd:").pack(side="left", padx=4)
+        self._search_max_entry = ctk.CTkEntry(act_sf, width=60, placeholder_text="100")
+        self._search_max_entry.insert(0, "100")
+        self._search_max_entry.pack(side="left", padx=4)
+        
+        self._search_unlimited_var = ctk.BooleanVar(value=True)
+        self._search_unlimited_chk = ctk.CTkCheckBox(act_sf, text="Ilimitado", variable=self._search_unlimited_var, width=50, 
+                                                     command=lambda: self._search_max_entry.configure(state="disabled" if self._search_unlimited_var.get() else "normal"))
+        self._search_unlimited_chk.pack(side="left", padx=4)
+        self._search_max_entry.configure(state="disabled")
+        
+        self._btn(act_sf, "⚙ Avançada", self._open_query_builder, height=30).pack(side="left", padx=4)
+        self._btn(act_sf, "🔍 Buscar", self._on_gui_search, height=30).pack(side="left", padx=4)
+        
+        self._search_cancel_btn = self._btn(act_sf, "✕ Cancelar", self._cancel_search, height=30, color="#E63946", hover="#C12B37")
+        self._search_cancel_btn.pack_forget() # Hide initially
+
+        # Filters Row
+        filter_f = ctk.CTkFrame(scard, fg_color="transparent")
+        filter_f.grid(row=2, column=1, columnspan=2, padx=8, pady=4, sticky="ew")
+        
+        ctk.CTkLabel(filter_f, text="Ano Início:", font=ctk.CTkFont(size=12)).pack(side="left", padx=4)
+        self._search_year_start = ctk.CTkEntry(filter_f, width=60, placeholder_text="Ex: 2018")
+        self._search_year_start.pack(side="left", padx=4)
+        
+        ctk.CTkLabel(filter_f, text="Ano Fim:", font=ctk.CTkFont(size=12)).pack(side="left", padx=(10,4))
+        self._search_year_end = ctk.CTkEntry(filter_f, width=60, placeholder_text="Ex: 2024")
+        self._search_year_end.pack(side="left", padx=4)
+        
+        ctk.CTkLabel(filter_f, text="Tipo de Doc:", font=ctk.CTkFont(size=12)).pack(side="left", padx=(10,4))
+        self._search_type_var = ctk.StringVar(value="Todos")
+        self._search_type = ctk.CTkOptionMenu(filter_f, variable=self._search_type_var, 
+                                              values=["Todos", "article", "review", "book-chapter", "dataset"], width=120)
+        self._search_type.pack(side="left", padx=4)
+
+        self._h1(frame, "Log", 3)
+        lc = self._card(frame, 4)
         lc.grid_rowconfigure(0, weight=1)
         self._log_box = ctk.CTkTextbox(
             lc, state="disabled",
@@ -589,7 +659,7 @@ class BlicsaApp(ctk.CTk):
                                segmented_button_selected_color=ACCENT,
                                segmented_button_selected_hover_color=ACCENT_HOV,
                                segmented_button_unselected_color=CARD_BG,
-                               text_color="#000" if ctk.get_appearance_mode().lower() == "light" else "white",
+                               text_color=("#000", "white"),
                                text_color_disabled=TEXT_MUTED)
         btabs.grid(row=1, column=0, padx=8, pady=(0, 8), sticky="nsew")
 
@@ -708,6 +778,23 @@ class BlicsaApp(ctk.CTk):
         
         ctk.CTkCheckBox(sc, text="LinLog Mode", variable=self._linlog_var, font=ctk.CTkFont(size=11), fg_color=ACCENT, hover_color=ACCENT_HOV).pack(anchor="w", padx=10, pady=6)
         
+        # Algoritmo de Cluster & Resolução
+        ctk.CTkLabel(sc, text="Algoritmo de Cluster:", font=ctk.CTkFont(size=11, weight="bold")).pack(anchor="w", padx=10, pady=(4, 2))
+        ctk.CTkComboBox(sc, values=["louvain", "leiden"], variable=self._cluster_alg_var, height=28, button_color=ACCENT, border_color=ACCENT).pack(fill="x", padx=10, pady=(0, 6))
+        
+        ctk.CTkLabel(sc, text="Resolução Cluster:", font=ctk.CTkFont(size=11, weight="bold")).pack(anchor="w", padx=10, pady=(4, 2))
+        res_f = ctk.CTkFrame(sc, fg_color="transparent")
+        res_f.pack(fill="x", padx=10, pady=(0, 6))
+        self._res_lbl = ctk.CTkLabel(res_f, text="1.00", font=ctk.CTkFont(size=13, weight="bold"), text_color=ACCENT)
+        self._res_lbl.pack(side="left", padx=(0, 8))
+        ctk.CTkSlider(
+            res_f, from_=0.1, to=5.0, number_of_steps=49,
+            variable=self._cluster_res_var, height=14,
+            button_color=ACCENT, button_hover_color=ACCENT_HOV,
+            progress_color=ACCENT,
+            command=lambda v: self._res_lbl.configure(text=f"{v:.2f}"),
+        ).pack(side="left", fill="x", expand=True)
+
         # 8. Modo de Visualização
         ctk.CTkLabel(sc, text="Modo de Visualização:", font=ctk.CTkFont(size=11, weight="bold")).pack(anchor="w", padx=10, pady=(4, 2))
         ctk.CTkComboBox(sc, values=VIZ_MODES, variable=self._viz_mode_var, height=28, button_color=ACCENT, border_color=ACCENT).pack(fill="x", padx=10, pady=(0, 6))
@@ -736,9 +823,20 @@ class BlicsaApp(ctk.CTk):
         ctk.CTkLabel(sc, text="Cor do Plotly:", font=ctk.CTkFont(size=11, weight="bold")).pack(anchor="w", padx=10, pady=(4, 2))
         ctk.CTkComboBox(sc, values=["cluster", "degree", "year"], variable=self._plotly_mode_var, height=28, button_color=ACCENT, border_color=ACCENT).pack(fill="x", padx=10, pady=(0, 6))
         
-        # 13. API Key
-        ctk.CTkLabel(sc, text="Chave API Groq:", font=ctk.CTkFont(size=11, weight="bold")).pack(anchor="w", padx=10, pady=(4, 2))
-        ctk.CTkEntry(sc, textvariable=self._api_key_var, show="*", placeholder_text="gsk_...", height=28, border_color=ACCENT).pack(fill="x", padx=10, pady=(0, 6))
+        # 13. Configuração da IA
+        ctk.CTkLabel(sc, text="Provedor de IA:", font=ctk.CTkFont(size=11, weight="bold")).pack(anchor="w", padx=10, pady=(4, 2))
+        ctk.CTkComboBox(sc, values=["groq", "openai", "openrouter", "ollama", "custom"], 
+                         variable=self._ai_provider_var, command=self._on_ai_provider_change,
+                         height=28, button_color=ACCENT, border_color=ACCENT).pack(fill="x", padx=10, pady=(0, 6))
+                         
+        ctk.CTkLabel(sc, text="URL Base da API:", font=ctk.CTkFont(size=11, weight="bold")).pack(anchor="w", padx=10, pady=(4, 2))
+        ctk.CTkEntry(sc, textvariable=self._ai_base_url_var, placeholder_text="https://...", height=28, border_color=ACCENT).pack(fill="x", padx=10, pady=(0, 6))
+        
+        ctk.CTkLabel(sc, text="Chave API:", font=ctk.CTkFont(size=11, weight="bold")).pack(anchor="w", padx=10, pady=(4, 2))
+        ctk.CTkEntry(sc, textvariable=self._api_key_var, show="*", placeholder_text="Chave API", height=28, border_color=ACCENT).pack(fill="x", padx=10, pady=(0, 6))
+        
+        ctk.CTkLabel(sc, text="Modelo da IA:", font=ctk.CTkFont(size=11, weight="bold")).pack(anchor="w", padx=10, pady=(4, 2))
+        ctk.CTkEntry(sc, textvariable=self._ai_model_var, placeholder_text="Modelo", height=28, border_color=ACCENT).pack(fill="x", padx=10, pady=(0, 6))
 
         # 14. Network Pruning
         ctk.CTkLabel(sc, text="Pós-processamento:", font=ctk.CTkFont(size=11, weight="bold")).pack(anchor="w", padx=10, pady=(4, 2))
@@ -835,15 +933,24 @@ class BlicsaApp(ctk.CTk):
         # Graph format exports
         self._h1(frame, "Formatos de Grafo", 4)
         gcard = self._card(frame, 5)
-        gcard.grid_columnconfigure((0, 1, 2, 3), weight=1)
+        gcard.grid_columnconfigure((0, 1, 2, 3, 4), weight=1)
         for col, (lbl, cmd) in enumerate([
             ("🔷  GML (Gephi / Cytoscape)",    self._export_gml),
             ("🟣  GEXF (Gephi nativo)",         self._export_gexf),
             ("🕸️  Pajek .net",                 self._export_pajek),
             ("{ }  JSON Topologia (frontend)", self._export_json),
+            ("📊  VOSviewer Map/Net",          self._export_vosviewer),
         ]):
             self._btn(gcard, lbl, cmd, height=44, color=TEAL, hover=TEAL_HOV).grid(
                 row=0, column=col, padx=10, pady=12, sticky="ew")
+
+        # Project Save
+        self._h1(frame, "Projeto Blicsa", 6)
+        pcard = self._card(frame, 7)
+        pcard.grid_columnconfigure(0, weight=1)
+        self._btn(pcard, "💾  Salvar Projeto Completo (.blicsa)",
+                  self._save_project_gui, color=GREEN, hover=GREEN_HOV,
+                  height=44).grid(row=0, column=0, padx=16, pady=12, sticky="ew")
 
         return frame
 
@@ -1022,6 +1129,144 @@ class BlicsaApp(ctk.CTk):
             self.after(0, self._set_idle, "Erro ao carregar")
             self.after(0, lambda e=exc: messagebox.showerror("Erro ao carregar", str(e)))
 
+    def _cancel_search(self):
+        if hasattr(self, '_search_cancel_event') and self._search_cancel_event:
+            self._search_cancel_event.set()
+            self._set_idle("Cancelando busca... (Aguarde)")
+            self._search_cancel_btn.pack_forget()
+
+    def _on_gui_search(self):
+        query = self._search_query_entry.get().strip()
+        if not query:
+            messagebox.showwarning("Campo vazio", "Por favor, digite um termo de busca.")
+            return
+        provider = self._search_provider_var.get()
+        
+        if self._search_unlimited_var.get():
+            max_results = 9999999
+        else:
+            try:
+                max_results = int(self._search_max_entry.get().strip() or "100")
+            except ValueError:
+                max_results = 100
+            
+        filters = {}
+        if self._search_year_start.get().strip(): filters["year_start"] = self._search_year_start.get().strip()
+        if self._search_year_end.get().strip(): filters["year_end"] = self._search_year_end.get().strip()
+        
+        doc_type = self._search_type_var.get()
+        if doc_type and doc_type != "Todos":
+            filters["type"] = doc_type
+            
+        self.search_to_dataset(query, provider, max_results, filters)
+
+    def _open_query_builder(self):
+        from ui.query_builder import show_query_builder
+        def on_query_built(query_str):
+            self._search_query_entry.delete(0, 'end')
+            self._search_query_entry.insert(0, query_str)
+        show_query_builder(self, on_query_built)
+
+    def search_to_dataset(self, query: str, provider_name: str, max_results: int, filters: dict = None):
+        import threading
+        if filters is None: filters = {}
+        
+        # Setup cancel event
+        self._search_cancel_event = threading.Event()
+        self._search_cancel_btn.pack(side="left", padx=4)
+        
+        threading.Thread(target=self._search_worker, args=(query, provider_name, max_results, filters, self._search_cancel_event), daemon=True).start()
+
+    def _search_worker(self, query: str, provider_name: str, max_results: int, filters: dict, cancel_event):
+        self.after(0, self._set_busy, f"Buscando em {provider_name.upper()}...")
+        try:
+            from core.sources import OpenAlexProvider, CrossrefProvider, PubMedProvider
+            
+            providers_to_run = []
+            if provider_name.lower() == "all":
+                providers_to_run = [OpenAlexProvider(), CrossrefProvider(), PubMedProvider()]
+            elif provider_name.lower() == "openalex":
+                providers_to_run = [OpenAlexProvider()]
+            elif provider_name.lower() == "crossref":
+                providers_to_run = [CrossrefProvider()]
+            else:
+                providers_to_run = [PubMedProvider()]
+                
+            records = []
+            max_per_provider = max_results // len(providers_to_run) if providers_to_run else max_results
+            
+            for prov in providers_to_run:
+                if cancel_event.is_set(): break
+                
+                prov_name = prov.__class__.__name__.replace("Provider", "")
+                self.after(0, self._set_busy, f"Consultando {prov_name}...")
+                
+                def progress(current, total):
+                    if cancel_event.is_set():
+                        self.after(0, self._set_idle, "Busca cancelada.")
+                    else:
+                        self.after(0, self._set_busy, f"Baixando ({prov_name}): {current}/{total} (Total na base: {total})")
+
+                try:
+                    for r in prov.search(query=query, filters=filters, max_results=max_per_provider, progress_cb=progress, cancel_event=cancel_event):
+                        records.append(r)
+                except InterruptedError:
+                    print(f"Busca em {prov_name} abortada pelo usuário.")
+                    break
+                except TypeError:
+                    # Fallback if filters argument is not supported by the provider
+                    for r in prov.search(query=query, max_results=max_per_provider, progress_cb=progress):
+                        if cancel_event.is_set(): break
+                        records.append(r)
+                
+            if not records:
+                self.after(0, self._set_idle, "Busca vazia ou cancelada")
+                if not cancel_event.is_set():
+                    self.after(0, lambda: messagebox.showinfo("Busca concluída", "Nenhum registro encontrado para essa busca."))
+                self.after(0, self._search_cancel_btn.pack_forget)
+                return
+                
+            df = pd.DataFrame(records)
+            
+            if provider_name.lower() == "all":
+                self.after(0, self._set_busy, "Deduplicando registros (Fuzzy Match)...")
+                from core.harmonization import fuzzy_deduplicate_papers
+                initial_count = len(df)
+                df = fuzzy_deduplicate_papers(df)
+                final_count = len(df)
+                dups_removed = initial_count - final_count
+                print(f"[Search] Encontrados {initial_count} em múltiplas bases. Removidos {dups_removed} duplicados.")
+            else:
+                print(f"[Search] Encontrados {len(df)} registros via {provider_name}.")
+            
+            if self._dataframe is not None and not self._dataframe.empty:
+                combined = BibliometricParser.merge(self._dataframe, df)
+            else:
+                combined = df
+                
+            self._dataframe = combined
+            self._refresh_candidate_counts()
+            
+            if "year" in combined.columns:
+                valid_years = combined["year"].dropna()
+                valid_years = valid_years[valid_years > 0]
+                if not valid_years.empty:
+                    ymin = int(valid_years.min())
+                    ymax = int(valid_years.max())
+                    self.after(0, lambda y1=ymin, y2=ymax: (
+                        self._year_min_var.set(str(y1)),
+                        self._year_max_var.set(str(y2))
+                    ))
+                    
+            self.after(0, self._update_stats_tab)
+            self.after(0, self._set_idle, f"{len(df)} registros adicionados")
+            self.after(0, lambda: messagebox.showinfo("Busca concluída", f"Busca finalizada! {len(df)} registros importados com sucesso."))
+            self.after(0, lambda: self._switch_tab("viz"))
+        except Exception as e:
+            print(f"[Search Error] {e}")
+            self.after(0, self._set_idle, "Erro na busca")
+            self.after(0, lambda e_msg=str(e): messagebox.showerror("Erro na busca", f"Ocorreu um erro ao buscar:\n{e_msg}"))
+
     def _pick_thesaurus(self):
         path = filedialog.askopenfilename(
             filetypes=[("CSV", "*.csv"), ("All files", "*.*")])
@@ -1159,6 +1404,8 @@ class BlicsaApp(ctk.CTk):
                     pass
 
             gen      = NetworkGenerator(df)
+            gen.clustering_algorithm = self._cluster_alg_var.get()
+            gen.clustering_resolution = self._cluster_res_var.get()
             map_type = self._map_type_var.get()
             min_occ  = self._min_occ_var.get()
             field    = self._field_var.get()
@@ -1532,8 +1779,7 @@ class BlicsaApp(ctk.CTk):
         self.after(0, self._set_busy, "IA gerando insights…")
         try:
             print("[IA] Enviando dados para Groq...")
-            analyst = GroqBibliometricAnalyst(
-                api_key=self._api_key_var.get().strip() or None)
+            analyst = self._get_ai_analyst()
             cluster_report = self._generator.get_cluster_report()
             year_dist: dict | None = None
             if self._dataframe is not None and "year" in self._dataframe.columns:
@@ -1580,7 +1826,7 @@ class BlicsaApp(ctk.CTk):
             for (a, k), count in auths_kws.most_common(15):
                 summary += f"  - Autor {a} estuda {k} ({count} vezes)\n"
                 
-            analyst = GroqBibliometricAnalyst(api_key=self._api_key_var.get().strip() or None)
+            analyst = self._get_ai_analyst()
             result = analyst.generate_sankey_insights(summary)
             self.after(0, self._show_insights, result)
             self.after(0, self._set_idle, "Insights Sankey prontos")
@@ -1604,7 +1850,7 @@ class BlicsaApp(ctk.CTk):
                 dens = sum(G[u][v].get("weight", 1.0) for u in nodes for v in G.neighbors(u) if v in nodes) / (2.0 * len(nodes))
                 summary += f"  - Cluster {c} ({len(nodes)} nós, Centralidade: {cent:.1f}, Densidade: {dens:.3f}): {', '.join(top_nodes)}\n"
                 
-            analyst = GroqBibliometricAnalyst(api_key=self._api_key_var.get().strip() or None)
+            analyst = self._get_ai_analyst()
             result = analyst.generate_thematic_insights(summary)
             self.after(0, self._show_insights, result)
             self.after(0, self._set_idle, "Insights Temáticos prontos")
@@ -1626,7 +1872,7 @@ class BlicsaApp(ctk.CTk):
                 title = str(row.get("title", ""))[:60]
                 summary += f"  - {first} ({year}) com {cit} citações: \"{title}...\"\n"
                 
-            analyst = GroqBibliometricAnalyst(api_key=self._api_key_var.get().strip() or None)
+            analyst = self._get_ai_analyst()
             result = analyst.generate_historiograph_insights(summary)
             self.after(0, self._show_insights, result)
             self.after(0, self._set_idle, "Insights Historiografia prontos")
@@ -1667,7 +1913,7 @@ class BlicsaApp(ctk.CTk):
             for ref, count in top_refs:
                 summary += f"  - {ref} (citado {count} vezes)\n"
                 
-            analyst = GroqBibliometricAnalyst(api_key=self._api_key_var.get().strip() or None)
+            analyst = self._get_ai_analyst()
             result = analyst.generate_seminal_insights(summary)
             self.after(0, self._show_seminal_insights, result)
             print("[IA] Análise seminal concluída.\n")
@@ -1898,7 +2144,7 @@ class BlicsaApp(ctk.CTk):
                     ))
             else:
                 for i, (kw, n) in enumerate(gen.get_top_keywords(100), 1):
-                    self._rank_tree.insert("", "end", values=(i, kw, n, "—", "—"))
+                    self._rank_tree.insert("", "end", values=(i, kw, n, "—", "—"), tags=("striped",) if i % 2 == 0 else ())
 
         elif kind == "authors":
             _setup_cols([
@@ -1907,7 +2153,7 @@ class BlicsaApp(ctk.CTk):
                 ("Publicações", 110, "e"),
             ])
             for i, (a, n) in enumerate(gen.get_top_authors(100), 1):
-                self._rank_tree.insert("", "end", values=(i, a, n))
+                self._rank_tree.insert("", "end", values=(i, a, n), tags=("striped",) if i % 2 == 0 else ())
 
         elif kind == "hindex":
             _setup_cols([
@@ -1929,7 +2175,7 @@ class BlicsaApp(ctk.CTk):
                 ("Publicações",    110, "e"),
             ])
             for i, (s, n) in enumerate(gen.get_top_sources(100), 1):
-                self._rank_tree.insert("", "end", values=(i, s, n))
+                self._rank_tree.insert("", "end", values=(i, s, n), tags=("striped",) if i % 2 == 0 else ())
 
         else:  # clusters
             _setup_cols([
@@ -2091,6 +2337,154 @@ class BlicsaApp(ctk.CTk):
             gen.export_json_topology(path, positions=self._positions)
             print(f"[Export] JSON topologia → {path}")
 
+    def _export_vosviewer(self):
+        if not (gen := self._require_gen()):
+            return
+        map_path = filedialog.asksaveasfilename(
+            title="Salvar VOSviewer Map File",
+            defaultextension=".txt",
+            filetypes=[("VOSviewer Map (*.txt)", "*.txt")]
+        )
+        if not map_path:
+            return
+        net_path = map_path.replace(".txt", "_network.txt")
+        if net_path == map_path:
+            net_path = map_path + "_network.txt"
+        gen.export_vosviewer(map_path, net_path, positions=self._positions)
+        print(f"[Export] VOSviewer Map → {map_path}")
+        print(f"[Export] VOSviewer Network → {net_path}")
+        messagebox.showinfo("Exportação Concluída", f"Arquivos do VOSviewer exportados com sucesso!\n\nMapa: {map_path}\nRede: {net_path}")
+
+    def _save_project_gui(self):
+        path = filedialog.asksaveasfilename(
+            defaultextension=".blicsa",
+            filetypes=[("Projeto Blicsa", "*.blicsa")],
+            title="Salvar Projeto Blicsa",
+        )
+        if not path:
+            return
+        self._set_busy("Salvando projeto...")
+        try:
+            from core.project import save_blicsa_project
+            config = {
+                "map_type":     self._map_type_var.get(),
+                "field":        self._field_var.get(),
+                "counting":     self._counting_var.get(),
+                "assoc_strength": self._assoc_var.get(),
+                "min_occ":      self._min_occ_var.get(),
+                "max_nodes":    self._max_nodes_var.get(),
+                "max_pct":      self._max_pct_var.get(),
+                "fa2_iter":     self._fa2_iter_var.get(),
+                "linlog":       self._linlog_var.get(),
+                "viz_mode":     self._viz_mode_var.get(),
+                "plotly_mode":  self._plotly_mode_var.get(),
+                "year_min":     self._year_min_var.get(),
+                "year_max":     self._year_max_var.get(),
+                "extra_sw":     self._extra_sw_var.get(),
+                "cluster_algorithm": self._cluster_alg_var.get(),
+                "cluster_resolution": self._cluster_res_var.get(),
+            }
+            save_blicsa_project(
+                path,
+                df=self._dataframe,
+                config=config,
+                positions=self._positions,
+                G=self._generator.G if self._generator else None,
+                cluster_labels=self._cluster_labels
+            )
+            self._set_idle(f"Projeto salvo: {Path(path).name}")
+            messagebox.showinfo("Sucesso", "Projeto salvo com sucesso!")
+        except Exception as e:
+            self._set_idle("Erro ao salvar projeto")
+            messagebox.showerror("Erro ao salvar", str(e))
+
+    def _load_project_gui(self):
+        path = filedialog.askopenfilename(
+            filetypes=[("Projeto Blicsa", "*.blicsa")],
+            title="Carregar Projeto Blicsa",
+        )
+        if not path:
+            return
+        self._set_busy("Carregando projeto...")
+        try:
+            from core.project import load_blicsa_project
+            from core.matrix_builders import NetworkGenerator
+            
+            project_data = load_blicsa_project(path)
+            
+            # 1. Restore configuration
+            config = project_data.get("config", {})
+            setters: list[tuple] = [
+                ("map_type",      self._map_type_var,  "set"),
+                ("field",         self._field_var,      "set"),
+                ("counting",      self._counting_var,   "set"),
+                ("assoc_strength",self._assoc_var,      "set"),
+                ("min_occ",       self._min_occ_var,    "set"),
+                ("fa2_iter",      self._fa2_iter_var,   "set"),
+                ("linlog",        self._linlog_var,      "set"),
+                ("viz_mode",      self._viz_mode_var,   "set"),
+                ("plotly_mode",   self._plotly_mode_var,"set"),
+                ("cluster_algorithm", self._cluster_alg_var, "set"),
+                ("cluster_resolution", self._cluster_res_var, "set"),
+            ]
+            for key, var, _ in setters:
+                if (v := config.get(key)) is not None:
+                    var.set(v)
+            for key, var in [
+                ("max_nodes", self._max_nodes_var),
+                ("max_pct",   self._max_pct_var),
+                ("year_min",  self._year_min_var),
+                ("year_max",  self._year_max_var),
+                ("extra_sw",  self._extra_sw_var),
+            ]:
+                if (v := config.get(key)) is not None:
+                    var.set(str(v))
+                    
+            # 2. Restore dataset
+            self._dataframe = project_data.get("df")
+            
+            # 3. Restore layout and generator
+            self._positions = project_data.get("positions", {})
+            self._cluster_labels = project_data.get("cluster_labels", {})
+            
+            G = project_data.get("G")
+            if G is not None:
+                self._generator = NetworkGenerator(self._dataframe)
+                self._generator.G = G
+                self._generator.clustering_algorithm = self._cluster_alg_var.get()
+                self._generator.clustering_resolution = self._cluster_res_var.get()
+                
+            self._refresh_candidate_counts()
+            self._update_stats_tab()
+            self._set_idle("Projeto carregado com sucesso")
+            
+            if self._dataframe is not None and not self._dataframe.empty:
+                self.after(0, lambda: self._switch_tab("viz"))
+                
+            messagebox.showinfo("Sucesso", "Projeto carregado com sucesso!")
+        except Exception as e:
+            self._set_idle("Erro ao carregar projeto")
+            messagebox.showerror("Erro ao carregar", str(e))
+
+    def _get_ai_analyst(self):
+        from ai.client import GroqBibliometricAnalyst
+        return GroqBibliometricAnalyst(
+            api_key=self._api_key_var.get().strip() or None,
+            base_url=self._ai_base_url_var.get().strip() or None,
+            model=self._ai_model_var.get().strip() or None
+        )
+
+    def _on_ai_provider_change(self, provider):
+        presets = {
+            "groq": ("https://api.groq.com/openai/v1", "llama-3.3-70b-versatile"),
+            "openai": ("https://api.openai.com/v1", "gpt-4o"),
+            "openrouter": ("https://openrouter.ai/api/v1", "meta-llama/llama-3-70b-instruct"),
+            "ollama": ("http://localhost:11434/v1", "llama3"),
+        }
+        if provider in presets:
+            base, model = presets[provider]
+            self._ai_base_url_var.set(base)
+            self._ai_model_var.set(model)
 
     # ── Tab: Estatísticas ──────────────────────────────────────────────
     # ── Deduplication ──────────────────────────────────────────────────
@@ -2256,8 +2650,7 @@ class BlicsaApp(ctk.CTk):
         try:
             self.after(0, self._set_busy, "IA nomeando clusters…")
             print("[IA] Nomeando clusters com IA...")
-            analyst = GroqBibliometricAnalyst(
-                api_key=self._api_key_var.get().strip() or None)
+            analyst = self._get_ai_analyst()
             report = self._generator.get_cluster_report()
             labels = analyst.label_clusters(report, context=self._field_var.get())
             self._cluster_labels = labels
@@ -2584,5 +2977,19 @@ class BlicsaApp(ctk.CTk):
 
 
 if __name__ == "__main__":
+    import sys
+    if "--selfcheck" in sys.argv:
+        try:
+            from core.parsers import BibliometricParser
+            from core.matrix_builders import NetworkGenerator
+            from core.visualizer import build_plotly_map
+            from core.nlp import extract_ngrams
+            print("Blicsa v2.0-upgrade")
+            print("Self-check passed: Core modules imported successfully.")
+            sys.exit(0)
+        except Exception as e:
+            print(f"Self-check FAILED: {e}", file=sys.stderr)
+            sys.exit(1)
+
     app = BlicsaApp()
     app.mainloop()

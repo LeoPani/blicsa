@@ -1,0 +1,4 @@
+authors,title,year,source,keywords,abstract,citations,doi,references
+"Pani, L.; Smith, J.","Bibliometric network analysis in Python",2024,"Journal of Scientometrics","bibliometrics; network analysis; python","An overview of software tools for network analysis in scientometrics.",10,"10.1001/js.2024.1","Van Eck, N. J. (2010)"
+"Smith, J.; Doe, J.","Louvain versus Leiden clustering in science maps",2025,"Network Science Review","clustering; leiden; louvain; science maps","A comparative study on community detection algorithms for scientometrics.",5,"10.1001/nsr.2025.2","Pani, L. (2024)"
+"Doe, J.","AI-driven scientific discovery and scientometrics",2026,"Artificial Intelligence Research","ai; scientometrics; scientific discovery","Using large language models for extracting insights from bibliometric networks.",2,"10.1001/air.2026.3","Smith, J. (2025)"

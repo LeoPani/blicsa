@@ -1,0 +1,171 @@
+name: Release Build
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+jobs:
+  build:
+    name: Build on ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os: [windows-latest, macos-latest, ubuntu-latest]
+        include:
+          - os: windows-latest
+            artifact_name: Blicsa-windows.zip
+            binary_path: dist/Blicsa-onefile.exe
+          - os: macos-latest
+            artifact_name: Blicsa-macos.dmg
+            binary_path: dist/Blicsa-onefile
+          - os: ubuntu-latest
+            artifact_name: Blicsa-linux.AppImage
+            binary_path: dist/Blicsa-onefile
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v3
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.10'
+          cache: 'pip'
+
+      - name: Install dependencies
+        run: |
+          pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install pyinstaller
+
+      - name: Build with PyInstaller
+        run: |
+          pyinstaller Blicsa.spec
+
+      - name: Run self-check on built executable
+        shell: bash
+        run: |
+          if [ "${{ matrix.os }}" = "windows-latest" ]; then
+            dist/Blicsa-onefile.exe --selfcheck
+          elif [ "${{ matrix.os }}" = "macos-latest" ]; then
+            dist/Blicsa-onefile --selfcheck
+          else
+            dist/Blicsa-onefile --selfcheck
+          fi
+
+      - name: Package Windows Artifact
+        if: matrix.os == 'windows-latest'
+        shell: pwsh
+        run: |
+          Compress-Archive -Path dist/Blicsa-onefile.exe, dist/Blicsa-dir -DestinationPath Blicsa-windows.zip
+          iscc installer.iss
+
+      - name: Package macOS Artifact (DMG)
+        if: matrix.os == 'macos-latest'
+        run: |
+          # Install create-dmg
+          brew install create-dmg
+          create-dmg \
+            --volname "Blicsa Installer" \
+            --volicon "dist/Blicsa-dir/Blicsa" \
+            --window-size 600 450 \
+            --icon-size 100 \
+            --icon "Blicsa.app" 200 190 \
+            --hide-extension "Blicsa.app" \
+            --app-drop-link 400 190 \
+            Blicsa-macos.dmg \
+            "dist/Blicsa.app"
+
+      - name: Package Linux AppImage
+        if: matrix.os == 'ubuntu-latest'
+        run: |
+          # Download and prepare appimagetool
+          curl -LO https://github.com/AppImage/AppImageKit/releases/download/13/appimagetool-x86_64.AppImage
+          chmod a+x appimagetool-x86_64.AppImage
+          
+          # Create basic AppDir layout
+          mkdir -p AppDir/usr/bin
+          mkdir -p AppDir/usr/share/icons/hicolor/256x256/apps
+          cp dist/Blicsa-onefile AppDir/usr/bin/blicsa
+          
+          # Write AppRun
+          cat << 'EOF' > AppDir/AppRun
+          #!/bin/sh
+          exec "$APPDIR/usr/bin/blicsa" "$@"
+          EOF
+          chmod a+x AppDir/AppRun
+          
+          # Write desktop entry
+          cat << 'EOF' > AppDir/blicsa.desktop
+          [Desktop Entry]
+          Type=Application
+          Name=Blicsa
+          Exec=blicsa
+          Icon=blicsa
+          Categories=Science;
+          EOF
+          
+          # Write dummy icon
+          touch AppDir/blicsa.png
+          
+          # Build AppImage
+          ARCH=x86_64 ./appimagetool-x86_64.AppImage AppDir Blicsa-linux.AppImage
+
+      - name: Generate SHA256 checksum
+        shell: bash
+        run: |
+          if [ "${{ matrix.os }}" = "windows-latest" ]; then
+            sha256sum Blicsa-windows.zip > checksums.txt
+          elif [ "${{ matrix.os }}" = "macos-latest" ]; then
+            sha256sum Blicsa-macos.dmg > checksums.txt
+          else
+            sha256sum Blicsa-linux.AppImage > checksums.txt
+          fi
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v3
+        with:
+          name: ${{ matrix.os }}-build
+          path: |
+            Blicsa-*
+            checksums.txt
+
+  release:
+    name: Create GitHub Release
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v3
+
+      - name: Download all artifacts
+        uses: actions/download-artifact@v3
+        with:
+          path: artifacts
+
+      - name: Consolidate checksums
+        run: |
+          cat artifacts/*-build/checksums.txt > checksums.txt
+
+      - name: Create Release
+        id: create_release
+        uses: softprops/action-gh-release@v1
+        with:
+          files: |
+            artifacts/windows-latest-build/Blicsa-windows.zip
+            artifacts/windows-latest-build/Blicsa_Setup.exe
+            artifacts/macos-latest-build/Blicsa-macos.dmg
+            artifacts/ubuntu-latest-build/Blicsa-linux.AppImage
+            checksums.txt
+          body: |
+            ## PyBibliomics Blicsa Release
+            
+            ### Installation Instructions
+            
+            - **Windows**: Download `Blicsa-windows.zip`, extract, and run `Blicsa-onefile.exe` or use `Blicsa-dir`.
+            - **macOS**: Download `Blicsa-macos.dmg`, open it, and drag `Blicsa` to your Applications folder.
+              - *Note on Gatekeeper*: Because this app is currently unsigned, you may need to right-click `Blicsa.app` and select **Open** instead of double-clicking to bypass the warning.
+            - **Linux**: Download `Blicsa-linux.AppImage`, make it executable (`chmod +x Blicsa-linux.AppImage`), and run it.
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

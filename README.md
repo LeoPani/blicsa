@@ -83,7 +83,22 @@ Maps scientific literature into interactive networks to reveal research fronts, 
 
 ---
 
+## Releases & Standalone Binaries
+
+Standalone pre-compiled binaries are generated automatically via GitHub Actions release workflows:
+
+*   **Windows**: [Blicsa-windows.zip](https://github.com/leopani/PyBibliomics/releases/latest/download/Blicsa-windows.zip) (Extract and run `Blicsa-onefile.exe` or use `Blicsa-dir`)
+*   **macOS**: [Blicsa-macos.dmg](https://github.com/leopani/PyBibliomics/releases/latest/download/Blicsa-macos.dmg) (Open and drag Blicsa to Applications)
+*   **Linux**: [Blicsa-linux.AppImage](https://github.com/leopani/PyBibliomics/releases/latest/download/Blicsa-linux.AppImage) (Make executable: `chmod +x Blicsa-linux.AppImage` and run)
+
+> [!NOTE]
+> **macOS Gatekeeper Workaround**: Because these standalone builds are unsigned, macOS will block the initial double-click launch. To bypass this, **right-click** `Blicsa.app` (or click while holding Control), choose **Open**, and then click **Open** on the confirmation dialog.
+
+---
+
 ## Installation
+
+To run directly from source code:
 
 ```bash
 git clone https://github.com/LeoPani/PyBibliomics.git
@@ -92,20 +107,18 @@ pip install -r requirements.txt
 python main.py
 ```
 
-> **Python 3.11+** required.  
-> On macOS, if `tkinterdnd2` fails to install, drag-and-drop will be disabled but all other features work normally.
+> **Python 3.10+** is required.
 
 ---
 
 ## Quick Start
 
-1. **Import** — add one or more files (Scopus, WoS, BibTeX…) in the Import tab. Click **Carregar e Combinar**.
-2. **Deduplicate** — click **Deduplicar** to review and remove duplicate records.
-3. **Configure** — choose network type, field, minimum occurrence, and ForceAtlas2 settings.
-4. **Generate** — click **Gerar Mapa** (or `Ctrl+G`). The map opens automatically.
-5. **Explore** — click nodes to inspect papers, adjust the cluster filter strip, toggle viz modes.
-6. **AI** — add a Groq API key in the config tab and click **Insights com IA** or **Nomear Clusters**.
-7. **Export** — use the Export tab to save the map, rankings, or full dataset.
+1.  **Import & Online Search**: Add bibliometric files using **➕ Adicionar** in the **Data Import** tab, or query **OpenAlex / Crossref / PubMed** directly inside the **Busca Online** panel.
+2.  **Deduplicate**: Click **🔍 Deduplicar** to review and filter duplicate documents.
+3.  **Clustering & Layout**: Select your mapping configurations, including **Louvain** or **Leiden** community clustering and **Resolução Cluster** slider.
+4.  **Redraw / Explore**: Click **Gerar Mapa** (`Ctrl+G`). Hovering over a node highlights all connected nodes in their cluster color, fading other elements to 15% opacity.
+5.  **AI Insights**: Configure your AI provider settings (Preset models for Groq, OpenAI, OpenRouter, or local Ollama) in the sidebar, input your **Chave API**, and click **Nomear Clusters** or **Insights com IA**.
+6.  **Save & Export**: Use the **Exportar** tab to save your complete project in `.blicsa` zip format or export graph networks in Gephi (GEXF) and VOSviewer (Map/Net txt) formats.
 
 ---
 
@@ -113,30 +126,29 @@ python main.py
 
 ```
 PyBibliomics/
-├── main.py                  # UI and application logic (CustomTkinter)
+├── main.py                  # CustomTkinter GUI wrapper
+├── Blicsa.spec              # PyInstaller spec file for multi-target packaging
 ├── core/
-│   ├── parsers.py           # Data import: Scopus, WoS, BibTeX, PubMed, OpenAlex, Crossref
-│   ├── matrix_builders.py   # Network construction, metrics, exports
-│   ├── visualizer.py        # Plotly maps and ForceAtlas2 layout
-│   └── nlp.py               # N-gram extraction, thesaurus, stop words
+│   ├── parsers.py           # Multi-source parsers & merging
+│   ├── matrix_builders.py   # Co-occurrence matrices, Leiden/Louvain, & VOSviewer
+│   ├── visualizer.py        # Plotly graph and map visualizations
+│   ├── nlp.py               # Stopwords, n-grams, and burst detection
+│   ├── sources/             # OpenAlex, Crossref, and PubMed API search providers
+│   ├── project.py           # .blicsa project save/load manager
+│   └── i18n.py              # System language detector (PT-BR / EN default)
 ├── ai/
-│   └── client.py            # Groq API: insights + cluster labeling
+│   └── client.py            # Generic OpenAI-compatible AI API client
+├── locales/
+│   ├── en.json              # English catalog (default)
+│   └── pt_BR.json           # Portuguese (Brazil) catalog
+├── paper/
+│   ├── paper.md             # JOSS publication skeleton
+│   └── paper.bib            # Bibliography file
 └── requirements.txt
-```
-
----
-
-## Groq API Key
-
-Blicsa uses the [Groq API](https://console.groq.com/) for AI features (free tier available).  
-Enter your key in the **Configurar Mapa** tab, or set the environment variable:
-
-```bash
-export GROQ_API_KEY=gsk_...
 ```
 
 ---
 
 ## License
 
-MIT
+MIT License.
