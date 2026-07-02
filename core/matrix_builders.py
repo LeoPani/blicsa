@@ -593,13 +593,13 @@ class NetworkGenerator:
     ):
         net = Network(
             height="800px", width="100%",
-            bgcolor="#1a1a2e", font_color="#e0e0e0",
+            bgcolor="#ffffff", font_color="#334155",
             heading=title,
         )
         net.from_nx(self.G)
         net.set_options(json.dumps({
             "nodes": {
-                "font": {"size": 13, "strokeWidth": 2, "strokeColor": "#1a1a2e"},
+                "font": {"size": 13, "strokeWidth": 2, "strokeColor": "#ffffff", "color": "#334155"},
                 "borderWidth": 2, "borderWidthSelected": 3, "shadow": True,
             },
             "edges": {
@@ -620,6 +620,130 @@ class NetworkGenerator:
             },
         }))
         net.write_html(output_path)
+        
+        # Inject VOSviewer style highlights
+        try:
+            with open(output_path, "r", encoding="utf-8") as f:
+                html = f.read()
+            
+            target = "network = new vis.Network(container, data, options);"
+            if target in html:
+                js_inject = """network = new vis.Network(container, data, options);
+
+                  // ── VOSviewer style highlights ──────────────────────────────────
+                  function hexToRGBA(hex, alpha) {
+                      if (!hex) return 'rgba(100,100,100,' + alpha + ')';
+                      hex = hex.replace('#', '');
+                      if (hex.length === 3) {
+                          hex = hex[0] + hex[0] + hex[1] + hex[1] + hex[2] + hex[2];
+                      }
+                      var r = parseInt(hex.substring(0, 2), 16);
+                      var g = parseInt(hex.substring(2, 4), 16);
+                      var b = parseInt(hex.substring(4, 6), 16);
+                      return 'rgba(' + r + ',' + g + ',' + b + ',' + alpha + ')';
+                  }
+
+                  network.on("hoverNode", function(params) {
+                      var hoveredNode = params.node;
+                      var connectedNodes = network.getConnectedNodes(hoveredNode);
+                      var connectedEdges = network.getConnectedEdges(hoveredNode);
+                      
+                      var nodeUpdates = [];
+                      var edgeUpdates = [];
+                      
+                      var nodeColor = allNodes[hoveredNode].color;
+                      if (typeof nodeColor === 'object' && nodeColor !== null) {
+                          nodeColor = nodeColor.background || nodeColor.color;
+                      }
+                      if (!nodeColor) nodeColor = "#3b82f6";
+                      
+                      for (var nodeId in allNodes) {
+                          var isConnected = (nodeId == hoveredNode) || (connectedNodes.indexOf(nodeId) !== -1);
+                          var origCol = allNodes[nodeId].color;
+                          if (typeof origCol === 'object' && origCol !== null) {
+                              origCol = origCol.background || origCol.color;
+                          }
+                          nodeUpdates.push({
+                              id: nodeId,
+                              color: {
+                                  background: hexToRGBA(origCol, isConnected ? 1.0 : 0.15),
+                                  border: hexToRGBA(origCol, isConnected ? 1.0 : 0.15)
+                              },
+                              font: {
+                                  color: isConnected ? '#1e293b' : 'rgba(148,163,184,0.15)',
+                                  strokeColor: isConnected ? '#ffffff' : 'rgba(255,255,255,0.15)'
+                              }
+                          });
+                      }
+                      
+                      for (var edgeId in allEdges) {
+                          var isConnected = connectedEdges.indexOf(edgeId) !== -1;
+                          if (isConnected) {
+                              edgeUpdates.push({
+                                  id: edgeId,
+                                  color: {
+                                      color: hexToRGBA(nodeColor, 0.85),
+                                      highlight: hexToRGBA(nodeColor, 0.95),
+                                      hover: hexToRGBA(nodeColor, 0.95),
+                                      opacity: 0.85
+                                  },
+                                  width: (allEdges[edgeId].width || 1) * 2.5
+                              });
+                          } else {
+                              edgeUpdates.push({
+                                  id: edgeId,
+                                  color: {
+                                      color: 'rgba(200,200,200,0.05)',
+                                      opacity: 0.05
+                                  }
+                              });
+                          }
+                      }
+                      
+                      nodes.update(nodeUpdates);
+                      edges.update(edgeUpdates);
+                  });
+
+                  network.on("blurNode", function(params) {
+                      var nodeUpdates = [];
+                      var edgeUpdates = [];
+                      
+                      for (var nodeId in allNodes) {
+                          var origCol = allNodes[nodeId].color;
+                          if (typeof origCol === 'object' && origCol !== null) {
+                              origCol = origCol.background || origCol.color;
+                          }
+                          nodeUpdates.push({
+                              id: nodeId,
+                              color: {
+                                  background: origCol,
+                                  border: origCol
+                              },
+                              font: {
+                                  color: '#334155',
+                                  strokeColor: '#ffffff'
+                              }
+                          });
+                      }
+                      
+                      for (var edgeId in allEdges) {
+                          var origEdge = allEdges[edgeId];
+                          var origColor = origEdge.color || { inherit: 'both', opacity: 0.6 };
+                          edgeUpdates.push({
+                              id: edgeId,
+                              color: origColor,
+                              width: origEdge.width || 1
+                          });
+                      }
+                      
+                      nodes.update(nodeUpdates);
+                      edges.update(edgeUpdates);
+                  });"""
+                html = html.replace(target, js_inject)
+                with open(output_path, "w", encoding="utf-8") as f:
+                    f.write(html)
+        except Exception as e:
+            print(f"[ERRO ao injetar JS] {e}")
 
     # ------------------------------------------------------------------ #
     #  Graph format exports                                                #
@@ -756,8 +880,8 @@ class NetworkGenerator:
     def get_top_sources(self, n: int = 15) -> list[tuple[str, int]]:
         return Counter(self.df["source"].dropna()).most_common(n)
 
-    def get_author_hindex(self, n: int = 50) -> list[tuple[str, int, int, float]]:
-        """Return [(author, h_index, papers, avg_citations)] sorted by h-index desc."""
+    def get_author_hindex(self, n: int = 50) -> list[tuple[str, int, int, int, float]]:
+        """Return [(author, h_index, g_index, papers, avg_citations)] sorted by h-index desc."""
         import re as _re
         author_cites: dict[str, list[int]] = {}
         for _, row in self.df.iterrows():
@@ -769,14 +893,23 @@ class NetworkGenerator:
                 if a:
                     author_cites.setdefault(a, []).append(cit)
 
-        results: list[tuple[str, int, int, float]] = []
+        results: list[tuple[str, int, int, int, float]] = []
         for author, cite_list in author_cites.items():
             sorted_cites = sorted(cite_list, reverse=True)
             h = sum(1 for i, c in enumerate(sorted_cites, 1) if c >= i)
+            
+            # g-index calculation
+            g = 0
+            c_sum = 0
+            for i, c in enumerate(sorted_cites, 1):
+                c_sum += c
+                if c_sum >= i * i:
+                    g = i
+                    
             avg = sum(cite_list) / len(cite_list)
-            results.append((author, h, len(cite_list), avg))
+            results.append((author, h, g, len(cite_list), avg))
 
-        results.sort(key=lambda x: (x[1], x[3]), reverse=True)
+        results.sort(key=lambda x: (x[1], x[2], x[4]), reverse=True)
         return results[:n]
 
     def get_cluster_report(self) -> list[dict]:

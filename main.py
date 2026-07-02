@@ -1,19 +1,22 @@
 import sys
 import os
+try:
+    if os.path.exists(".env"):
+        with open(".env", "r", encoding="utf-8") as f:
+            for line in f:
+                if "=" in line and not line.strip().startswith("#"):
+                    k, v = line.strip().split("=", 1)
+                    os.environ[k.strip()] = v.strip().strip('"').strip("'")
+except Exception:
+    pass
 import json
 import threading
 import webbrowser
 import tempfile
 from pathlib import Path
 from collections import Counter
-
-import matplotlib
-matplotlib.use("TkAgg")
-import matplotlib.pyplot as plt
-import matplotlib.patches as mpatches
-from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg, NavigationToolbar2Tk
-import numpy as np
 import networkx as nx
+
 import customtkinter as ctk
 import tkinter.ttk as ttk
 from tkinter import filedialog, messagebox
@@ -25,30 +28,20 @@ except ImportError:
 
 from core.parsers import BibliometricParser, find_duplicates
 from core.matrix_builders import NetworkGenerator, CLUSTER_PALETTE
-from core.visualizer import compute_fa2_layout, build_plotly_map, build_plotly_density, export_plotly_html, export_figure_image
+from core.visualizer import compute_fa2_layout, build_plotly_map, build_plotly_density, export_plotly_html, export_figure_image, build_thematic_map, build_historiograph
 from core.nlp import load_thesaurus
 from ai.client import GroqBibliometricAnalyst
 
-ctk.set_appearance_mode("dark")
-ctk.set_default_color_theme("dark-blue")
+# Import styles and components from ui package
+from ui.styles import get_color, LogWriter, SIDEBAR_BG, CONTENT_BG, CARD_BG, CARD2_BG, ACCENT, ACCENT_HOV, TEXT_MUTED, GREEN, GREEN_HOV, PURPLE, PURPLE_HOV, TEAL, TEAL_HOV
+from ui.components import DeduplicationDialog, TrendChartWindow, VerificationDialog, MapCanvas, BurstDetectionWindow
+
+ctk.set_appearance_mode("light")
+ctk.set_default_color_theme("blue")
 
 OUTPUT_DIR  = Path(__file__).parent
 MAP_PATH    = str(OUTPUT_DIR / "blicsa_mapa.html")
 PLOTLY_PATH = str(OUTPUT_DIR / "blicsa_plotly.html")
-
-SIDEBAR_BG  = "#0f0f1a"
-CONTENT_BG  = "#13131f"
-CARD_BG     = "#1a1a2e"
-CARD2_BG    = "#0d0d1f"
-ACCENT      = "#D4A017"
-ACCENT_HOV  = "#b88a10"
-TEXT_MUTED  = "#888899"
-GREEN       = "#1a7a4a"
-GREEN_HOV   = "#145c38"
-PURPLE      = "#7c3aed"
-PURPLE_HOV  = "#5b21b6"
-TEAL        = "#0e7490"
-TEAL_HOV    = "#0c5f76"
 
 MAP_TYPES = [
     "Coocorrência de Palavras-chave",
@@ -70,824 +63,12 @@ FIELD_OPTS = [
     ("Títulos + Resumos",                "titles_abstracts"),
 ]
 
-
-# ── Log redirector ─────────────────────────────────────────────────────────────
-class LogWriter:
-    def __init__(self, widget: ctk.CTkTextbox):
-        self._w, self._orig = widget, sys.__stdout__
-
-    def write(self, msg: str):
-        self._w.after(0, self._append, msg)
-        try:
-            self._orig.write(msg)
-        except Exception:
-            pass
-
-    def _append(self, msg: str):
-        self._w.configure(state="normal")
-        self._w.insert("end", msg)
-        self._w.see("end")
-        self._w.configure(state="disabled")
-
-    def flush(self):
-        pass
-
-
-# ── Verification dialog ────────────────────────────────────────────────────────
-# ── Deduplication Dialog ───────────────────────────────────────────────────────
-class DeduplicationDialog(ctk.CTkToplevel):
-    """Shows fuzzy-duplicate pairs and lets the user confirm which to remove."""
-
-    def __init__(self, parent, df, dupes: list[tuple[int, int, str]], on_apply):
-        super().__init__(parent)
-        self.title("Blicsa — Deduplicação")
-        self.geometry("900x620")
-        self.minsize(700, 420)
-        self.configure(fg_color=CONTENT_BG)
-        self.grab_set()
-
-        self._df       = df
-        self._dupes    = dupes       # [(keep_idx, remove_idx, reason)]
-        self._on_apply = on_apply
-        self._vars: list[ctk.BooleanVar] = []
-
-        self.grid_rowconfigure(1, weight=1)
-        self.grid_columnconfigure(0, weight=1)
-
-        # Header
-        hdr = ctk.CTkFrame(self, fg_color=CONTENT_BG)
-        hdr.grid(row=0, column=0, sticky="ew", padx=20, pady=(16, 4))
-        ctk.CTkLabel(
-            hdr,
-            text=f"{len(dupes)} par(es) de duplicata detectado(s) — marque os que deseja remover:",
-            font=ctk.CTkFont(size=13),
-        ).pack(side="left")
-        ctk.CTkButton(
-            hdr, text="Todos", width=72, height=28,
-            fg_color=TEAL, hover_color=TEAL_HOV,
-            command=lambda: [v.set(True) for v in self._vars],
-        ).pack(side="right", padx=(6, 0))
-        ctk.CTkButton(
-            hdr, text="Nenhum", width=72, height=28,
-            fg_color=CARD_BG, hover_color=CARD2_BG,
-            command=lambda: [v.set(False) for v in self._vars],
-        ).pack(side="right")
-
-        # Scrollable pair list
-        sf = ctk.CTkScrollableFrame(self, fg_color=CARD2_BG, corner_radius=10)
-        sf.grid(row=1, column=0, sticky="nsew", padx=20, pady=4)
-        sf.grid_columnconfigure(1, weight=1)
-
-        for idx, (ki, ri, reason) in enumerate(dupes):
-            var = ctk.BooleanVar(value=True)
-            self._vars.append(var)
-
-            keep_title   = str(df.at[ki, "title"])[:70]
-            remove_title = str(df.at[ri, "title"])[:70]
-            keep_origin  = df.at[ki, "origin"]
-            rm_origin    = df.at[ri, "origin"]
-            yr           = df.at[ri, "year"]
-
-            bg = CARD_BG if idx % 2 == 0 else CARD2_BG
-            row_f = ctk.CTkFrame(sf, fg_color=bg, corner_radius=6)
-            row_f.grid(row=idx, column=0, columnspan=2, sticky="ew", pady=2, padx=2)
-            row_f.grid_columnconfigure(1, weight=1)
-
-            ctk.CTkCheckBox(
-                row_f, text="", variable=var,
-                width=28, checkbox_width=16, checkbox_height=16,
-                fg_color=ACCENT, hover_color=ACCENT_HOV,
-            ).grid(row=0, column=0, padx=(8, 4), pady=6, rowspan=2)
-
-            ctk.CTkLabel(
-                row_f,
-                text=f"MANTER  [{keep_origin}]  {keep_title}",
-                anchor="w", font=ctk.CTkFont(size=11, weight="bold"),
-                text_color="#88ee88",
-            ).grid(row=0, column=1, padx=4, pady=(6, 0), sticky="w")
-            ctk.CTkLabel(
-                row_f,
-                text=f"REMOVER [{rm_origin}] ({yr})  {remove_title}",
-                anchor="w", font=ctk.CTkFont(size=11),
-                text_color="#ee8888",
-            ).grid(row=1, column=1, padx=4, pady=(0, 2), sticky="w")
-            ctk.CTkLabel(
-                row_f,
-                text=f"  {reason}",
-                anchor="w", font=ctk.CTkFont(size=10),
-                text_color=TEXT_MUTED,
-            ).grid(row=2, column=1, padx=4, pady=(0, 6), sticky="w")
-
-        # Footer
-        foot = ctk.CTkFrame(self, fg_color=CONTENT_BG)
-        foot.grid(row=2, column=0, sticky="ew", padx=20, pady=(4, 16))
-        ctk.CTkButton(
-            foot, text="✕  Cancelar", width=110, height=38,
-            fg_color="#333355", hover_color="#444466",
-            command=self.destroy,
-        ).pack(side="right", padx=(8, 0))
-        ctk.CTkButton(
-            foot, text="🗑  Aplicar Remoção", width=180, height=38,
-            fg_color="#7a1a1a", hover_color="#9a2a2a",
-            font=ctk.CTkFont(size=13, weight="bold"),
-            command=self._apply,
-        ).pack(side="right")
-
-    def _apply(self):
-        to_remove = {self._dupes[i][1] for i, v in enumerate(self._vars) if v.get()}
-        self.destroy()
-        self._on_apply(to_remove)
-
-
-# ── Trend Chart Window ─────────────────────────────────────────────────────────
-class TrendChartWindow(ctk.CTkToplevel):
-    """Line chart of term frequency per year for user-selected terms."""
-
-    def __init__(
-        self,
-        parent,
-        df,
-        candidate_counts: Counter,
-        field: str = "keywords",
-        thesaurus: dict | None = None,
-    ):
-        super().__init__(parent)
-        self.title("Blicsa — Tendências de Termos")
-        self.geometry("1140x680")
-        self.minsize(820, 500)
-        self.configure(fg_color=CONTENT_BG)
-
-        self._df         = df
-        self._field      = field
-        self._thesaurus  = thesaurus or {}
-        self._all_terms  = [t for t, _ in candidate_counts.most_common(80)]
-
-        self.grid_columnconfigure(1, weight=1)
-        self.grid_rowconfigure(0, weight=1)
-
-        # ── Left panel ─────────────────────────────────────────────────
-        lp = ctk.CTkFrame(self, fg_color=CARD_BG, width=230)
-        lp.grid(row=0, column=0, sticky="ns", padx=(12, 4), pady=12)
-        lp.grid_propagate(False)
-        lp.grid_rowconfigure(2, weight=1)
-        lp.grid_columnconfigure(0, weight=1)
-
-        ctk.CTkLabel(
-            lp, text="Termos", font=ctk.CTkFont(size=13, weight="bold"),
-            text_color=ACCENT,
-        ).grid(row=0, column=0, padx=10, pady=(10, 4), sticky="w")
-
-        self._search_var = ctk.StringVar()
-        self._search_var.trace_add("write", self._filter_terms)
-        ctk.CTkEntry(
-            lp, textvariable=self._search_var,
-            placeholder_text="Filtrar…", height=30,
-        ).grid(row=1, column=0, padx=8, pady=(0, 4), sticky="ew")
-
-        sf = ctk.CTkScrollableFrame(lp, fg_color=CARD2_BG)
-        sf.grid(row=2, column=0, padx=6, pady=(0, 4), sticky="nsew")
-        self._scroll_frame = sf
-
-        self._term_vars:   dict[str, ctk.BooleanVar]   = {}
-        self._term_checks: dict[str, ctk.CTkCheckBox]  = {}
-        for term in self._all_terms:
-            var = ctk.BooleanVar(value=False)
-            label = term if len(term) <= 28 else term[:27] + "…"
-            cb = ctk.CTkCheckBox(
-                sf, text=label, variable=var,
-                fg_color=ACCENT, hover_color=ACCENT_HOV,
-                font=ctk.CTkFont(size=11),
-            )
-            cb.pack(anchor="w", pady=1, padx=4)
-            self._term_vars[term]   = var
-            self._term_checks[term] = cb
-
-        # Quick-select row
-        qf = ctk.CTkFrame(lp, fg_color="transparent")
-        qf.grid(row=3, column=0, padx=6, pady=(0, 4), sticky="ew")
-        ctk.CTkButton(
-            qf, text="Top 5", width=64, height=26,
-            fg_color=TEAL, hover_color=TEAL_HOV,
-            command=self._select_top5,
-        ).pack(side="left", padx=2)
-        ctk.CTkButton(
-            qf, text="Nenhum", width=64, height=26,
-            fg_color=CARD_BG, hover_color=CARD2_BG,
-            command=self._deselect_all,
-        ).pack(side="left", padx=2)
-
-        ctk.CTkButton(
-            lp, text="📈  Plotar", height=38,
-            fg_color=ACCENT, hover_color=ACCENT_HOV,
-            text_color="#000000", font=ctk.CTkFont(weight="bold"),
-            command=self._plot,
-        ).grid(row=4, column=0, padx=10, pady=(0, 12), sticky="ew")
-
-        # ── Right panel: matplotlib ─────────────────────────────────────
-        rp = ctk.CTkFrame(self, fg_color=CARD_BG)
-        rp.grid(row=0, column=1, sticky="nsew", padx=(4, 12), pady=12)
-        rp.grid_rowconfigure(0, weight=1)
-        rp.grid_columnconfigure(0, weight=1)
-
-        self._fig, self._ax = plt.subplots(facecolor=CARD2_BG)
-        self._ax.set_facecolor(CARD2_BG)
-        self._chart_cv = FigureCanvasTkAgg(self._fig, master=rp)
-        self._chart_cv.get_tk_widget().grid(row=0, column=0, sticky="nsew", padx=6, pady=6)
-        NavigationToolbar2Tk(self._chart_cv, rp).grid(
-            row=1, column=0, sticky="ew", padx=6, pady=(0, 6))
-
-        self._ax.text(
-            0.5, 0.5,
-            "Selecione termos à esquerda\ne clique em Plotar",
-            ha="center", va="center", color=TEXT_MUTED, fontsize=13,
-            transform=self._ax.transAxes,
-        )
-        self._chart_cv.draw()
-
-    # ── helpers ────────────────────────────────────────────────────────
-    def _filter_terms(self, *_):
-        q = self._search_var.get().strip().lower()
-        for term, cb in self._term_checks.items():
-            if q in term.lower():
-                cb.pack(anchor="w", pady=1, padx=4)
-            else:
-                cb.pack_forget()
-
-    def _select_top5(self):
-        self._deselect_all()
-        for term in self._all_terms[:5]:
-            self._term_vars[term].set(True)
-
-    def _deselect_all(self):
-        for var in self._term_vars.values():
-            var.set(False)
-
-    def _plot(self):
-        selected = [t for t, v in self._term_vars.items() if v.get()]
-        if not selected:
-            return
-
-        field  = self._field
-        df     = self._df
-        yr_col = df["year"].replace(0, None).dropna().astype(int)
-        if yr_col.empty:
-            return
-
-        yr_min, yr_max = int(yr_col.min()), int(yr_col.max())
-        years = list(range(yr_min, yr_max + 1))
-
-        self._ax.clear()
-        self._ax.set_facecolor(CARD2_BG)
-        self._fig.set_facecolor(CARD2_BG)
-
-        for idx, term in enumerate(selected[:14]):
-            t_lower = term.lower()
-
-            def _has(s, _t=t_lower):
-                if not isinstance(s, str) or not s:
-                    return False
-                sep = ";" if ";" in s else ","
-                return _t in [x.strip().lower() for x in s.split(sep)]
-
-            mask  = df[field].apply(_has) & (df["year"] > 0)
-            counts = Counter(df.loc[mask, "year"].astype(int))
-            ys    = [counts.get(y, 0) for y in years]
-            color = CLUSTER_PALETTE[idx % len(CLUSTER_PALETTE)]
-            self._ax.plot(
-                years, ys,
-                marker="o", markersize=4, linewidth=2,
-                label=term[:28], color=color,
-            )
-
-        self._ax.set_xlabel("Ano",        color="#e0e0e0", fontsize=11)
-        self._ax.set_ylabel("Frequência", color="#e0e0e0", fontsize=11)
-        self._ax.set_title(
-            "Tendência de Termos ao Longo do Tempo",
-            color=ACCENT, fontsize=13, fontweight="bold",
-        )
-        self._ax.tick_params(colors="#e0e0e0")
-        for spine in self._ax.spines.values():
-            spine.set_color("#333355")
-        self._ax.grid(True, color="#333355", alpha=0.5, linestyle="--")
-        self._ax.legend(
-            fontsize=9, framealpha=0.3,
-            facecolor=CARD_BG, edgecolor=ACCENT, labelcolor="#e0e0e0",
-        )
-        self._fig.tight_layout()
-        self._chart_cv.draw()
-
-
-class VerificationDialog(ctk.CTkToplevel):
-    """Pre-graph checklist: Term | Occurrences | Relevance — user can uncheck."""
-
-    def __init__(
-        self,
-        parent,
-        terms_data: list[tuple[str, int, int, float]],  # (term, occ, doc_freq, score)
-        on_confirm,   # callback(selected: set[str])
-    ):
-        super().__init__(parent)
-        self.title("Verificação de Termos")
-        self.geometry("700x600")
-        self.configure(fg_color=CONTENT_BG)
-        self.resizable(True, True)
-        self.grab_set()
-
-        self._on_confirm = on_confirm
-        self._all_data = sorted(terms_data, key=lambda x: x[3], reverse=True)
-        self._vars: dict[str, ctk.BooleanVar] = {}
-        self._rows: list[tuple] = []   # (term, occ, score, frame)
-
-        self._build()
-
-    def _build(self):
-        top = ctk.CTkFrame(self, fg_color=CONTENT_BG)
-        top.pack(fill="x", padx=16, pady=(14, 4))
-
-        ctk.CTkLabel(
-            top,
-            text=f"Termos candidatos: {len(self._all_data)} — desmarque os que não deseja incluir",
-            font=ctk.CTkFont(size=13),
-        ).pack(side="left")
-
-        btn_f = ctk.CTkFrame(top, fg_color="transparent")
-        btn_f.pack(side="right")
-        ctk.CTkButton(btn_f, text="Todos", width=70, height=28,
-                      fg_color=ACCENT, hover_color=ACCENT_HOV,
-                      text_color="#000",
-                      command=self._select_all).pack(side="left", padx=4)
-        ctk.CTkButton(btn_f, text="Nenhum", width=70, height=28,
-                      fg_color="#333355", hover_color="#444466",
-                      command=self._deselect_all).pack(side="left", padx=4)
-
-        # Search
-        sf = ctk.CTkFrame(self, fg_color=CONTENT_BG)
-        sf.pack(fill="x", padx=16, pady=4)
-        self._search_var = ctk.StringVar()
-        self._search_var.trace_add("write", lambda *_: self._filter())
-        ctk.CTkEntry(sf, textvariable=self._search_var,
-                     placeholder_text="Filtrar termos...",
-                     border_color=ACCENT).pack(fill="x")
-
-        # Header
-        hdr = ctk.CTkFrame(self, fg_color=CARD_BG, corner_radius=6)
-        hdr.pack(fill="x", padx=16, pady=(4, 0))
-        for col, (txt, w) in enumerate([
-            ("✓", 32), ("Termo", 330), ("Ocorrências", 110), ("Doc. Freq.", 100), ("Relevância", 100),
-        ]):
-            ctk.CTkLabel(
-                hdr, text=txt,
-                font=ctk.CTkFont(size=11, weight="bold"),
-                text_color=ACCENT, width=w, anchor="w",
-            ).grid(row=0, column=col, padx=4, pady=4, sticky="w")
-
-        # Scrollable list
-        scroll = ctk.CTkScrollableFrame(self, fg_color=CARD2_BG, corner_radius=8)
-        scroll.pack(fill="both", expand=True, padx=16, pady=4)
-        self._scroll = scroll
-        self._populate(self._all_data)
-
-        # Footer
-        foot = ctk.CTkFrame(self, fg_color=CONTENT_BG)
-        foot.pack(fill="x", padx=16, pady=(4, 14))
-        self._count_lbl = ctk.CTkLabel(
-            foot, text="", font=ctk.CTkFont(size=11), text_color=TEXT_MUTED,
-        )
-        self._count_lbl.pack(side="left")
-        ctk.CTkButton(
-            foot, text="✕  Cancelar", width=110, height=38,
-            fg_color="#333355", hover_color="#444466",
-            command=self.destroy,
-        ).pack(side="right", padx=(8, 0))
-        ctk.CTkButton(
-            foot, text="⚡  Gerar Mapa", width=140, height=38,
-            fg_color=ACCENT, hover_color=ACCENT_HOV, text_color="#000",
-            font=ctk.CTkFont(size=13, weight="bold"),
-            command=self._confirm,
-        ).pack(side="right")
-        self._refresh_count()
-
-    def _populate(self, data: list[tuple]):
-        for widget in self._scroll.winfo_children():
-            widget.destroy()
-        self._rows.clear()
-        for i, (term, occ, doc_freq, score) in enumerate(data):
-            if term not in self._vars:
-                self._vars[term] = ctk.BooleanVar(value=True)
-            bg = CARD_BG if i % 2 == 0 else CARD2_BG
-            row = ctk.CTkFrame(self._scroll, fg_color=bg, corner_radius=4)
-            row.pack(fill="x", padx=2, pady=1)
-            ctk.CTkCheckBox(
-                row, text="", variable=self._vars[term],
-                width=32, checkbox_width=16, checkbox_height=16,
-                fg_color=ACCENT, hover_color=ACCENT_HOV,
-                command=self._refresh_count,
-            ).grid(row=0, column=0, padx=4, pady=3)
-            ctk.CTkLabel(row, text=term, anchor="w", width=330,
-                         font=ctk.CTkFont(size=11)).grid(row=0, column=1, padx=4, sticky="w")
-            ctk.CTkLabel(row, text=str(occ), anchor="w", width=110,
-                         font=ctk.CTkFont(size=11)).grid(row=0, column=2, padx=4, sticky="w")
-            ctk.CTkLabel(row, text=str(doc_freq), anchor="w", width=100,
-                         font=ctk.CTkFont(size=11)).grid(row=0, column=3, padx=4, sticky="w")
-            ctk.CTkLabel(row, text=f"{score:.2f}", anchor="w", width=100,
-                         font=ctk.CTkFont(size=11)).grid(row=0, column=4, padx=4, sticky="w")
-            self._rows.append((term, occ, score, row))
-
-    def _filter(self):
-        q = self._search_var.get().strip().lower()
-        filtered = [d for d in self._all_data if q in d[0].lower()] if q else self._all_data
-        self._populate(filtered)
-
-    def _select_all(self):
-        for v in self._vars.values():
-            v.set(True)
-        self._refresh_count()
-
-    def _deselect_all(self):
-        for v in self._vars.values():
-            v.set(False)
-        self._refresh_count()
-
-    def _refresh_count(self):
-        selected = sum(1 for v in self._vars.values() if v.get())
-        self._count_lbl.configure(text=f"{selected} de {len(self._vars)} selecionados")
-
-    def _confirm(self):
-        selected = {t for t, v in self._vars.items() if v.get()}
-        self.destroy()
-        self._on_confirm(selected)
-
-
-# ── Embedded matplotlib canvas ─────────────────────────────────────────────────
-class MapCanvas:
-    def __init__(self, parent: ctk.CTkFrame, node_click_cb=None):
-        self._parent = parent
-        self._node_click_cb = node_click_cb
-        self._fig, self._ax = plt.subplots(figsize=(11, 7), dpi=130)
-        self._fig.patch.set_facecolor(CARD2_BG)
-        self._ax.set_facecolor(CARD2_BG)
-        self._ax.axis("off")
-
-        self._canvas = FigureCanvasTkAgg(self._fig, master=parent)
-        self._canvas.get_tk_widget().grid(row=0, column=0, sticky="nsew")
-
-        tb_frame = ctk.CTkFrame(parent, fg_color="#0a0a18", height=30)
-        tb_frame.grid(row=1, column=0, sticky="ew")
-        self._toolbar = NavigationToolbar2Tk(self._canvas, tb_frame)
-        self._toolbar.config(background="#0a0a18")
-        for child in self._toolbar.winfo_children():
-            try:
-                child.config(background="#0a0a18", foreground="#cccccc",
-                             relief="flat", bd=0)
-            except Exception:
-                pass
-        self._toolbar.update()
-
-        self._pos: dict   = {}
-        self._nodes: list = []
-        self._G: nx.Graph | None = None
-        self._node_scale: float = 1.0
-        self._edge_opacity: float = 1.0
-        self._last_mode: str = "Clusters"
-        self._highlighted_node: str | None = None
-        self._edge_threshold: float = 0.0
-        self._cluster_labels: dict[int, str] = {}
-        self._hidden_clusters: set[int] = set()
-
-        self._annot = self._ax.annotate(
-            "", xy=(0, 0), xytext=(14, 14), textcoords="offset points",
-            bbox=dict(boxstyle="round,pad=0.5", fc="#1a1a3a",
-                      ec=ACCENT, lw=1.2, alpha=0.95),
-            color="white", fontsize=9, visible=False, zorder=20,
-        )
-        self._fig.canvas.mpl_connect("motion_notify_event", self._on_hover)
-        self._fig.canvas.mpl_connect("button_press_event", self._on_click)
-        self._scatter = None
-
-    def render(
-        self,
-        G: nx.Graph,
-        pos: dict,
-        mode: str = "Clusters",
-        node_scale: float = 1.0,
-        edge_opacity: float = 1.0,
-        edge_threshold: float = 0.0,
-    ):
-        self._G = G
-        self._pos = pos
-        self._last_mode = mode
-        self._node_scale = node_scale
-        self._edge_opacity = edge_opacity
-        self._edge_threshold = edge_threshold
-        self._highlighted_node = None
-        self._redraw(G, pos, mode, node_scale, edge_opacity)
-
-    def set_cluster_labels(self, labels: dict[int, str]):
-        self._cluster_labels = labels
-
-    def set_hidden_clusters(self, hidden: set[int]):
-        self._hidden_clusters = hidden
-
-    def refresh_style(
-        self,
-        node_scale: float,
-        edge_opacity: float,
-        edge_threshold: float = 0.0,
-    ):
-        if self._G is None or not self._pos:
-            return
-        self._node_scale = node_scale
-        self._edge_opacity = edge_opacity
-        self._edge_threshold = edge_threshold
-        self._redraw(self._G, self._pos, self._last_mode, node_scale, edge_opacity)
-
-    def _redraw(
-        self,
-        G: nx.Graph,
-        pos: dict,
-        mode: str,
-        node_scale: float,
-        edge_opacity: float,
-    ):
-        import matplotlib.colors as mc
-
-        self._ax.clear()
-        self._ax.set_facecolor(CARD2_BG)
-        self._ax.axis("off")
-        self._ax.set_aspect("equal", adjustable="datalim")
-        self._nodes = list(G.nodes())
-
-        if G.number_of_nodes() == 0:
-            self._ax.text(0.5, 0.5, "Nenhum nó.\nReduz a frequência mínima.",
-                          ha="center", va="center",
-                          color=TEXT_MUTED, fontsize=13,
-                          transform=self._ax.transAxes)
-            self._canvas.draw()
-            return
-
-        partition  = nx.get_node_attributes(G, "group")
-        raw_sizes  = nx.get_node_attributes(G, "size")
-        year_means = nx.get_node_attributes(G, "year_mean")
-
-        # Filter hidden clusters
-        if self._hidden_clusters:
-            self._nodes = [n for n in self._nodes
-                           if partition.get(n, 0) not in self._hidden_clusters]
-
-        xs = np.array([pos[n][0] for n in self._nodes])
-        ys = np.array([pos[n][1] for n in self._nodes])
-
-        raw  = np.array([raw_sizes.get(n, 20) for n in self._nodes], float)
-        mn, mx = raw.min(), raw.max()
-        span = mx - mn if mx != mn else 1
-        sizes = (40 + 380 * (raw - mn) / span) * node_scale
-
-        # ── Color determination ────────────────────────────────────────
-        if mode == "Clusters":
-            colors = [CLUSTER_PALETTE[partition.get(n, 0) % len(CLUSTER_PALETTE)]
-                      for n in self._nodes]
-        elif mode == "Grau (Degree)":
-            degs   = np.array([G.degree(n, weight="weight") for n in self._nodes], float)
-            normed = (degs - degs.min()) / (degs.max() - degs.min() + 1e-9)
-            colors = [plt.cm.plasma(v) for v in normed]
-        elif mode == "Ano Médio":
-            yrs = np.array([year_means.get(n, 0) for n in self._nodes], float)
-            valid = yrs[yrs > 0]
-            if len(valid) > 1:
-                mn_y, mx_y = valid.min(), valid.max()
-                normed = np.where(yrs > 0, (yrs - mn_y) / (mx_y - mn_y + 1e-9), 0.5)
-                colors = [plt.cm.coolwarm(v) for v in normed]
-            else:
-                colors = [CLUSTER_PALETTE[0]] * len(self._nodes)
-        elif mode == "Betweenness":
-            bc = nx.betweenness_centrality(G, weight="weight")
-            vals = np.array([bc.get(n, 0) for n in self._nodes], float)
-            normed = (vals - vals.min()) / (vals.max() - vals.min() + 1e-9)
-            colors = [plt.cm.YlOrRd(v) for v in normed]
-        elif mode == "PageRank":
-            pr = nx.pagerank(G, weight="weight")
-            vals = np.array([pr.get(n, 0) for n in self._nodes], float)
-            normed = (vals - vals.min()) / (vals.max() - vals.min() + 1e-9)
-            colors = [plt.cm.cool(v) for v in normed]
-        else:  # Densidade
-            from scipy.stats import gaussian_kde
-            if len(xs) > 2:
-                kde    = gaussian_kde(np.vstack([xs, ys]))
-                dens   = kde(np.vstack([xs, ys]))
-                normed = (dens - dens.min()) / (dens.max() - dens.min() + 1e-9)
-                colors = [plt.cm.inferno(v) for v in normed]
-            else:
-                colors = [CLUSTER_PALETTE[0]] * len(self._nodes)
-
-        # Neighborhood highlight: fade non-neighbors
-        hl = self._highlighted_node
-        nbrs: set[str] = set()
-        if hl and hl in G.nodes():
-            nbrs = set(G.neighbors(hl)) | {hl}
-            colors = [c if n in nbrs else "#1a1a2e" for c, n in zip(colors, self._nodes)]
-
-        # Pre-compute per-node RGBA for edge blending
-        rgba_map = {n: mc.to_rgba(c) for n, c in zip(self._nodes, colors)}
-
-        # ── Edges with blended endpoint colors ────────────────────────
-        weights = np.array([G[u][v].get("weight", 1) for u, v in G.edges()], float)
-        max_w   = weights.max() if len(weights) else 1.0
-        thresh  = self._edge_threshold * max_w
-
-        visible_set = set(self._nodes)
-        for (u, v), w in zip(G.edges(), weights):
-            if w < thresh:
-                continue
-            if u not in visible_set or v not in visible_set:
-                continue
-            in_nbr = (not hl) or (u in nbrs and v in nbrs)
-            ratio  = w / max_w
-            alpha  = (0.07 + 0.38 * ratio) * edge_opacity * (1.0 if in_nbr else 0.04)
-            lw     = (0.4 + 2.2 * ratio) * (1.0 if in_nbr else 0.3)
-            cu = rgba_map.get(u, (0.4, 0.4, 0.8, 1))
-            cv = rgba_map.get(v, (0.4, 0.4, 0.8, 1))
-            edge_c = ((cu[0]+cv[0])/2, (cu[1]+cv[1])/2, (cu[2]+cv[2])/2, max(alpha, 0.004))
-            xu, yu = pos[u]
-            xv, yv = pos[v]
-            self._ax.plot([xu, xv], [yu, yv],
-                          color=edge_c, lw=lw, zorder=1, solid_capstyle="round")
-
-        # ── Glow layers (per-node color) ───────────────────────────────
-        fade = 0.55 if hl else 1.0
-        for size_mul, alpha_mul in [(9.0, 0.018), (5.5, 0.032), (3.2, 0.055),
-                                     (2.0, 0.095), (1.55, 0.15)]:
-            self._ax.scatter(xs, ys, s=sizes * size_mul, c=colors,
-                             alpha=alpha_mul * fade, linewidths=0, zorder=2)
-
-        # ── Node bodies with color-matched rim ────────────────────────
-        rim_colors = []
-        for c in colors:
-            r, g, b, _ = mc.to_rgba(c)
-            rim_colors.append((min(1, r*0.55 + 0.55), min(1, g*0.55 + 0.55),
-                                min(1, b*0.55 + 0.55), 0.9))
-
-        self._scatter = self._ax.scatter(
-            xs, ys, s=sizes, c=colors,
-            linewidths=1.4, edgecolors=rim_colors, zorder=6,
-        )
-
-        # ── Labels with tinted dark backdrop ──────────────────────────
-        if G.number_of_nodes() <= 160:
-            y_span = ys.max() - ys.min() + 1e-9
-            fs_base = max(6.0, min(10.5, 9.5 - G.number_of_nodes() / 45))
-            for n, x, y, s, c in zip(self._nodes, xs, ys, sizes, colors):
-                if s < 48 * node_scale:
-                    continue
-                label = n if len(n) <= 24 else n[:22] + "…"
-                r, g, b, _ = mc.to_rgba(c)
-                bg = (r * 0.12, g * 0.12, b * 0.12, 0.78)
-                self._ax.text(
-                    x, y + 0.017 * y_span, label,
-                    ha="center", va="bottom",
-                    fontsize=fs_base, color="white", fontweight="bold", zorder=7,
-                    bbox=dict(fc=bg, ec="none", pad=1.5, boxstyle="round,pad=0.3"),
-                )
-
-        # ── Cluster legend ─────────────────────────────────────────────
-        if mode == "Clusters":
-            cluster_tops: dict[int, list[str]] = {}
-            for n in self._nodes:
-                grp = partition.get(n, 0)
-                cluster_tops.setdefault(grp, []).append(n)
-            clusters = sorted(set(partition.values()))[:14]
-            patches  = []
-            for c in clusters:
-                members = cluster_tops.get(c, [])
-                top3 = sorted(members, key=lambda n: G.degree(n, weight="weight"),
-                              reverse=True)[:3]
-                if c in self._cluster_labels:
-                    lbl = f"C{c}: {self._cluster_labels[c]}"
-                elif top3:
-                    lbl = f"C{c}: {' · '.join(top3)}"
-                else:
-                    lbl = f"Cluster {c}"
-                patches.append(mpatches.Patch(
-                    color=CLUSTER_PALETTE[c % len(CLUSTER_PALETTE)], label=lbl))
-            self._ax.legend(
-                handles=patches, loc="upper left",
-                fontsize=7.5, framealpha=0.6,
-                facecolor="#0a0a18", edgecolor=ACCENT,
-                labelcolor="white",
-            )
-
-        # ── Highlight ring ─────────────────────────────────────────────
-        if hl and hl in G.nodes():
-            hx, hy = pos[hl]
-            hi = self._nodes.index(hl)
-            self._ax.scatter([hx], [hy], s=sizes[hi] * 4.0,
-                             c="none", linewidths=2.8,
-                             edgecolors=ACCENT, zorder=9, alpha=0.97)
-
-        self._ax.margins(0.05)
-        self._fig.subplots_adjust(left=0.01, right=0.99, top=0.98, bottom=0.01)
-        self._canvas.draw()
-        if not hl:
-            print(f"[Mapa] {G.number_of_nodes()} nós · {G.number_of_edges()} arestas · modo {mode}\n")
-
-    def highlight_node(self, name: str) -> bool:
-        """Flash-highlight a node by name. Returns True if found."""
-        if name not in self._nodes or not self._pos:
-            return False
-        x, y = self._pos[name]
-        xs = np.array([self._pos[n][0] for n in self._nodes])
-        ys = np.array([self._pos[n][1] for n in self._nodes])
-        span = max(xs.max() - xs.min(), ys.max() - ys.min(), 1e-9)
-        self._ax.scatter([x], [y], s=800, c=[ACCENT], linewidths=2.5,
-                         edgecolors="white", zorder=15, alpha=0.9)
-        self._ax.set_xlim(x - span * 0.25, x + span * 0.25)
-        self._ax.set_ylim(y - span * 0.25, y + span * 0.25)
-        self._canvas.draw()
-        return True
-
-    def _on_click(self, event):
-        if event.inaxes != self._ax or not self._pos or event.button != 1:
-            return
-        xs = np.array([self._pos[n][0] for n in self._nodes])
-        ys = np.array([self._pos[n][1] for n in self._nodes])
-        dists  = (xs - event.xdata) ** 2 + (ys - event.ydata) ** 2
-        idx    = int(np.argmin(dists))
-        thresh = ((xs.max() - xs.min()) * 0.05) ** 2
-        zoom_node: str | None = None
-        if dists[idx] < thresh:
-            clicked = self._nodes[idx]
-            if self._highlighted_node == clicked:
-                self._highlighted_node = None  # deselect
-            else:
-                self._highlighted_node = clicked
-                zoom_node = clicked
-        else:
-            self._highlighted_node = None
-        self._redraw(self._G, self._pos, self._last_mode,
-                     self._node_scale, self._edge_opacity)
-        if self._highlighted_node and self._node_click_cb:
-            self._node_click_cb(self._highlighted_node)
-        elif not self._highlighted_node and self._node_click_cb:
-            self._node_click_cb(None)
-        # Zoom to clicked node
-        if zoom_node:
-            hx, hy = self._pos[zoom_node]
-            span = max(xs.max() - xs.min(), ys.max() - ys.min(), 1e-9)
-            margin = span * 0.2
-            self._ax.set_xlim(hx - margin, hx + margin)
-            self._ax.set_ylim(hy - margin, hy + margin)
-            self._canvas.draw()
-
-    def reset_view(self):
-        self._highlighted_node = None
-        if self._G and self._pos:
-            self._redraw(self._G, self._pos, self._last_mode,
-                         self._node_scale, self._edge_opacity)
-
-    def _on_hover(self, event):
-        if event.inaxes != self._ax or not self._pos:
-            if self._annot.get_visible():
-                self._annot.set_visible(False)
-                self._canvas.draw_idle()
-            return
-        xs = np.array([self._pos[n][0] for n in self._nodes])
-        ys = np.array([self._pos[n][1] for n in self._nodes])
-        dists  = (xs - event.xdata) ** 2 + (ys - event.ydata) ** 2
-        idx    = int(np.argmin(dists))
-        thresh = ((xs.max() - xs.min()) * 0.04) ** 2
-        if dists[idx] < thresh:
-            node = self._nodes[idx]
-            attrs = self._G.nodes[node] if self._G else {}
-            lines = [node]
-            if attrs.get("occurrence"):
-                lines.append(f"Ocorrências: {attrs['occurrence']}")
-            if attrs.get("year_mean"):
-                lines.append(f"Ano médio: {attrs['year_mean']}")
-            deg = self._G.degree(node, weight="weight") if self._G else 0
-            lines.append(f"Grau: {deg:.2f}")
-            self._annot.xy = (xs[idx], ys[idx])
-            self._annot.set_text("\n".join(lines))
-            self._annot.set_visible(True)
-        else:
-            self._annot.set_visible(False)
-        self._canvas.draw_idle()
-
-    def clear(self):
-        self._ax.clear()
-        self._ax.set_facecolor(CARD2_BG)
-        self._ax.axis("off")
-        self._canvas.draw()
-
-    @property
-    def figure(self):
-        return self._fig
-
-
 # ── Main App ───────────────────────────────────────────────────────────────────
 class BlicsaApp(ctk.CTk):
     def __init__(self):
         super().__init__()
         self.title("Blicsa — Inteligência Bibliométrica")
-        self.geometry("1360x860")
+        self.geometry("1380x880")
         self.minsize(1100, 700)
         self.resizable(True, True)
         self.configure(fg_color=CONTENT_BG)
@@ -904,6 +85,26 @@ class BlicsaApp(ctk.CTk):
         self._candidate_scores: dict             = {}
         self._cluster_labels: dict[int, str]     = {}
         self._max_edge_weight: float             = 1.0
+
+        # Configuration variables
+        self._map_type_var = ctk.StringVar(value=MAP_TYPES[0])
+        self._field_var = ctk.StringVar(value="keywords")
+        self._counting_var = ctk.StringVar(value="full")
+        self._assoc_var = ctk.BooleanVar(value=True)
+        self._min_occ_var = ctk.IntVar(value=3)
+        self._max_nodes_var = ctk.StringVar(value="0")
+        self._max_pct_var = ctk.StringVar(value="")
+        self._fa2_iter_var = ctk.IntVar(value=500)
+        self._linlog_var = ctk.BooleanVar(value=False)
+        self._viz_mode_var = ctk.StringVar(value=VIZ_MODES[0])
+        self._year_min_var = ctk.StringVar(value="")
+        self._year_max_var = ctk.StringVar(value="")
+        self._extra_sw_var = ctk.StringVar(value="")
+        self._plotly_mode_var = ctk.StringVar(value="cluster")
+        self._api_key_var = ctk.StringVar(value=os.environ.get("GROQ_API_KEY", ""))
+        self._show_ai_modal = False
+        self._prune_isolated_var = ctk.BooleanVar(value=True)
+        self._prune_largest_var = ctk.BooleanVar(value=False)
 
         self._build_layout()
         sys.stdout = LogWriter(self._log_box)
@@ -923,7 +124,6 @@ class BlicsaApp(ctk.CTk):
 
         self._tabs: dict[str, ctk.CTkFrame] = {
             "import":  self._build_tab_import(),
-            "config":  self._build_tab_config(),
             "viz":     self._build_tab_viz(),
             "ranking": self._build_tab_ranking(),
             "export":  self._build_tab_export(),
@@ -946,7 +146,6 @@ class BlicsaApp(ctk.CTk):
         self._nav_btns: dict[str, ctk.CTkButton] = {}
         for i, (key, icon, label) in enumerate([
             ("import",  "📂", "Importação"),
-            ("config",  "⚙️",  "Configurar Mapa"),
             ("viz",     "🗺️", "Mapa & IA"),
             ("ranking", "📊", "Rankings"),
             ("export",  "💾", "Exportar"),
@@ -955,12 +154,23 @@ class BlicsaApp(ctk.CTk):
             btn = ctk.CTkButton(
                 sb, text=f"{icon}  {label}", anchor="w",
                 font=ctk.CTkFont(size=13),
-                fg_color="transparent", hover_color="#1a1a35",
-                text_color="white", corner_radius=8, height=44,
+                fg_color="transparent", hover_color=("#d0d0ea", "#1a1a35"),
+                text_color=("gray10", "white"), corner_radius=8, height=44,
                 command=lambda k=key: self._switch_tab(k),
             )
             btn.grid(row=i, column=0, padx=10, pady=2, sticky="ew")
             self._nav_btns[key] = btn
+
+        # Theme toggle button
+        self._theme_btn = ctk.CTkButton(
+            sb, text="🌓 Alternar Tema",
+            font=ctk.CTkFont(size=11),
+            fg_color="transparent", hover_color=("#d0d0ea", "#1a1a35"),
+            text_color=("gray10", "white"), corner_radius=8, height=32,
+            border_width=1, border_color=ACCENT,
+            command=self._toggle_theme,
+        )
+        self._theme_btn.grid(row=9, column=0, padx=16, pady=(10, 10), sticky="ew")
 
         self._status_lbl = ctk.CTkLabel(
             sb, text="", font=ctk.CTkFont(size=10),
@@ -1034,7 +244,55 @@ class BlicsaApp(ctk.CTk):
         for k, btn in self._nav_btns.items():
             active = k == key
             btn.configure(fg_color=ACCENT if active else "transparent",
-                          text_color="#000" if active else "white")
+                          text_color="#000" if active else ("gray10", "white"))
+
+    def _toggle_theme(self):
+        current = ctk.get_appearance_mode().lower()
+        new_mode = "light" if current == "dark" else "dark"
+        ctk.set_appearance_mode(new_mode)
+        self._update_treeview_style()
+        if self._map_canvas:
+            self._map_canvas.update_theme()
+            if self._map_canvas._G and self._map_canvas._pos:
+                self._map_canvas.render(
+                    self._map_canvas._G,
+                    self._map_canvas._pos,
+                    mode=self._map_canvas._last_mode,
+                    node_scale=self._map_canvas._node_scale,
+                    edge_opacity=self._map_canvas._edge_opacity,
+                    edge_threshold=self._map_canvas._edge_threshold,
+                )
+
+    def _update_treeview_style(self):
+        _ts = ttk.Style()
+        _ts.theme_use("default")
+        bg_col = get_color(CARD2_BG)
+        fg_col = "black" if ctk.get_appearance_mode().lower() == "light" else "#e0e0e0"
+        header_bg = get_color(CARD_BG)
+        sel_bg = "#b0c4de" if ctk.get_appearance_mode().lower() == "light" else "#2a2a5a"
+        sel_fg = "black" if ctk.get_appearance_mode().lower() == "light" else "white"
+
+        _ts.configure("Blicsa.Treeview",
+            background=bg_col,
+            fieldbackground=bg_col,
+            foreground=fg_col,
+            rowheight=26,
+            font=("Inter", 11),
+            borderwidth=0,
+        )
+        _ts.configure("Blicsa.Treeview.Heading",
+            background=header_bg,
+            foreground=ACCENT,
+            font=("Inter", 11, "bold"),
+            relief="flat",
+        )
+        _ts.map("Blicsa.Treeview",
+            background=[("selected", sel_bg)],
+            foreground=[("selected", sel_fg)],
+        )
+        _ts.map("Blicsa.Treeview.Heading",
+            background=[("active", ACCENT_HOV)],
+        )
 
     # ── UI helpers ─────────────────────────────────────────────────────
     def _tab(self) -> ctk.CTkFrame:
@@ -1086,6 +344,7 @@ class BlicsaApp(ctk.CTk):
             ("PubMed",    "pubmed"),
             ("OpenAlex",  "openalex"),
             ("Crossref",  "crossref"),
+            ("RIS",       "ris"),
         ]:
             ctk.CTkRadioButton(rf, text=lbl, variable=self._origin_var,
                                value=val, fg_color=ACCENT,
@@ -1128,333 +387,167 @@ class BlicsaApp(ctk.CTk):
         self._log_box = ctk.CTkTextbox(
             lc, state="disabled",
             font=ctk.CTkFont(family="Courier", size=11),
-            fg_color=CARD2_BG, text_color="#88dd88")
+            fg_color=CARD2_BG, text_color=("#145c38", "#88dd88"))
         self._log_box.grid(row=0, column=0, padx=10, pady=10, sticky="nsew")
         return frame
 
     # ── Tab: Configurar Mapa ───────────────────────────────────────────
-    def _build_tab_config(self) -> ctk.CTkFrame:
-        frame = self._tab()
-        frame.grid_rowconfigure(2, weight=1)
-        self._h1(frame, "Configuração do Mapa", 0)
 
-        card = self._card(frame, 1)
-        card.grid_columnconfigure(1, weight=1)
-
-        row = 0
-
-        # Map type
-        ctk.CTkLabel(card, text="Tipo de Mapa:",
-                     font=ctk.CTkFont(size=13)).grid(
-            row=row, column=0, padx=16, pady=(16, 8), sticky="w")
-        self._map_type_var = ctk.StringVar(value=MAP_TYPES[0])
-        ctk.CTkComboBox(card, values=MAP_TYPES, variable=self._map_type_var,
-                        width=340, button_color=ACCENT,
-                        border_color=ACCENT).grid(
-            row=row, column=1, padx=16, pady=(16, 8), sticky="w")
-        row += 1
-
-        # Field selector
-        ctk.CTkLabel(card, text="Campo:",
-                     font=ctk.CTkFont(size=13)).grid(
-            row=row, column=0, padx=16, pady=8, sticky="w")
-        self._field_var = ctk.StringVar(value="keywords")
-        ff = ctk.CTkFrame(card, fg_color="transparent")
-        ff.grid(row=row, column=1, padx=16, pady=8, sticky="w")
-        for lbl, val in FIELD_OPTS:
-            ctk.CTkRadioButton(ff, text=lbl, variable=self._field_var, value=val,
-                               fg_color=ACCENT, hover_color=ACCENT_HOV,
-                               command=self._on_field_change).pack(
-                side="left", padx=10)
-        row += 1
-
-        # Counting method
-        ctk.CTkLabel(card, text="Método de Contagem:",
-                     font=ctk.CTkFont(size=13)).grid(
-            row=row, column=0, padx=16, pady=8, sticky="w")
-        self._counting_var = ctk.StringVar(value="full")
-        cf = ctk.CTkFrame(card, fg_color="transparent")
-        cf.grid(row=row, column=1, padx=16, pady=8, sticky="w")
-        ctk.CTkRadioButton(cf, text="Full Counting", variable=self._counting_var,
-                           value="full", fg_color=ACCENT,
-                           hover_color=ACCENT_HOV).pack(side="left", padx=10)
-        ctk.CTkRadioButton(cf, text="Fractional Counting", variable=self._counting_var,
-                           value="fractional", fg_color=ACCENT,
-                           hover_color=ACCENT_HOV).pack(side="left", padx=10)
-        row += 1
-
-        # Association Strength
-        ctk.CTkLabel(card, text="Normalização:",
-                     font=ctk.CTkFont(size=13)).grid(
-            row=row, column=0, padx=16, pady=8, sticky="w")
-        self._assoc_var = ctk.BooleanVar(value=True)
-        ctk.CTkCheckBox(card, text="Calcular Association Strength",
-                        variable=self._assoc_var,
-                        fg_color=ACCENT, hover_color=ACCENT_HOV).grid(
-            row=row, column=1, padx=16, pady=8, sticky="w")
-        row += 1
-
-        # Min occurrence + threshold preview
-        ctk.CTkLabel(card, text="Freq. mínima:",
-                     font=ctk.CTkFont(size=13)).grid(
-            row=row, column=0, padx=16, pady=8, sticky="w")
-        occ_f = ctk.CTkFrame(card, fg_color="transparent")
-        occ_f.grid(row=row, column=1, padx=16, pady=8, sticky="w")
-        self._min_occ_var = ctk.IntVar(value=3)
-        self._occ_lbl = ctk.CTkLabel(
-            occ_f, text="3", width=40,
-            font=ctk.CTkFont(size=15, weight="bold"), text_color=ACCENT)
-        self._occ_lbl.pack(side="left", padx=(0, 8))
-        ctk.CTkSlider(
-            occ_f, from_=1, to=50, number_of_steps=49,
-            variable=self._min_occ_var, width=240,
-            button_color=ACCENT, button_hover_color=ACCENT_HOV,
-            progress_color=ACCENT,
-            command=self._on_occ_change,
-        ).pack(side="left")
-        self._thresh_lbl = ctk.CTkLabel(
-            occ_f, text="",
-            font=ctk.CTkFont(size=11), text_color=TEXT_MUTED)
-        self._thresh_lbl.pack(side="left", padx=12)
-        row += 1
-
-        # Max nodes + top %
-        ctk.CTkLabel(card, text="Filtro de nós:",
-                     font=ctk.CTkFont(size=13)).grid(
-            row=row, column=0, padx=16, pady=8, sticky="w")
-        mf = ctk.CTkFrame(card, fg_color="transparent")
-        mf.grid(row=row, column=1, padx=16, pady=8, sticky="w")
-        self._max_nodes_var = ctk.StringVar(value="0")
-        ctk.CTkLabel(mf, text="Máx. nós (0=∞):", font=ctk.CTkFont(size=11),
-                     text_color=TEXT_MUTED).pack(side="left", padx=(0, 4))
-        ctk.CTkEntry(mf, textvariable=self._max_nodes_var,
-                     width=70, border_color=ACCENT).pack(side="left", padx=(0, 16))
-        self._max_pct_var = ctk.StringVar(value="")
-        ctk.CTkLabel(mf, text="ou Top % relevância:", font=ctk.CTkFont(size=11),
-                     text_color=TEXT_MUTED).pack(side="left", padx=(0, 4))
-        ctk.CTkEntry(mf, textvariable=self._max_pct_var,
-                     placeholder_text="ex: 60", width=70,
-                     border_color=ACCENT).pack(side="left")
-        row += 1
-
-        # FA2 iterations + LinLog
-        ctk.CTkLabel(card, text="Layout FA2:",
-                     font=ctk.CTkFont(size=13)).grid(
-            row=row, column=0, padx=16, pady=8, sticky="w")
-        fa2_f = ctk.CTkFrame(card, fg_color="transparent")
-        fa2_f.grid(row=row, column=1, padx=16, pady=8, sticky="w")
-        self._fa2_iter_var = ctk.IntVar(value=500)
-        self._fa2_lbl = ctk.CTkLabel(
-            fa2_f, text="500", width=50,
-            font=ctk.CTkFont(size=13, weight="bold"), text_color=ACCENT)
-        self._fa2_lbl.pack(side="left", padx=(0, 4))
-        ctk.CTkSlider(
-            fa2_f, from_=100, to=2000, number_of_steps=19,
-            variable=self._fa2_iter_var, width=200,
-            button_color=ACCENT, button_hover_color=ACCENT_HOV,
-            progress_color=ACCENT,
-            command=lambda v: self._fa2_lbl.configure(text=str(int(v))),
-        ).pack(side="left", padx=(0, 16))
-        self._linlog_var = ctk.BooleanVar(value=False)
-        ctk.CTkCheckBox(fa2_f, text="LinLog mode",
-                        variable=self._linlog_var,
-                        fg_color=ACCENT, hover_color=ACCENT_HOV).pack(side="left")
-        row += 1
-
-        # Viz mode
-        ctk.CTkLabel(card, text="Modo de visualização:",
-                     font=ctk.CTkFont(size=13)).grid(
-            row=row, column=0, padx=16, pady=8, sticky="w")
-        self._viz_mode_var = ctk.StringVar(value=VIZ_MODES[0])
-        ctk.CTkComboBox(card, values=VIZ_MODES, variable=self._viz_mode_var,
-                        width=240, button_color=ACCENT,
-                        border_color=ACCENT).grid(
-            row=row, column=1, padx=16, pady=8, sticky="w")
-        row += 1
-
-        # Year range filter
-        ctk.CTkLabel(card, text="Período (anos):",
-                     font=ctk.CTkFont(size=13)).grid(
-            row=row, column=0, padx=16, pady=8, sticky="w")
-        yr_f = ctk.CTkFrame(card, fg_color="transparent")
-        yr_f.grid(row=row, column=1, padx=16, pady=8, sticky="w")
-        self._year_min_var = ctk.StringVar(value="")
-        self._year_max_var = ctk.StringVar(value="")
-        ctk.CTkEntry(yr_f, textvariable=self._year_min_var,
-                     placeholder_text="De (ex: 2015)",
-                     width=120, border_color=ACCENT).pack(side="left", padx=(0, 8))
-        ctk.CTkLabel(yr_f, text="até", text_color=TEXT_MUTED,
-                     font=ctk.CTkFont(size=12)).pack(side="left", padx=(0, 8))
-        ctk.CTkEntry(yr_f, textvariable=self._year_max_var,
-                     placeholder_text="Até (ex: 2024)",
-                     width=120, border_color=ACCENT).pack(side="left")
-        row += 1
-
-        # Extra stop words
-        ctk.CTkLabel(card, text="Stop words extras:",
-                     font=ctk.CTkFont(size=13)).grid(
-            row=row, column=0, padx=16, pady=8, sticky="w")
-        self._extra_sw_var = ctk.StringVar(value="")
-        ctk.CTkEntry(card, textvariable=self._extra_sw_var,
-                     placeholder_text="ex: process, system, method (separadas por vírgula)",
-                     width=420, border_color=ACCENT).grid(
-            row=row, column=1, padx=16, pady=8, sticky="w")
-        row += 1
-
-        # Thesaurus
-        ctk.CTkLabel(card, text="Thesaurus CSV:",
-                     font=ctk.CTkFont(size=13)).grid(
-            row=row, column=0, padx=16, pady=8, sticky="w")
-        th_f = ctk.CTkFrame(card, fg_color="transparent")
-        th_f.grid(row=row, column=1, padx=16, pady=8, sticky="w")
-        self._thesaurus_lbl = ctk.CTkLabel(
-            th_f, text="Nenhum carregado",
-            text_color=TEXT_MUTED, font=ctk.CTkFont(size=11))
-        self._thesaurus_lbl.pack(side="left", padx=(0, 10))
-        self._btn(th_f, "📄  Carregar", self._pick_thesaurus,
-                  height=30).pack(side="left")
-        row += 1
-
-        # Plotly color mode
-        ctk.CTkLabel(card, text="Cor do Plotly:",
-                     font=ctk.CTkFont(size=13)).grid(
-            row=row, column=0, padx=16, pady=8, sticky="w")
-        self._plotly_mode_var = ctk.StringVar(value="cluster")
-        pm_f = ctk.CTkFrame(card, fg_color="transparent")
-        pm_f.grid(row=row, column=1, padx=16, pady=8, sticky="w")
-        for lbl, val in [("Clusters", "cluster"), ("Grau ponderado", "degree"), ("Ano médio", "year")]:
-            ctk.CTkRadioButton(pm_f, text=lbl, variable=self._plotly_mode_var,
-                               value=val, fg_color=ACCENT,
-                               hover_color=ACCENT_HOV).pack(side="left", padx=10)
-        row += 1
-
-        # API key
-        ctk.CTkLabel(card, text="Chave API Groq:",
-                     font=ctk.CTkFont(size=13)).grid(
-            row=row, column=0, padx=16, pady=(8, 16), sticky="w")
-        self._api_key_var = ctk.StringVar(
-            value=os.environ.get("GROQ_API_KEY", ""))
-        ctk.CTkEntry(card, textvariable=self._api_key_var,
-                     show="*", placeholder_text="gsk_...",
-                     width=380, border_color=ACCENT).grid(
-            row=row, column=1, padx=16, pady=(8, 16), sticky="w")
-        row += 1
-
-        # Network pruning
-        ctk.CTkLabel(card, text="Pós-processamento:",
-                     font=ctk.CTkFont(size=13)).grid(
-            row=row, column=0, padx=16, pady=(8, 8), sticky="w")
-        prf = ctk.CTkFrame(card, fg_color="transparent")
-        prf.grid(row=row, column=1, padx=16, pady=(8, 8), sticky="w")
-        self._prune_isolated_var = ctk.BooleanVar(value=True)
-        self._prune_largest_var  = ctk.BooleanVar(value=False)
-        ctk.CTkCheckBox(prf, text="Remover nós isolados",
-                        variable=self._prune_isolated_var,
-                        fg_color=ACCENT, hover_color=ACCENT_HOV).pack(side="left", padx=(0, 18))
-        ctk.CTkCheckBox(prf, text="Manter só maior componente",
-                        variable=self._prune_largest_var,
-                        fg_color=ACCENT, hover_color=ACCENT_HOV).pack(side="left")
-        row += 1
-
-        # Config persistence
-        pf = ctk.CTkFrame(card, fg_color="transparent")
-        pf.grid(row=row, column=0, columnspan=2, padx=16, pady=(0, 16), sticky="w")
-        self._btn(pf, "💾  Salvar Configuração", self._save_config,
-                  height=36, color=TEAL, hover=TEAL_HOV).pack(side="left", padx=(0, 10))
-        self._btn(pf, "📂  Carregar Configuração", self._load_config,
-                  height=36, color=TEAL, hover=TEAL_HOV).pack(side="left")
 
         return frame
 
     # ── Tab: Mapa & IA ─────────────────────────────────────────────────
     def _build_tab_viz(self) -> ctk.CTkFrame:
         frame = self._tab()
-        frame.grid_rowconfigure(3, weight=5)
-        frame.grid_rowconfigure(4, weight=2)
-
+        # Col 0 (left config sidebar), Col 1 (middle canvas), Col 2 (right IA details)
+        frame.grid_columnconfigure(0, weight=0)
+        frame.grid_columnconfigure(1, weight=1)
+        frame.grid_columnconfigure(2, weight=0)
+        frame.grid_rowconfigure(0, weight=1)
+        
+        # ── Left Config Sidebar ──
+        config_panel = ctk.CTkFrame(frame, width=290, fg_color=CARD_BG, corner_radius=12)
+        config_panel.grid(row=0, column=0, padx=(20, 6), pady=16, sticky="nsew")
+        config_panel.grid_propagate(False)
+        config_panel.grid_columnconfigure(0, weight=1)
+        config_panel.grid_rowconfigure(1, weight=1)
+        
+        # Title of config sidebar
+        ctk.CTkLabel(
+            config_panel, text="⚙️ Parâmetros do Mapa",
+            font=ctk.CTkFont(size=14, weight="bold"),
+            text_color=ACCENT
+        ).grid(row=0, column=0, padx=16, pady=(12, 6), sticky="w")
+        
+        sc = ctk.CTkScrollableFrame(config_panel, fg_color="transparent")
+        sc.grid(row=1, column=0, padx=4, pady=4, sticky="nsew")
+        sc.grid_columnconfigure(0, weight=1)
+        
+        self._build_config_widgets(sc)
+        
+        # ── Middle Viz Panel ──
+        viz_panel = ctk.CTkFrame(frame, fg_color="transparent")
+        viz_panel.grid(row=0, column=1, padx=6, pady=16, sticky="nsew")
+        viz_panel.grid_columnconfigure(0, weight=1)
+        viz_panel.grid_rowconfigure(3, weight=1) # matplotlib canvas gets all vertical height
+        
         # Action buttons
-        br = ctk.CTkFrame(frame, fg_color=CONTENT_BG)
-        br.grid(row=0, column=0, padx=24, pady=(16, 4), sticky="ew")
+        br = ctk.CTkFrame(viz_panel, fg_color=CONTENT_BG)
+        br.grid(row=0, column=0, pady=(0, 4), sticky="ew")
         br.grid_columnconfigure((0, 1, 2, 3), weight=1)
 
         self._btn(br, "⚡  Gerar Mapa", self._run_mapping,
-                  height=48).grid(row=0, column=0, padx=5, sticky="ew")
+                  height=44).grid(row=0, column=0, padx=4, sticky="ew")
         self._btn(br, "✦  Abrir Plotly Interativo",
                   self._open_plotly, color="#1a4a7a",
-                  hover="#153a60", height=48).grid(
-            row=0, column=1, padx=5, sticky="ew")
+                  hover="#153a60", height=44).grid(
+            row=0, column=1, padx=4, sticky="ew")
         self._btn(br, "🌐  HTML no Navegador",
                   self._open_map_browser,
-                  color=GREEN, hover=GREEN_HOV, height=48).grid(
-            row=0, column=2, padx=5, sticky="ew")
+                  color=GREEN, hover=GREEN_HOV, height=44).grid(
+            row=0, column=2, padx=4, sticky="ew")
         self._btn(br, "✨  Insights com IA", self._run_ai,
-                  color=PURPLE, hover=PURPLE_HOV, height=48).grid(
-            row=0, column=3, padx=5, sticky="ew")
+                  color=PURPLE, hover=PURPLE_HOV, height=44).grid(
+            row=0, column=3, padx=4, sticky="ew")
+            
         self._btn(br, "🏷️  Nomear Clusters", self._auto_label_clusters,
-                  color="#1a5a3a", hover="#144a2e", height=48).grid(
-            row=1, column=0, padx=5, pady=(4, 0), sticky="ew")
+                  color="#1a5a3a", hover="#144a2e", height=44).grid(
+            row=1, column=0, padx=4, pady=(4, 0), sticky="ew")
         self._btn(br, "📈  Tendências", self._open_trends,
-                  color=TEAL, hover=TEAL_HOV, height=48).grid(
-            row=1, column=1, padx=5, pady=(4, 0), sticky="ew")
+                  color=TEAL, hover=TEAL_HOV, height=44).grid(
+            row=1, column=1, padx=4, pady=(4, 0), sticky="ew")
         self._btn(br, "☁  Word Cloud", self._show_wordcloud,
-                  color=PURPLE, hover=PURPLE_HOV, height=48).grid(
-            row=1, column=2, columnspan=2, padx=5, pady=(4, 0), sticky="ew")
+                  color=PURPLE, hover=PURPLE_HOV, height=44).grid(
+            row=1, column=2, columnspan=2, padx=4, pady=(4, 0), sticky="ew")
+
+        # Row 2 Actions
+        self._btn(br, "📊  Sankey (3 Campos)", self._open_sankey,
+                  color="#D4A017", hover="#b88a10", height=44).grid(
+            row=2, column=0, padx=4, pady=(4, 0), sticky="ew")
+        self._btn(br, "⏳  Linha do Tempo", self._open_timeline,
+                  color="#1a4a7a", hover="#153a60", height=44).grid(
+            row=2, column=1, padx=4, pady=(4, 0), sticky="ew")
+        self._btn(br, "💥  Surtos (Bursts)", self._open_bursts,
+                  color="#800020", hover="#600018", height=44).grid(
+            row=2, column=2, columnspan=2, padx=4, pady=(4, 0), sticky="ew")
+
+        # Row 3 Actions
+        self._btn(br, "🗺️  Mapa Temático (Callon)", self._open_thematic_map,
+                  color="#2A9D8F", hover="#207a6f", height=44).grid(
+            row=3, column=0, columnspan=2, padx=4, pady=(4, 0), sticky="ew")
+        self._btn(br, "⏳  Historiografia de Citações", self._open_historiograph,
+                  color="#E76F51", hover="#c9583c", height=44).grid(
+            row=3, column=2, columnspan=2, padx=4, pady=(4, 0), sticky="ew")
 
         # Search + style controls
-        ctrl = ctk.CTkFrame(frame, fg_color=CONTENT_BG)
-        ctrl.grid(row=1, column=0, padx=24, pady=(0, 4), sticky="ew")
+        ctrl = ctk.CTkFrame(viz_panel, fg_color=CONTENT_BG)
+        ctrl.grid(row=1, column=0, pady=(0, 4), sticky="ew")
         ctrl.grid_columnconfigure(1, weight=1)
 
         # Search bar
-        sf = ctk.CTkFrame(ctrl, fg_color="transparent")
-        sf.grid(row=0, column=0, sticky="w")
+        ctk.CTkLabel(ctrl, text="🔍 Buscar Nó:",
+                     font=ctk.CTkFont(size=12)).grid(
+            row=0, column=0, padx=8, pady=4, sticky="w")
         self._search_var = ctk.StringVar()
-        ctk.CTkEntry(sf, textvariable=self._search_var,
-                     placeholder_text="Buscar nó...",
-                     width=220, border_color=ACCENT).pack(side="left", padx=(0, 6))
-        self._btn(sf, "🔍", self._search_node, height=32, width=36).pack(side="left", padx=(0, 8))
-        self._btn(sf, "↺", self._reset_view, height=32, width=36,
-                  color="#333355", hover="#444466").pack(side="left")
+        self._search_var.trace_add("write", lambda *_: self._search_node())
+        ctk.CTkEntry(ctrl, textvariable=self._search_var,
+                     placeholder_text="Nome do nó…", border_color=ACCENT).grid(
+            row=0, column=1, padx=8, pady=4, sticky="ew")
+        ctk.CTkButton(
+            ctrl, text="Reset Zoom", width=90, height=28,
+            fg_color=CARD_BG, hover_color=CARD2_BG,
+            border_width=1, border_color=ACCENT,
+            command=self._reset_view,
+        ).grid(row=0, column=2, padx=8, pady=4)
 
         # Style sliders
-        sl_f = ctk.CTkFrame(ctrl, fg_color="transparent")
-        sl_f.grid(row=0, column=1, sticky="e")
-        ctk.CTkLabel(sl_f, text="Tamanho nós:", font=ctk.CTkFont(size=11),
-                     text_color=TEXT_MUTED).pack(side="left", padx=(0, 4))
+        sf = ctk.CTkFrame(ctrl, fg_color="transparent")
+        sf.grid(row=1, column=0, columnspan=3, padx=4, pady=4, sticky="ew")
+        sf.grid_columnconfigure((1, 3, 5), weight=1)
+
+        # Node size slider
+        ctk.CTkLabel(sf, text="Tamanho Nós:", font=ctk.CTkFont(size=11)).grid(
+            row=0, column=0, padx=6, pady=4)
         self._node_scale_var = ctk.DoubleVar(value=1.0)
-        ctk.CTkSlider(sl_f, from_=0.3, to=2.5, variable=self._node_scale_var,
-                      width=100, button_color=ACCENT, progress_color=ACCENT,
-                      command=lambda _: self._apply_style()).pack(side="left")
-        ctk.CTkLabel(sl_f, text=" Opacidade arestas:", font=ctk.CTkFont(size=11),
-                     text_color=TEXT_MUTED).pack(side="left", padx=(12, 4))
-        self._edge_opacity_var = ctk.DoubleVar(value=1.0)
-        ctk.CTkSlider(sl_f, from_=0.05, to=1.0, variable=self._edge_opacity_var,
-                      width=100, button_color=ACCENT, progress_color=ACCENT,
-                      command=lambda _: self._apply_style()).pack(side="left")
-        ctk.CTkLabel(sl_f, text=" Min. peso aresta:", font=ctk.CTkFont(size=11),
-                     text_color=TEXT_MUTED).pack(side="left", padx=(12, 4))
+        ctk.CTkSlider(
+            sf, from_=0.1, to=4.0, variable=self._node_scale_var,
+            button_color=ACCENT, button_hover_color=ACCENT_HOV,
+            progress_color=ACCENT, command=lambda _: self._apply_style()
+        ).grid(row=0, column=1, padx=6, pady=4, sticky="ew")
+
+        # Edge opacity slider
+        ctk.CTkLabel(sf, text="Opac. Arestas:", font=ctk.CTkFont(size=11)).grid(
+            row=0, column=2, padx=6, pady=4)
+        self._edge_opacity_var = ctk.DoubleVar(value=0.8)
+        ctk.CTkSlider(
+            sf, from_=0.0, to=1.0, variable=self._edge_opacity_var,
+            button_color=ACCENT, button_hover_color=ACCENT_HOV,
+            progress_color=ACCENT, command=lambda _: self._apply_style()
+        ).grid(row=0, column=3, padx=6, pady=4, sticky="ew")
+
+        # Edge threshold slider
+        ctk.CTkLabel(sf, text="Corte Peso:", font=ctk.CTkFont(size=11)).grid(
+            row=0, column=4, padx=6, pady=4)
         self._edge_thresh_var = ctk.DoubleVar(value=0.0)
-        self._edge_thresh_lbl = ctk.CTkLabel(
-            sl_f, text="0.00", width=44,
-            font=ctk.CTkFont(size=10), text_color=ACCENT)
-        self._edge_thresh_lbl.pack(side="left", padx=(0, 2))
         self._edge_thresh_slider = ctk.CTkSlider(
-            sl_f, from_=0.0, to=1.0, variable=self._edge_thresh_var,
-            width=90, button_color=ACCENT, progress_color=ACCENT,
-            command=self._on_edge_thresh_change)
-        self._edge_thresh_slider.pack(side="left")
+            sf, from_=0.0, to=1.0, variable=self._edge_thresh_var,
+            button_color=ACCENT, button_hover_color=ACCENT_HOV,
+            progress_color=ACCENT, command=lambda _: self._apply_style()
+        )
+        self._edge_thresh_slider.grid(row=0, column=5, padx=6, pady=4, sticky="ew")
 
-        # Cluster filter strip (populated after map generation)
+        # Cluster filter frame
         self._cluster_filter_frame = ctk.CTkFrame(ctrl, fg_color="transparent")
-        self._cluster_filter_frame.grid(row=1, column=0, columnspan=2, sticky="ew", pady=(2, 0))
-        self._cluster_filter_vars: dict[int, ctk.BooleanVar] = {}
+        self._cluster_filter_frame.grid(row=2, column=0, columnspan=3, padx=8, pady=4, sticky="w")
+        self._cluster_filter_vars = {}
 
-        # Stats bar
-        sc = self._card(frame, 2, pady=(0, 4))
-        sc.grid_columnconfigure((0, 1, 2, 3, 4, 5), weight=1)
-        self._stat_labels: dict[str, ctk.CTkLabel] = {}
+        # Summary Stats
+        sc = ctk.CTkFrame(viz_panel, fg_color=CONTENT_BG)
+        sc.grid(row=2, column=0, pady=(0, 4), sticky="ew")
+        sc.grid_columnconfigure((0, 1, 2, 3, 4), weight=1)
+
+        self._stat_labels = {}
         for col, (key, nice) in enumerate([
-            ("total_papers",    "Artigos"),
             ("total_nodes",     "Nós"),
             ("total_edges",     "Arestas"),
             ("num_clusters",    "Clusters"),
@@ -1462,55 +555,201 @@ class BlicsaApp(ctk.CTk):
             ("network_density", "Densidade"),
         ]):
             inner = ctk.CTkFrame(sc, fg_color=CARD2_BG, corner_radius=8)
-            inner.grid(row=0, column=col, padx=5, pady=8, sticky="ew")
+            inner.grid(row=0, column=col, padx=4, pady=6, sticky="ew")
             v = ctk.CTkLabel(inner, text="—",
                              font=ctk.CTkFont(size=18, weight="bold"),
                              text_color=ACCENT)
             v.pack(pady=(6, 0))
             ctk.CTkLabel(inner, text=nice,
-                         font=ctk.CTkFont(size=10),
-                         text_color=TEXT_MUTED).pack(pady=(0, 6))
+                          font=ctk.CTkFont(size=10),
+                          text_color=TEXT_MUTED).pack(pady=(0, 6))
             self._stat_labels[key] = v
 
         # Matplotlib canvas
-        map_card = self._card(frame, 3, pady=(0, 4))
+        map_card = self._card(viz_panel, 3, pady=(0, 4))
         map_card.grid_rowconfigure(0, weight=1)
         map_card.grid_columnconfigure(0, weight=1)
         self._map_canvas = MapCanvas(map_card, node_click_cb=self._on_node_click)
 
-        # Bottom tabview: Insights IA | Nó Selecionado
-        btabs = ctk.CTkTabview(frame, fg_color=CARD_BG,
-                               segmented_button_fg_color=CARD2_BG,
+        # ── Right IA & Info Panel ──
+        info_panel = ctk.CTkFrame(frame, width=340, fg_color=CARD_BG, corner_radius=12)
+        info_panel.grid(row=0, column=2, padx=(6, 20), pady=16, sticky="nsew")
+        info_panel.grid_propagate(False)
+        info_panel.grid_columnconfigure(0, weight=1)
+        info_panel.grid_rowconfigure(1, weight=1)
+
+        ctk.CTkLabel(
+            info_panel, text="✨ IA & Análise",
+            font=ctk.CTkFont(size=14, weight="bold"),
+            text_color=ACCENT
+        ).grid(row=0, column=0, padx=16, pady=(12, 6), sticky="w")
+
+        btabs = ctk.CTkTabview(info_panel, fg_color=CARD2_BG,
+                               segmented_button_fg_color=CARD_BG,
                                segmented_button_selected_color=ACCENT,
                                segmented_button_selected_hover_color=ACCENT_HOV,
-                               segmented_button_unselected_color=CARD2_BG,
-                               text_color="#000", text_color_disabled=TEXT_MUTED)
-        btabs.grid(row=4, column=0, padx=24, pady=(0, 16), sticky="nsew")
-        frame.grid_rowconfigure(4, weight=2)
+                               segmented_button_unselected_color=CARD_BG,
+                               text_color="#000" if ctk.get_appearance_mode().lower() == "light" else "white",
+                               text_color_disabled=TEXT_MUTED)
+        btabs.grid(row=1, column=0, padx=8, pady=(0, 8), sticky="nsew")
 
         ia_tab   = btabs.add("Insights IA")
+        seminal_tab = btabs.add("Autores Seminais")
         node_tab = btabs.add("Nó Selecionado")
         ia_tab.grid_rowconfigure(0, weight=1)
         ia_tab.grid_columnconfigure(0, weight=1)
+        seminal_tab.grid_rowconfigure(0, weight=1)
+        seminal_tab.grid_columnconfigure(0, weight=1)
         node_tab.grid_rowconfigure(0, weight=1)
         node_tab.grid_columnconfigure(0, weight=1)
 
         self._insights_box = ctk.CTkTextbox(
-            ia_tab, font=ctk.CTkFont(size=12), fg_color=CARD2_BG)
-        self._insights_box.grid(row=0, column=0, padx=6, pady=6, sticky="nsew")
-        self._insights_box.insert("end",
-            "Os insights aparecerão aqui após clicar em 'Insights com IA'.")
+            ia_tab, font=ctk.CTkFont(size=12), wrap="word",
+            fg_color=CARD2_BG, border_color=ACCENT, border_width=1
+        )
+        self._insights_box.grid(row=0, column=0, padx=8, pady=8, sticky="nsew")
+        self._insights_box.insert("1.0", "Os insights aparecerão aqui após clicar em 'Insights com IA'.")
         self._insights_box.configure(state="disabled")
 
+        self._seminal_box = ctk.CTkTextbox(
+            seminal_tab, font=ctk.CTkFont(size=12), wrap="word",
+            fg_color=CARD2_BG, border_color=ACCENT, border_width=1
+        )
+        self._seminal_box.grid(row=0, column=0, padx=8, pady=8, sticky="nsew")
+        self._seminal_box.insert("1.0", "A análise de autores e obras seminais aparecerá aqui após gerar o mapa.")
+        self._seminal_box.configure(state="disabled")
+
+        seminal_tab.grid_rowconfigure(0, weight=1)
+        seminal_tab.grid_rowconfigure(1, weight=0)
+        seminal_tab.grid_columnconfigure(0, weight=1)
+
+        sem_btn_frame = ctk.CTkFrame(seminal_tab, fg_color="transparent")
+        sem_btn_frame.grid(row=1, column=0, padx=8, pady=(0, 8), sticky="ew")
+
+        ctk.CTkButton(
+            sem_btn_frame, text="📂 Criar Pasta da Biblioteca", height=32,
+            fg_color=ACCENT, hover_color=ACCENT_HOV, text_color="#000000",
+            font=ctk.CTkFont(weight="bold"), command=self._create_seminal_library
+        ).pack(fill="x")
+
         self._node_info_box = ctk.CTkTextbox(
-            node_tab, font=ctk.CTkFont(family="Courier", size=11), fg_color=CARD2_BG)
-        self._node_info_box.grid(row=0, column=0, padx=6, pady=6, sticky="nsew")
+            node_tab, font=ctk.CTkFont(size=12), wrap="word",
+            fg_color=CARD2_BG, border_color=ACCENT, border_width=1
+        )
+        self._node_info_box.grid(row=0, column=0, padx=8, pady=8, sticky="nsew")
         self._node_info_box.insert("end", "Clique em um nó no mapa para ver detalhes.")
         self._node_info_box.configure(state="disabled")
 
         self._bottom_tabs = btabs
         return frame
 
+    def _build_config_widgets(self, sc):
+        # 1. Tipo de Mapa
+        ctk.CTkLabel(sc, text="Tipo de Mapa:", font=ctk.CTkFont(size=11, weight="bold")).pack(anchor="w", padx=10, pady=(8, 2))
+        ctk.CTkComboBox(sc, values=MAP_TYPES, variable=self._map_type_var, height=28, button_color=ACCENT, border_color=ACCENT).pack(fill="x", padx=10, pady=(0, 6))
+        
+        # 2. Campo
+        ctk.CTkLabel(sc, text="Campo:", font=ctk.CTkFont(size=11, weight="bold")).pack(anchor="w", padx=10, pady=(4, 2))
+        FIELD_LABELS = [x[0] for x in FIELD_OPTS]
+        FIELD_KEYS = [x[1] for x in FIELD_OPTS]
+        
+        self._field_label_var = ctk.StringVar(value=FIELD_LABELS[0])
+        def _on_field_combo(val):
+            idx = FIELD_LABELS.index(val)
+            self._field_var.set(FIELD_KEYS[idx])
+            self._on_field_change()
+            
+        ctk.CTkComboBox(sc, values=FIELD_LABELS, variable=self._field_label_var, height=28, button_color=ACCENT, border_color=ACCENT, command=_on_field_combo).pack(fill="x", padx=10, pady=(0, 6))
+        
+        # 3. Método de Contagem
+        ctk.CTkLabel(sc, text="Contagem:", font=ctk.CTkFont(size=11, weight="bold")).pack(anchor="w", padx=10, pady=(4, 2))
+        ctk.CTkComboBox(sc, values=["full", "fractional"], variable=self._counting_var, height=28, button_color=ACCENT, border_color=ACCENT).pack(fill="x", padx=10, pady=(0, 6))
+        
+        # 4. Normalização
+        ctk.CTkCheckBox(sc, text="Assoc. Strength", variable=self._assoc_var, font=ctk.CTkFont(size=11), fg_color=ACCENT, hover_color=ACCENT_HOV).pack(anchor="w", padx=10, pady=8)
+        
+        # 5. Frequência Mínima
+        ctk.CTkLabel(sc, text="Freq. Mínima:", font=ctk.CTkFont(size=11, weight="bold")).pack(anchor="w", padx=10, pady=(4, 2))
+        occ_f = ctk.CTkFrame(sc, fg_color="transparent")
+        occ_f.pack(fill="x", padx=10, pady=(0, 6))
+        self._occ_lbl = ctk.CTkLabel(occ_f, text="3", font=ctk.CTkFont(size=13, weight="bold"), text_color=ACCENT)
+        self._occ_lbl.pack(side="left", padx=(0, 8))
+        ctk.CTkSlider(
+            occ_f, from_=1, to=50, number_of_steps=49,
+            variable=self._min_occ_var, height=14,
+            button_color=ACCENT, button_hover_color=ACCENT_HOV,
+            progress_color=ACCENT,
+            command=self._on_occ_change,
+        ).pack(side="left", fill="x", expand=True)
+        
+        self._thresh_lbl = ctk.CTkLabel(sc, text="", font=ctk.CTkFont(size=10), text_color=TEXT_MUTED)
+        self._thresh_lbl.pack(anchor="w", padx=10, pady=(0, 6))
+        
+        # 6. Filtro de Nós (Máx. nós ou Top %)
+        ctk.CTkLabel(sc, text="Máx. Nós (0=∞):", font=ctk.CTkFont(size=11, weight="bold")).pack(anchor="w", padx=10, pady=(4, 2))
+        ctk.CTkEntry(sc, textvariable=self._max_nodes_var, height=28, border_color=ACCENT).pack(fill="x", padx=10, pady=(0, 6))
+        
+        ctk.CTkLabel(sc, text="ou Top % Relevância:", font=ctk.CTkFont(size=11, weight="bold")).pack(anchor="w", padx=10, pady=(4, 2))
+        ctk.CTkEntry(sc, textvariable=self._max_pct_var, placeholder_text="ex: 60", height=28, border_color=ACCENT).pack(fill="x", padx=10, pady=(0, 6))
+        
+        # 7. Iterações Layout FA2
+        ctk.CTkLabel(sc, text="Iterações FA2:", font=ctk.CTkFont(size=11, weight="bold")).pack(anchor="w", padx=10, pady=(4, 2))
+        fa2_f = ctk.CTkFrame(sc, fg_color="transparent")
+        fa2_f.pack(fill="x", padx=10, pady=(0, 6))
+        self._fa2_lbl = ctk.CTkLabel(fa2_f, text="500", font=ctk.CTkFont(size=13, weight="bold"), text_color=ACCENT)
+        self._fa2_lbl.pack(side="left", padx=(0, 8))
+        ctk.CTkSlider(
+            fa2_f, from_=100, to=2000, number_of_steps=19,
+            variable=self._fa2_iter_var, height=14,
+            button_color=ACCENT, button_hover_color=ACCENT_HOV,
+            progress_color=ACCENT,
+            command=lambda v: self._fa2_lbl.configure(text=str(int(v))),
+        ).pack(side="left", fill="x", expand=True)
+        
+        ctk.CTkCheckBox(sc, text="LinLog Mode", variable=self._linlog_var, font=ctk.CTkFont(size=11), fg_color=ACCENT, hover_color=ACCENT_HOV).pack(anchor="w", padx=10, pady=6)
+        
+        # 8. Modo de Visualização
+        ctk.CTkLabel(sc, text="Modo de Visualização:", font=ctk.CTkFont(size=11, weight="bold")).pack(anchor="w", padx=10, pady=(4, 2))
+        ctk.CTkComboBox(sc, values=VIZ_MODES, variable=self._viz_mode_var, height=28, button_color=ACCENT, border_color=ACCENT).pack(fill="x", padx=10, pady=(0, 6))
+        
+        # 9. Filtro de Período (Anos)
+        ctk.CTkLabel(sc, text="Período (Anos):", font=ctk.CTkFont(size=11, weight="bold")).pack(anchor="w", padx=10, pady=(4, 2))
+        yr_f = ctk.CTkFrame(sc, fg_color="transparent")
+        yr_f.pack(fill="x", padx=10, pady=(0, 6))
+        ctk.CTkEntry(yr_f, textvariable=self._year_min_var, placeholder_text="De", width=70, height=28, border_color=ACCENT).pack(side="left", fill="x", expand=True, padx=(0, 4))
+        ctk.CTkLabel(yr_f, text="-", text_color=TEXT_MUTED).pack(side="left", padx=4)
+        ctk.CTkEntry(yr_f, textvariable=self._year_max_var, placeholder_text="Até", width=70, height=28, border_color=ACCENT).pack(side="left", fill="x", expand=True, padx=(4, 0))
+        
+        # 10. Stopwords extras
+        ctk.CTkLabel(sc, text="Stopwords Extras:", font=ctk.CTkFont(size=11, weight="bold")).pack(anchor="w", padx=10, pady=(4, 2))
+        ctk.CTkEntry(sc, textvariable=self._extra_sw_var, placeholder_text="ex: word, study", height=28, border_color=ACCENT).pack(fill="x", padx=10, pady=(0, 6))
+        
+        # 11. Thesaurus CSV
+        ctk.CTkLabel(sc, text="Thesaurus CSV:", font=ctk.CTkFont(size=11, weight="bold")).pack(anchor="w", padx=10, pady=(4, 2))
+        th_f = ctk.CTkFrame(sc, fg_color="transparent")
+        th_f.pack(fill="x", padx=10, pady=(0, 6))
+        self._thesaurus_lbl = ctk.CTkLabel(th_f, text="Nenhum carregado", font=ctk.CTkFont(size=10), text_color=TEXT_MUTED)
+        self._thesaurus_lbl.pack(side="left", fill="x", expand=True, anchor="w")
+        self._btn(th_f, "📄", self._pick_thesaurus, height=26, width=32).pack(side="right")
+        
+        # 12. Cor Plotly
+        ctk.CTkLabel(sc, text="Cor do Plotly:", font=ctk.CTkFont(size=11, weight="bold")).pack(anchor="w", padx=10, pady=(4, 2))
+        ctk.CTkComboBox(sc, values=["cluster", "degree", "year"], variable=self._plotly_mode_var, height=28, button_color=ACCENT, border_color=ACCENT).pack(fill="x", padx=10, pady=(0, 6))
+        
+        # 13. API Key
+        ctk.CTkLabel(sc, text="Chave API Groq:", font=ctk.CTkFont(size=11, weight="bold")).pack(anchor="w", padx=10, pady=(4, 2))
+        ctk.CTkEntry(sc, textvariable=self._api_key_var, show="*", placeholder_text="gsk_...", height=28, border_color=ACCENT).pack(fill="x", padx=10, pady=(0, 6))
+
+        # 14. Network Pruning
+        ctk.CTkLabel(sc, text="Pós-processamento:", font=ctk.CTkFont(size=11, weight="bold")).pack(anchor="w", padx=10, pady=(4, 2))
+        ctk.CTkCheckBox(sc, text="Remover nós isolados", variable=self._prune_isolated_var, font=ctk.CTkFont(size=11), fg_color=ACCENT, hover_color=ACCENT_HOV).pack(anchor="w", padx=10, pady=3)
+        ctk.CTkCheckBox(sc, text="Manter só maior comp.", variable=self._prune_largest_var, font=ctk.CTkFont(size=11), fg_color=ACCENT, hover_color=ACCENT_HOV).pack(anchor="w", padx=10, pady=(3, 8))
+
+        # 15. Config Persistence
+        pf = ctk.CTkFrame(sc, fg_color="transparent")
+        pf.pack(fill="x", padx=10, pady=8)
+        self._btn(pf, "💾 Salvar", self._save_config, height=28, color=TEAL, hover=TEAL_HOV).pack(side="left", fill="x", expand=True, padx=(0, 4))
+        self._btn(pf, "📂 Carregar", self._load_config, height=28, color=TEAL, hover=TEAL_HOV).pack(side="right", fill="x", expand=True, padx=(4, 0))
     # ── Tab: Rankings ──────────────────────────────────────────────────
     def _build_tab_ranking(self) -> ctk.CTkFrame:
         frame = self._tab()
@@ -1536,30 +775,8 @@ class BlicsaApp(ctk.CTk):
         rc.grid_rowconfigure(0, weight=1)
         rc.grid_columnconfigure(0, weight=1)
 
-        # Dark-themed Treeview style
-        _ts = ttk.Style()
-        _ts.theme_use("default")
-        _ts.configure("Blicsa.Treeview",
-            background=CARD2_BG,
-            fieldbackground=CARD2_BG,
-            foreground="#e0e0e0",
-            rowheight=26,
-            font=("Inter", 11),
-            borderwidth=0,
-        )
-        _ts.configure("Blicsa.Treeview.Heading",
-            background=CARD_BG,
-            foreground=ACCENT,
-            font=("Inter", 11, "bold"),
-            relief="flat",
-        )
-        _ts.map("Blicsa.Treeview",
-            background=[("selected", "#2a2a5a")],
-            foreground=[("selected", "white")],
-        )
-        _ts.map("Blicsa.Treeview.Heading",
-            background=[("active", ACCENT_HOV)],
-        )
+        # Treeview style
+        self._update_treeview_style()
 
         sb = ctk.CTkScrollbar(rc, orientation="vertical")
         sb.grid(row=0, column=1, sticky="ns", pady=6, padx=(0, 6))
@@ -1638,21 +855,61 @@ class BlicsaApp(ctk.CTk):
         "pubmed":   "PubMed",
         "openalex": "OpenAlex JSON",
         "crossref": "Crossref JSON",
+        "ris":      "RIS",
     }
 
     def _auto_detect_format(self, path: str) -> str:
-        ext = Path(path).suffix.lower()
-        if ext == ".bib":
+        p = Path(path)
+        ext = p.suffix.lower()
+        
+        # Simple extensions
+        if ext == ".ris":
+            return "ris"
+        if ext in (".bib", ".bibtex"):
             return "bibtex"
         if ext == ".nbib":
             return "pubmed"
+            
+        # Read the start of the file to inspect header/tags
+        try:
+            with open(p, "r", encoding="utf-8", errors="ignore") as f:
+                head = f.read(4096)
+        except Exception:
+            return self._origin_var.get() # fallback to dropdown
+            
+        # 1. JSON analysis
+        if ext == ".json" or head.strip().startswith("{") or head.strip().startswith("["):
+            if '"results"' in head or '"id":' in head:
+                return "openalex"
+            if '"message"' in head or '"items"' in head:
+                return "crossref"
+            return "openalex"
+            
+        # 2. PubMed Medline / Tagged text
+        if "PMID-" in head or "OWN -" in head:
+            return "pubmed"
+            
+        # 3. Web of Science TXT
+        if "FN " in head or "VR " in head or "PT " in head:
+            return "wos"
+            
+        # 4. CSV analysis: Scopus vs Web of Science CSV
+        if ext == ".csv" or "," in head or ";" in head:
+            lines = head.splitlines()
+            first_line = lines[0] if lines else ""
+            if "Authors" in first_line or "Source title" in first_line or "Cited by" in first_line:
+                return "scopus"
+            # WoS CSV files use AU, TI, SO, PY, etc.
+            if "AU" in first_line or "TI" in first_line or "PY" in first_line or "SO" in first_line:
+                return "wos"
+                
         return self._origin_var.get()
 
     def _pick_file(self):
         paths = filedialog.askopenfilenames(
             filetypes=[
-                ("Todos os formatos", "*.csv *.txt *.bib *.nbib *.json"),
-                ("CSV", "*.csv"), ("TXT / NBIB", "*.txt *.nbib"),
+                ("Todos os formatos", "*.csv *.txt *.bib *.nbib *.json *.ris"),
+                ("CSV", "*.csv"), ("TXT / NBIB / RIS", "*.txt *.nbib *.ris"),
                 ("BibTeX", "*.bib"), ("JSON", "*.json"), ("All files", "*.*"),
             ])
         for p in paths:
@@ -1726,6 +983,7 @@ class BlicsaApp(ctk.CTk):
                 "pubmed":   "load_pubmed_medline",
                 "openalex": "load_openalex_json",
                 "crossref": "load_crossref_json",
+                "ris":      "load_ris",
             }
             dfs = []
             for path, fmt in zip(self._file_paths, self._file_formats):
@@ -1743,12 +1001,26 @@ class BlicsaApp(ctk.CTk):
             self._dataframe = combined
             print(f"[OK] Total: {len(combined)} registros.\n")
             self._refresh_candidate_counts()
+            
+            # Auto-populate year filter range
+            if "year" in combined.columns:
+                valid_years = combined["year"].dropna()
+                valid_years = valid_years[valid_years > 0]
+                if not valid_years.empty:
+                    ymin = int(valid_years.min())
+                    ymax = int(valid_years.max())
+                    self.after(0, lambda y1=ymin, y2=ymax: (
+                        self._year_min_var.set(str(y1)),
+                        self._year_max_var.set(str(y2))
+                    ))
+            
             self.after(0, self._update_stats_tab)
             self.after(0, self._set_idle, f"{len(combined)} registros carregados")
+            self.after(0, lambda: self._switch_tab("viz"))
         except Exception as exc:
             print(f"[ERRO] {exc}\n")
             self.after(0, self._set_idle, "Erro ao carregar")
-            self.after(0, lambda: messagebox.showerror("Erro ao carregar", str(exc)))
+            self.after(0, lambda e=exc: messagebox.showerror("Erro ao carregar", str(e)))
 
     def _pick_thesaurus(self):
         path = filedialog.askopenfilename(
@@ -1760,7 +1032,7 @@ class BlicsaApp(ctk.CTk):
             self._thesaurus_path = path
             self._thesaurus_lbl.configure(
                 text=f"{Path(path).name} ({len(self._thesaurus)} entradas)",
-                text_color="white",
+                text_color=("gray10", "white"),
             )
             self._refresh_candidate_counts()
             print(f"[Thesaurus] {len(self._thesaurus)} mapeamentos carregados.\n")
@@ -1965,10 +1237,15 @@ class BlicsaApp(ctk.CTk):
             self.after(0, self._populate_cluster_filter)
             self.after(0, lambda: self._switch_tab("viz"))
             self.after(0, self._set_idle, "Mapa gerado")
+            
+            if self._api_key_var.get().strip() or os.environ.get("GROQ_API_KEY"):
+                self._show_ai_modal = False
+                self.after(150, lambda: threading.Thread(target=self._ai_worker, daemon=True).start())
+                self.after(200, lambda: threading.Thread(target=self._ai_seminal_worker, daemon=True).start())
         except Exception as exc:
             print(f"[ERRO] {exc}\n")
             self.after(0, self._set_idle, "Erro")
-            self.after(0, lambda: messagebox.showerror("Erro", str(exc)))
+            self.after(0, lambda e=exc: messagebox.showerror("Erro", str(e)))
 
     def _update_stats(self, stats: dict):
         for key, lbl in self._stat_labels.items():
@@ -2135,7 +1412,7 @@ class BlicsaApp(ctk.CTk):
                 "Blicsa — Mapa Interativo",
                 url=f"file://{PLOTLY_PATH}",
                 width=1200, height=800,
-                background_color="#0d0d1f",
+                background_color="#ffffff",
             )
             webview.start()
         except Exception as exc:
@@ -2149,11 +1426,106 @@ class BlicsaApp(ctk.CTk):
         else:
             messagebox.showinfo("Não gerado", "Gere o mapa primeiro.")
 
+    def _open_sankey(self):
+        if self._dataframe is None:
+            messagebox.showwarning("Sem dados", "Carregue um arquivo na aba Importação.")
+            return
+        try:
+            from core.visualizer import build_sankey_diagram
+            fig = build_sankey_diagram(self._dataframe, "authors", "keywords", "source", top_n=10)
+            
+            sankey_path = str(OUTPUT_DIR / "blicsa_sankey.html")
+            fig.write_html(sankey_path, include_plotlyjs="cdn")
+            print(f"[Sankey] Diagrama salvo → {sankey_path}\n")
+            webbrowser.open(f"file://{sankey_path}")
+            
+            if self._api_key_var.get().strip() or os.environ.get("GROQ_API_KEY"):
+                self._show_ai_modal = True
+                threading.Thread(target=self._ai_sankey_worker, daemon=True).start()
+        except Exception as exc:
+            messagebox.showerror("Erro ao gerar Sankey", str(exc))
+
+    def _open_timeline(self):
+        if self._generator is None or not self._positions:
+            messagebox.showwarning("Sem mapa", "Gere o mapa primeiro antes de visualizar a Linha do Tempo.")
+            return
+        try:
+            from core.visualizer import build_timeline_view
+            fig = build_timeline_view(self._generator.G, self._positions)
+            
+            timeline_path = str(OUTPUT_DIR / "blicsa_linha_tempo.html")
+            fig.write_html(timeline_path, include_plotlyjs="cdn")
+            print(f"[Linha do Tempo] Salva → {timeline_path}\n")
+            webbrowser.open(f"file://{timeline_path}")
+        except Exception as exc:
+            messagebox.showerror("Erro ao gerar Linha do Tempo", str(exc))
+
+    def _open_bursts(self):
+        if self._dataframe is None:
+            messagebox.showwarning("Sem dados", "Carregue um arquivo na aba Importação.")
+            return
+        try:
+            from core.nlp import detect_bursts
+            extra_sw_raw = self._extra_sw_var.get().strip()
+            extra_sw = None
+            if extra_sw_raw:
+                extra_sw = {w.strip().lower() for w in extra_sw_raw.split(",") if w.strip()}
+                
+            bursts = detect_bursts(
+                self._dataframe,
+                field=self._field_var.get(),
+                thesaurus=self._thesaurus,
+                extra_stop_words=extra_sw
+            )
+            
+            if not bursts:
+                messagebox.showinfo("Nenhum surto", "Nenhum surto estatisticamente significativo detectado no dataset.")
+                return
+                
+            BurstDetectionWindow(self, bursts)
+        except Exception as exc:
+            messagebox.showerror("Erro na análise de surtos", str(exc))
+
+    def _open_thematic_map(self):
+        if self._generator is None:
+            messagebox.showwarning("Sem mapa", "Gere o mapa primeiro antes de visualizar o Mapa Temático.")
+            return
+        try:
+            fig = build_thematic_map(self._generator.G)
+            thematic_path = str(OUTPUT_DIR / "blicsa_mapa_tematico.html")
+            fig.write_html(thematic_path, include_plotlyjs="cdn")
+            print(f"[Mapa Temático] Salvo → {thematic_path}\n")
+            webbrowser.open(f"file://{thematic_path}")
+            
+            if self._api_key_var.get().strip() or os.environ.get("GROQ_API_KEY"):
+                self._show_ai_modal = True
+                threading.Thread(target=self._ai_thematic_worker, daemon=True).start()
+        except Exception as exc:
+            messagebox.showerror("Erro ao gerar Mapa Temático", str(exc))
+
+    def _open_historiograph(self):
+        if self._dataframe is None:
+            messagebox.showwarning("Sem dados", "Carregue um arquivo na aba Importação.")
+            return
+        try:
+            fig = build_historiograph(self._dataframe)
+            hist_path = str(OUTPUT_DIR / "blicsa_historiografia.html")
+            fig.write_html(hist_path, include_plotlyjs="cdn")
+            print(f"[Historiografia] Salva → {hist_path}\n")
+            webbrowser.open(f"file://{hist_path}")
+            
+            if self._api_key_var.get().strip() or os.environ.get("GROQ_API_KEY"):
+                self._show_ai_modal = True
+                threading.Thread(target=self._ai_historiograph_worker, daemon=True).start()
+        except Exception as exc:
+            messagebox.showerror("Erro ao gerar Historiografia", str(exc))
+
     # ── AI ─────────────────────────────────────────────────────────────
     def _run_ai(self):
         if self._generator is None:
             messagebox.showwarning("Sem mapa", "Gere o mapa primeiro.")
             return
+        self._show_ai_modal = True
         threading.Thread(target=self._ai_worker, daemon=True).start()
 
     def _ai_worker(self):
@@ -2179,12 +1551,306 @@ class BlicsaApp(ctk.CTk):
         except Exception as exc:
             self.after(0, self._set_idle, "Erro IA")
             print(f"[ERRO IA] {exc}\n")
+            self.after(0, lambda e=exc: messagebox.showerror("Erro IA", f"Erro ao gerar insights com IA:\n{e}"))
 
     def _show_insights(self, text: str):
-        self._insights_box.configure(state="normal")
-        self._insights_box.delete("1.0", "end")
-        self._insights_box.insert("end", text)
-        self._insights_box.configure(state="disabled")
+        from ui.components import insert_markdown
+        insert_markdown(self._insights_box, text)
+        if getattr(self, "_show_ai_modal", False):
+            self._show_ai_modal = False
+            from ui.components import AIInsightsWindow
+            AIInsightsWindow(self, text)
+
+    def _ai_sankey_worker(self):
+        try:
+            self.after(0, self._set_busy, "IA analisando Sankey…")
+            df = self._dataframe
+            from collections import Counter as _C
+            
+            # Simple author -> keyword relation summary
+            auths_kws = _C()
+            for _, row in df.dropna(subset=["authors", "keywords"]).iterrows():
+                a_list = [a.strip() for a in str(row["authors"]).split(";") if a.strip()]
+                k_list = [k.strip().lower() for k in str(row["keywords"]).split(";") if k.strip()]
+                for a in a_list[:5]:
+                    for k in k_list[:5]:
+                        auths_kws[(a, k)] += 1
+            
+            summary = "Top fluxos Autor -> Palavra-chave:\n"
+            for (a, k), count in auths_kws.most_common(15):
+                summary += f"  - Autor {a} estuda {k} ({count} vezes)\n"
+                
+            analyst = GroqBibliometricAnalyst(api_key=self._api_key_var.get().strip() or None)
+            result = analyst.generate_sankey_insights(summary)
+            self.after(0, self._show_insights, result)
+            self.after(0, self._set_idle, "Insights Sankey prontos")
+        except Exception as exc:
+            self.after(0, self._set_idle, "Erro IA")
+            self.after(0, lambda e=exc: messagebox.showerror("Erro IA", f"Erro ao analisar Sankey:\n{e}"))
+
+    def _ai_thematic_worker(self):
+        try:
+            self.after(0, self._set_busy, "IA analisando Tema…")
+            G = self._generator.G
+            partition = nx.get_node_attributes(G, "group")
+            clusters = {}
+            for node, grp in partition.items():
+                clusters.setdefault(grp, []).append(node)
+                
+            summary = "Clusters e seus termos centrais:\n"
+            for c, nodes in list(clusters.items())[:8]:
+                top_nodes = sorted(nodes, key=lambda n: G.nodes[n].get("occurrence", 0), reverse=True)[:5]
+                cent = sum(G[u][v].get("weight", 1.0) for u in nodes for v in G.neighbors(u) if v not in nodes)
+                dens = sum(G[u][v].get("weight", 1.0) for u in nodes for v in G.neighbors(u) if v in nodes) / (2.0 * len(nodes))
+                summary += f"  - Cluster {c} ({len(nodes)} nós, Centralidade: {cent:.1f}, Densidade: {dens:.3f}): {', '.join(top_nodes)}\n"
+                
+            analyst = GroqBibliometricAnalyst(api_key=self._api_key_var.get().strip() or None)
+            result = analyst.generate_thematic_insights(summary)
+            self.after(0, self._show_insights, result)
+            self.after(0, self._set_idle, "Insights Temáticos prontos")
+        except Exception as exc:
+            self.after(0, self._set_idle, "Erro IA")
+            self.after(0, lambda e=exc: messagebox.showerror("Erro IA", f"Erro ao analisar Mapa Temático:\n{e}"))
+
+    def _ai_historiograph_worker(self):
+        try:
+            self.after(0, self._set_busy, "IA analisando História…")
+            df = self._dataframe
+            top_papers = df.sort_values(by="citations", ascending=False).head(15)
+            summary = "Artigos principais na linha evolutiva:\n"
+            for _, row in top_papers.iterrows():
+                authors = str(row.get("authors", ""))
+                first = authors.split(";")[0].strip() if authors else "Anon"
+                year = int(row.get("year", 0))
+                cit = int(row.get("citations", 0))
+                title = str(row.get("title", ""))[:60]
+                summary += f"  - {first} ({year}) com {cit} citações: \"{title}...\"\n"
+                
+            analyst = GroqBibliometricAnalyst(api_key=self._api_key_var.get().strip() or None)
+            result = analyst.generate_historiograph_insights(summary)
+            self.after(0, self._show_insights, result)
+            self.after(0, self._set_idle, "Insights Historiografia prontos")
+        except Exception as exc:
+            self.after(0, self._set_idle, "Erro IA")
+            self.after(0, lambda e=exc: messagebox.showerror("Erro IA", f"Erro ao analisar Historiografia:\n{e}"))
+
+    def _ai_seminal_worker(self):
+        if self._dataframe is None:
+            return
+        try:
+            print("[IA] Analisando autores seminais...")
+            df = self._dataframe
+            ref_col = None
+            for col in ("CR", "References", "Cited References", "references"):
+                if col in df.columns:
+                    ref_col = col
+                    break
+            if not ref_col:
+                self.after(0, self._show_seminal_insights, "Nenhuma coluna de referências encontrada no dataset.")
+                return
+
+            from collections import Counter
+            import re
+            
+            counter = Counter()
+            for val in df[ref_col].dropna():
+                refs = [r.strip() for r in re.split(r"[;\n]", str(val)) if r.strip()]
+                for r in refs:
+                    counter[r] += 1
+                    
+            top_refs = counter.most_common(20)
+            if not top_refs:
+                self.after(0, self._show_seminal_insights, "Nenhuma referência citada encontrada para analisar.")
+                return
+                
+            summary = "Trabalhos mais citados no dataset:\n"
+            for ref, count in top_refs:
+                summary += f"  - {ref} (citado {count} vezes)\n"
+                
+            analyst = GroqBibliometricAnalyst(api_key=self._api_key_var.get().strip() or None)
+            result = analyst.generate_seminal_insights(summary)
+            self.after(0, self._show_seminal_insights, result)
+            print("[IA] Análise seminal concluída.\n")
+        except Exception as exc:
+            print(f"[ERRO IA SEMINAL] {exc}\n")
+            self.after(0, self._show_seminal_insights, f"Erro ao analisar autores seminais:\n{exc}")
+
+    def _show_seminal_insights(self, text: str):
+        from ui.components import insert_markdown
+        insert_markdown(self._seminal_box, text)
+
+    def _create_seminal_library(self):
+        if self._dataframe is None:
+            messagebox.showwarning("Sem dados", "Carregue um arquivo primeiro.")
+            return
+            
+        ref_col = None
+        for col in ("CR", "References", "Cited References", "references"):
+            if col in self._dataframe.columns:
+                ref_col = col
+                break
+        if not ref_col:
+            messagebox.showerror("Erro", "Nenhuma coluna de referências encontrada no dataset.")
+            return
+            
+        folder_path = filedialog.askdirectory(title="Selecione onde criar a pasta da biblioteca")
+        if not folder_path:
+            return
+            
+        from tkinter import simpledialog
+        folder_name = simpledialog.askstring("Nome da Pasta", "Qual o nome da pasta da biblioteca?", initialvalue="Biblioteca_Artigos_Seminais")
+        if not folder_name:
+            return
+            
+        full_path = Path(folder_path) / folder_name.strip()
+        try:
+            full_path.mkdir(parents=True, exist_ok=True)
+            
+            from collections import Counter
+            import re
+            
+            counter = Counter()
+            for val in self._dataframe[ref_col].dropna():
+                refs = [r.strip() for r in re.split(r"[;\n]", str(val)) if r.strip()]
+                for r in refs:
+                    counter[r] += 1
+                    
+            top_refs = counter.most_common(20)
+            if not top_refs:
+                messagebox.showinfo("Sem referências", "Nenhuma referência encontrada para gerar arquivos.")
+                return
+                
+            self._set_busy("Buscando metadados dos artigos seminais (OpenAlex)...")
+            threading.Thread(
+                target=self._create_seminal_library_worker,
+                args=(full_path, top_refs),
+                daemon=True
+            ).start()
+            
+        except Exception as exc:
+            messagebox.showerror("Erro ao criar biblioteca", str(exc))
+
+    def _create_seminal_library_worker(self, full_path, top_refs):
+        import urllib.request
+        import urllib.parse
+        import json
+        import re
+        
+        created_count = 0
+        for ref, count in top_refs:
+            # 1. Determinar o nome base do arquivo
+            match = re.search(r'\b(19\d\d|20\d\d)\b', ref)
+            if match:
+                year = match.group(1)
+                parts = ref.split(year)
+                author = parts[0].strip(", \n\t")
+                author = re.sub(r'[\\/*?:"<>|]', "", author)
+                filename = f"{author} ({year})"
+            else:
+                filename = re.sub(r'[\\/*?:"<>|]', "", ref)
+                
+            filename = filename.strip()
+            if len(filename) > 110:
+                filename = filename[:107] + "..."
+            
+            # 2. Buscar metadados e resumo (abstract) via OpenAlex API
+            title = None
+            abstract = None
+            url = None
+            
+            # Tenta encontrar um DOI no formato 10.xxxx/...
+            doi_match = re.search(r'(10\.\d{4,9}/[^\s,;]+)', ref)
+            if doi_match:
+                doi = doi_match.group(1).strip(".,;()")
+                url = f"https://doi.org/{doi}"
+                try:
+                    openalex_url = f"https://api.openalex.org/works/https://doi.org/{doi}"
+                    req = urllib.request.Request(
+                        openalex_url, 
+                        headers={'User-Agent': 'mailto:pybibliomics@example.com'}
+                    )
+                    with urllib.request.urlopen(req, timeout=5) as r:
+                        data = json.loads(r.read().decode('utf-8'))
+                        title = data.get("title")
+                        inv_index = data.get("abstract_inverted_index")
+                        if inv_index:
+                            abstract_words = {}
+                            for word, pos_list in inv_index.items():
+                                for pos in pos_list:
+                                    abstract_words[pos] = word
+                            sorted_words = [abstract_words[p] for p in sorted(abstract_words.keys())]
+                            abstract = " ".join(sorted_words)
+                        
+                        oa = data.get("open_access", {})
+                        if oa.get("is_oa") and oa.get("oa_url"):
+                            url = oa.get("oa_url")
+                except Exception:
+                    pass
+            
+            # Se não resolveu por DOI, faz busca textual no OpenAlex
+            if not title or not abstract:
+                try:
+                    clean_ref = re.sub(r'\[.*?\]', '', ref)  # limpa colchetes
+                    query = urllib.parse.quote(clean_ref)
+                    openalex_url = f"https://api.openalex.org/works?q={query}&limit=1"
+                    req = urllib.request.Request(
+                        openalex_url, 
+                        headers={'User-Agent': 'mailto:pybibliomics@example.com'}
+                    )
+                    with urllib.request.urlopen(req, timeout=5) as r:
+                        data = json.loads(r.read().decode('utf-8'))
+                        results = data.get("results", [])
+                        if results:
+                            work = results[0]
+                            title = work.get("title")
+                            inv_index = work.get("abstract_inverted_index")
+                            if inv_index:
+                                abstract_words = {}
+                                for word, pos_list in inv_index.items():
+                                    for pos in pos_list:
+                                        abstract_words[pos] = word
+                                sorted_words = [abstract_words[p] for p in sorted(abstract_words.keys())]
+                                abstract = " ".join(sorted_words)
+                            
+                            if not url:
+                                oa = work.get("open_access", {})
+                                if oa.get("is_oa") and oa.get("oa_url"):
+                                    url = oa.get("oa_url")
+                                else:
+                                    url = work.get("doi") or work.get("id")
+                except Exception:
+                    pass
+            
+            # 3. Escrever arquivo de descrição em formato .txt
+            txt_filename = filename + "_DESCRICAO.txt"
+            content_lines = [
+                f"==================================================",
+                f" ARTIGO SEMINAL - BLICSA / PYBIBLIOMICS",
+                f"==================================================\n",
+                f"Referência Original: {ref}",
+                f"Citações no Dataset: {count} vezes\n",
+                f"Título do Artigo:   {title or 'Não identificado pela API OpenAlex'}",
+                f"Link / DOI / OA:    {url or 'Link não encontrado'}\n",
+                f"Resumo / Descrição:",
+                f"--------------------------------------------------",
+                f"{abstract or 'Resumo/Abstract não disponível nas fontes de dados abertos.'}",
+                f"--------------------------------------------------"
+            ]
+            
+            try:
+                with open(full_path / txt_filename, "w", encoding="utf-8") as f:
+                    f.write("\n".join(content_lines))
+                created_count += 1
+            except Exception as e:
+                print(f"[ERRO ao gravar arquivo {txt_filename}] {e}")
+                
+        # 4. Finalização na main thread do Tkinter
+        def _done():
+            self._set_idle()
+            messagebox.showinfo("Sucesso", f"Biblioteca de seminais criada com sucesso!\n\nPasta: {full_path}\nArquivos de descrição gerados: {created_count}")
+            webbrowser.open(f"file://{full_path}")
+            
+        self.after(0, _done)
 
     # ── Rankings ────────────────────────────────────────────────────────
     def _show_ranking(self):
@@ -2246,14 +1912,15 @@ class BlicsaApp(ctk.CTk):
         elif kind == "hindex":
             _setup_cols([
                 ("#",          48,  "center"),
-                ("Autor",     320,  "w"),
+                ("Autor",     280,  "w"),
                 ("h-index",    80,  "e"),
+                ("g-index",    80,  "e"),
                 ("Artigos",    80,  "e"),
                 ("Cit. Média", 100, "e"),
             ])
-            for i, (author, h, papers, avg) in enumerate(gen.get_author_hindex(100), 1):
+            for i, (author, h, g, papers, avg) in enumerate(gen.get_author_hindex(100), 1):
                 self._rank_tree.insert("", "end", values=(
-                    i, author, h, papers, f"{avg:.1f}"))
+                    i, author, h, g, papers, f"{avg:.1f}"))
 
         elif kind == "sources":
             _setup_cols([
@@ -2466,68 +2133,86 @@ class BlicsaApp(ctk.CTk):
             messagebox.showerror("Dependência", "Instale: pip install wordcloud")
             return
 
-        field = self._field_var.get() if hasattr(self, "_field_var") else "keywords"
-        col   = {"keywords": "keywords", "titles": "title",
-                 "abstracts": "abstract", "titles_abstracts": "abstract"}.get(field, "keywords")
+        self._set_busy("Gerando Nuvem de Palavras…")
+        threading.Thread(target=self._wordcloud_worker, daemon=True).start()
 
-        # Build frequency dict from candidate_counts or raw column
-        if self._candidate_counts:
-            freq = dict(self._candidate_counts)
-        else:
-            from collections import Counter as _C
-            sep_re = re.compile(r"[;,]")
-            words: list[str] = []
-            for s in self._dataframe[col].dropna():
-                words.extend(w.strip().lower() for w in sep_re.split(str(s)) if len(w.strip()) > 2)
-            freq = dict(_C(words).most_common(200))
+    def _wordcloud_worker(self):
+        try:
+            import re
+            from wordcloud import WordCloud
+            
+            field = self._field_var.get() if hasattr(self, "_field_var") else "keywords"
+            col   = {"keywords": "keywords", "titles": "title",
+                     "abstracts": "abstract", "titles_abstracts": "abstract"}.get(field, "keywords")
 
-        if not freq:
-            messagebox.showinfo("Word Cloud", "Nenhum termo encontrado.")
-            return
+            if self._candidate_counts:
+                freq = dict(self._candidate_counts)
+            else:
+                from collections import Counter as _C
+                sep_re = re.compile(r"[;,]")
+                words: list[str] = []
+                for s in self._dataframe[col].dropna():
+                    words.extend(w.strip().lower() for w in sep_re.split(str(s)) if len(w.strip()) > 2)
+                freq = dict(_C(words).most_common(200))
 
-        wc = WordCloud(
-            width=1000, height=600,
-            background_color="#0d0d1f",
-            colormap="plasma",
-            max_words=150,
-            prefer_horizontal=0.85,
-            min_font_size=8,
-            max_font_size=90,
-            collocations=False,
-        ).generate_from_frequencies(freq)
+            if not freq:
+                self.after(0, self._set_idle, "Pronto")
+                self.after(0, lambda: messagebox.showinfo("Word Cloud", "Nenhum termo encontrado."))
+                return
 
-        win = ctk.CTkToplevel(self)
-        win.title("Blicsa — Word Cloud")
-        win.geometry("1020x640")
-        win.configure(fg_color="#0d0d1f")
-        win.grid_rowconfigure(0, weight=1)
-        win.grid_columnconfigure(0, weight=1)
+            wc = WordCloud(
+                width=1000, height=600,
+                background_color="#0d0d1f",
+                colormap="plasma",
+                max_words=150,
+                prefer_horizontal=0.85,
+                min_font_size=8,
+                max_font_size=90,
+                collocations=False,
+            ).generate_from_frequencies(freq)
 
-        fig, ax = plt.subplots(figsize=(10, 6), dpi=110, facecolor="#0d0d1f")
-        ax.imshow(wc, interpolation="bilinear")
-        ax.axis("off")
-        fig.tight_layout(pad=0)
+            self.after(0, self._display_wordcloud, wc)
+        except Exception as exc:
+            self.after(0, self._set_idle, "Erro Nuvem")
+            self.after(0, lambda e=exc: messagebox.showerror("Erro", f"Erro ao gerar nuvem de palavras:\n{e}"))
 
-        cv = FigureCanvasTkAgg(fig, master=win)
-        cv.get_tk_widget().grid(row=0, column=0, sticky="nsew")
+    def _display_wordcloud(self, wc):
+        self._set_idle("Nuvem gerada")
+        try:
+            import matplotlib.pyplot as plt
+            from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
+            win = ctk.CTkToplevel(self)
+            win.title("Blicsa — Nuvem de Palavras")
+            win.geometry("1020x640")
+            win.configure(fg_color="#0d0d1f")
+            win.grid_rowconfigure(0, weight=1)
+            win.grid_columnconfigure(0, weight=1)
 
-        # Save button
-        def _save():
-            path = filedialog.asksaveasfilename(
-                defaultextension=".png", filetypes=[("PNG", "*.png"), ("SVG", "*.svg")])
-            if path:
-                fig.savefig(path, dpi=200, bbox_inches="tight", facecolor="#0d0d1f")
-                print(f"[Word Cloud] Salva → {path}\n")
+            fig, ax = plt.subplots(figsize=(10, 6), dpi=110, facecolor="#0d0d1f")
+            ax.imshow(wc, interpolation="bilinear")
+            ax.axis("off")
+            fig.tight_layout(pad=0)
 
-        ctk.CTkButton(
-            win, text="💾  Salvar", height=34,
-            fg_color=ACCENT, hover_color=ACCENT_HOV, text_color="#000",
-            command=_save,
-        ).grid(row=1, column=0, pady=8)
+            cv = FigureCanvasTkAgg(fig, master=win)
+            cv.get_tk_widget().grid(row=0, column=0, sticky="nsew")
 
-        cv.draw()
-        win.lift()
-        win.focus()
+            def _save():
+                path = filedialog.asksaveasfilename(
+                    defaultextension=".png", filetypes=[("PNG", "*.png"), ("SVG", "*.svg")])
+                if path:
+                    fig.savefig(path, dpi=200, bbox_inches="tight", facecolor="#0d0d1f")
+                    print(f"[Word Cloud] Salva → {path}\n")
+
+            ctk.CTkButton(
+                win, text="💾  Salvar", height=34,
+                fg_color=ACCENT, hover_color=ACCENT_HOV, text_color="#000",
+                command=_save,
+            ).grid(row=1, column=0, pady=8)
+            cv.draw()
+            win.lift()
+            win.focus()
+        except Exception as exc:
+            messagebox.showerror("Erro de Exibição", str(exc))
 
     # ── Trend chart ────────────────────────────────────────────────────
     def _open_trends(self):
@@ -2588,6 +2273,7 @@ class BlicsaApp(ctk.CTk):
         except Exception as exc:
             self.after(0, self._set_idle, "Erro ao nomear clusters")
             print(f"[ERRO labeling] {exc}\n")
+            self.after(0, lambda e=exc: messagebox.showerror("Erro IA", f"Erro ao nomear clusters com IA:\n{e}"))
 
     # ── Config save / load ─────────────────────────────────────────────
     def _save_config(self):
@@ -2715,6 +2401,20 @@ class BlicsaApp(ctk.CTk):
             lines.append("─" * 60)
             yr = df["year"].replace(0, None).dropna().astype(int)
             year_counts = Counter(yr)
+            
+            # Calculate Compound Annual Growth Rate (CAGR)
+            years = sorted(year_counts.keys())
+            if len(years) > 1:
+                y_start, y_end = years[0], years[-1]
+                n_start, n_end = year_counts[y_start], year_counts[y_end]
+                span = y_end - y_start
+                if span > 0 and n_start > 0 and n_end > 0:
+                    cagr = (n_end / n_start) ** (1 / span) - 1
+                    lines.append(f"  Produção Inicial ({y_start}): {n_start} artigos")
+                    lines.append(f"  Produção Final ({y_end}): {n_end} artigos")
+                    lines.append(f"  Taxa de Crescimento Anual (CAGR): {cagr:.1%}")
+                    lines.append("─" * 60)
+
             max_count = max(year_counts.values(), default=1)
             for year in sorted(year_counts):
                 count = year_counts[year]

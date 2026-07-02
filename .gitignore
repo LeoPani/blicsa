@@ -1,6 +1,6 @@
 # Generated outputs
-blicsa_mapa.html
-blicsa_plotly.html
+blicsa_*.html
+lib/
 
 # Python
 __pycache__/

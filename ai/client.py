@@ -53,11 +53,10 @@ class GroqBibliometricAnalyst:
             f"Top 20 palavras-chave: {top_keywords}"
             f"{cluster_txt}{year_txt}\n\n"
             "Produza a análise em Markdown com as seções:\n"
-            "## Resumo Executivo\n"
             "## Frentes de Pesquisa Emergentes\n"
             "## Lacunas Científicas Identificadas\n"
             "## Recomendações para Pesquisa Futura\n"
-            "\nUse linguagem técnica acadêmica em português."
+            "\nUse linguagem técnica acadêmica em português. Seja direto, conciso, objetivo e evite rodeios ou introduções longas. Foque em percepções práticas."
         )
         return self._chat(
             system="Você é especialista em cientometria, análise bibliométrica e mapeamento científico.",
@@ -97,3 +96,60 @@ class GroqBibliometricAnalyst:
             if m:
                 labels[int(m.group(1))] = m.group(2).strip()
         return labels
+
+    def generate_sankey_insights(self, relations_summary: str) -> str:
+        prompt = (
+            "Analise as relações de fluxo (Sankey de Três Campos: Autores -> Palavras-Chave -> Periódicos) abaixo:\n\n"
+            f"{relations_summary}\n\n"
+            "Produza uma análise em Markdown com as seções:\n"
+            "## Fluxo de Conhecimento (Sankey)\n"
+            "## Principais Atores e Fontes\n"
+            "\nUse linguagem técnica acadêmica em português. Seja direto, conciso, objetivo e evite rodeios ou introduções longas. Foque em percepções práticas."
+        )
+        return self._chat(
+            system="Você é especialista em cientometria e mapeamento científico.",
+            user=prompt
+        )
+
+    def generate_thematic_insights(self, quadrants_summary: str) -> str:
+        prompt = (
+            "Analise os dados do Mapa Temático (Quadrantes de Callon: Centralidade vs Densidade) abaixo:\n\n"
+            f"{quadrants_summary}\n\n"
+            "Produza uma análise em Markdown com as seções:\n"
+            "## Análise dos Quadrantes Estratégicos\n"
+            "## Temas Motores e Especializados\n"
+            "## Temas Emergentes e Básicos\n"
+            "\nUse linguagem técnica acadêmica em português. Seja direto, conciso, objetivo e evite rodeios ou introduções longas. Foque em percepções práticas."
+        )
+        return self._chat(
+            system="Você é especialista em cientometria e mapeamento científico.",
+            user=prompt
+        )
+
+    def generate_historiograph_insights(self, citation_paths: str) -> str:
+        prompt = (
+            "Analise a historiografia de citações diretas entre os principais artigos abaixo:\n\n"
+            f"{citation_paths}\n\n"
+            "Produza uma análise em Markdown com as seções:\n"
+            "## Evolução Histórica (Historiografia)\n"
+            "## Marcos Científicos e Artigos Centrais\n"
+            "\nUse linguagem técnica acadêmica em português. Seja direto, conciso, objetivo e evite rodeios ou introduções longas. Foque em percepções práticas."
+        )
+        return self._chat(
+            system="Você é especialista em cientometria e mapeamento científico.",
+            user=prompt
+        )
+
+    def generate_seminal_insights(self, top_references: str) -> str:
+        prompt = (
+            "A lista a seguir contém os trabalhos e livros mais citados (referências citadas) no conjunto de dados bibliométricos analisado:\n\n"
+            f"{top_references}\n\n"
+            "Com base nessa lista e no seu conhecimento científico geral:\n"
+            "1. Identifique os autores seminais (fundadores ou marcos da área) e suas respectivas obras/livros seminais.\n"
+            "2. Forneça uma breve descrição (2-4 frases) explicando do que se trata cada livro ou artigo seminal específico identificado, destacando sua relevância e contribuição teórica para a ciência.\n\n"
+            "Produza o relatório em Markdown estruturado por autores seminais. Use linguagem técnica acadêmica em português. Seja direto, conciso, objetivo e evite introduções longas. Foque em descrições práticas."
+        )
+        return self._chat(
+            system="Você é especialista em cientometria, história da ciência e mapeamento científico.",
+            user=prompt
+        )

@@ -343,6 +343,73 @@ class BibliometricParser:
         m = re.search(r"\b(19|20)\d{2}\b", text)
         return int(m.group()) if m else 0
 
+    def load_ris(self) -> pd.DataFrame:
+        text = self.file_path.read_text(encoding="utf-8", errors="replace")
+        records = []
+        current = {}
+        
+        # Tags are normally 2 characters, followed by a space, a dash, and a space (e.g., 'TI  - ')
+        pattern = re.compile(r"^([A-Z0-9]{2})\s*-\s*(.*)$")
+        
+        for line in text.splitlines():
+            line = line.strip()
+            if not line:
+                continue
+            if line == "ER": # End of Record
+                if current:
+                    records.append(current)
+                    current = {}
+                continue
+            
+            m = pattern.match(line)
+            if m:
+                tag, val = m.group(1), m.group(2).strip()
+                if tag in ("AU", "A1", "A2"):
+                    current.setdefault("authors", []).append(val)
+                elif tag in ("TI", "T1"):
+                    current["title"] = val
+                elif tag in ("PY", "Y1"):
+                    # Extract 4-digit year
+                    yr_m = re.search(r"\b(19|20)\d{2}\b", val)
+                    current["year"] = int(yr_m.group()) if yr_m else 0
+                elif tag in ("T2", "JO", "JF", "JA"):
+                    current["source"] = val
+                elif tag == "KW":
+                    current.setdefault("keywords", []).append(val)
+                elif tag in ("AB", "N2"):
+                    current["abstract"] = val
+                elif tag == "DO":
+                    current["doi"] = val
+            
+        if current:
+            records.append(current)
+            
+        rows = []
+        for r in records:
+            authors_str = "; ".join(r.get("authors", []))
+            keywords_str = "; ".join(r.get("keywords", []))
+            rows.append({
+                "authors":    authors_str,
+                "title":      r.get("title", ""),
+                "year":       r.get("year", 0),
+                "source":     r.get("source", ""),
+                "keywords":   keywords_str,
+                "abstract":   r.get("abstract", ""),
+                "citations":  0,
+                "doi":        r.get("doi", ""),
+                "references": "",
+                "origin":     "RIS",
+            })
+            
+        self.df = (
+            pd.DataFrame(rows) if rows
+            else pd.DataFrame(columns=[
+                "authors","title","year","source","keywords",
+                "abstract","citations","doi","references","origin",
+            ])
+        )
+        return self.df
+
     @staticmethod
     def merge(*dataframes: pd.DataFrame) -> pd.DataFrame:
         combined = pd.concat(list(dataframes), ignore_index=True)

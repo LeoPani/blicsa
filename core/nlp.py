@@ -90,5 +90,107 @@ def load_thesaurus(csv_path: str) -> dict[str, str]:
     return mapping
 
 
-def apply_thesaurus(term: str, thesaurus: dict[str, str]) -> str:
+def apply_thesaurus(term: str, thesaurus: dict[str, str] | None) -> str:
+    if not thesaurus:
+        return term
     return thesaurus.get(term, term)
+
+
+def detect_bursts(
+    df,
+    field: str = "keywords",
+    thesaurus: dict | None = None,
+    extra_stop_words: set[str] | None = None,
+) -> list[dict]:
+    """
+    Detect sudden spikes in term occurrences over time (years) normalized by publication volume.
+    Returns sorted list of dicts: [{'term': term, 'start': y1, 'end': y2, 'strength': s, 'total_occ': o}]
+    """
+    import numpy as np
+    from collections import Counter
+    from core.matrix_builders import _extract_term_lists
+    
+    thesaurus_dict = thesaurus or {}
+    term_lists = _extract_term_lists(df, field, thesaurus_dict, extra_stop_words)
+    years = df["year"].fillna(0).astype(int).values
+    
+    term_years = {}
+    for lst, yr in zip(term_lists, years):
+        if yr <= 0:
+            continue
+        for t in lst:
+            term_years.setdefault(t, []).append(yr)
+            
+    if not term_years:
+        return []
+        
+    valid_yrs = df[df["year"] > 0]["year"].dropna().astype(int)
+    if valid_yrs.empty:
+        return []
+    min_yr = int(valid_yrs.min())
+    max_yr = int(valid_yrs.max())
+    
+    if max_yr <= min_yr:
+        return []
+        
+    all_years = list(range(min_yr, max_yr + 1))
+    
+    pub_counts = Counter(df[df["year"] > 0]["year"].astype(int))
+    total_pubs = np.array([pub_counts.get(y, 1) for y in all_years], float)
+    total_pubs[total_pubs == 0] = 1.0
+    
+    bursts = []
+    
+    for term, yrs in term_years.items():
+        counts = Counter(yrs)
+        raw_freqs = np.array([counts.get(y, 0) for y in all_years], float)
+        freqs = (raw_freqs / total_pubs) * 1000.0
+        
+        if sum(counts.values()) < 4:
+            continue
+            
+        mean = freqs.mean()
+        std = freqs.std()
+        if std == 0:
+            continue
+            
+        z_scores = (freqs - mean) / std
+        
+        in_burst = False
+        start_idx = None
+        period_z = []
+        
+        for idx, z in enumerate(z_scores):
+            is_burst_yr = (z > 1.645) and (raw_freqs[idx] >= 1)
+            if is_burst_yr:
+                if not in_burst:
+                    in_burst = True
+                    start_idx = idx
+                period_z.append(z)
+            else:
+                if in_burst:
+                    end_idx = idx - 1
+                    strength = sum(period_z)
+                    bursts.append({
+                        "term": term,
+                        "start": all_years[start_idx],
+                        "end": all_years[end_idx],
+                        "strength": float(strength),
+                        "total_occ": sum(counts.values())
+                    })
+                    in_burst = False
+                    period_z = []
+                    
+        if in_burst:
+            end_idx = len(all_years) - 1
+            strength = sum(period_z)
+            bursts.append({
+                "term": term,
+                "start": all_years[start_idx],
+                "end": all_years[end_idx],
+                "strength": float(strength),
+                "total_occ": sum(counts.values())
+            })
+            
+    bursts = sorted(bursts, key=lambda x: x["strength"], reverse=True)
+    return bursts
