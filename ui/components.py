@@ -13,12 +13,62 @@ from scipy.stats import gaussian_kde
 import matplotlib
 matplotlib.use("TkAgg")
 import matplotlib.pyplot as plt
+import os
+
+_style_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'core', 'viz', 'blicsa.mplstyle')
+if os.path.exists(_style_path): plt.style.use(_style_path)
 import matplotlib.patches as mpatches
 import matplotlib.colors as mc
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg, NavigationToolbar2Tk
 
-from ui.styles import get_color, SIDEBAR_BG, CONTENT_BG, CARD_BG, CARD2_BG, ACCENT, ACCENT_HOV, TEXT_MUTED, GREEN, GREEN_HOV, PURPLE, PURPLE_HOV, TEAL, TEAL_HOV
+from ui.styles import get_color, SIDEBAR_BG, CONTENT_BG, CARD_BG, CARD2_BG, ACCENT, ACCENT_HOV, TEXT_MUTED, BLUE, YELLOW, INK, INK_HOV, BLUE_HOV, YELLOW_HOV, RED_HOV
 from core.matrix_builders import CLUSTER_PALETTE
+
+class HoverTooltip:
+    def __init__(self, widget, text, delay=400):
+        self.widget = widget
+        self.text = text
+        self.delay = delay
+        self.id = None
+        self.tw = None
+        self.widget.bind("<Enter>", self.schedule)
+        self.widget.bind("<Leave>", self.unschedule)
+        self.widget.bind("<ButtonPress>", self.unschedule)
+
+    def schedule(self, event=None):
+        self.unschedule()
+        self.id = self.widget.after(self.delay, self.show)
+
+    def unschedule(self, event=None):
+        id_ = self.id
+        self.id = None
+        if id_:
+            self.widget.after_cancel(id_)
+        self.hide()
+
+    def show(self):
+        self.hide()
+        import tkinter as tk
+        x = self.widget.winfo_rootx() + 20
+        y = self.widget.winfo_rooty() + self.widget.winfo_height() + 5
+        self.tw = tk.Toplevel(self.widget)
+        self.tw.wm_overrideredirect(True)
+        self.tw.wm_geometry(f"+{x}+{y}")
+        
+        is_light = ctk.get_appearance_mode().lower() == "light"
+        bg_col = "#ffffff" if is_light else "#141414"
+        fg_col = "#000000" if is_light else "#e0e0e0"
+        
+        label = tk.Label(self.tw, text=self.text, justify='left',
+                         background=bg_col, foreground=fg_col, relief='solid', borderwidth=1,
+                         font=("Helvetica", 11, "normal"))
+        label.pack(ipadx=4, ipady=4)
+
+    def hide(self):
+        tw = self.tw
+        self.tw = None
+        if tw:
+            tw.destroy()
 
 # ── Deduplication Dialog ───────────────────────────────────────────────────────
 class DeduplicationDialog(ctk.CTkToplevel):
@@ -29,7 +79,7 @@ class DeduplicationDialog(ctk.CTkToplevel):
         self.title("Blicsa — Deduplicação")
         self.geometry("900x620")
         self.minsize(700, 420)
-        self.configure(fg_color=CONTENT_BG)
+        self.configure(fg_color=CONTENT_BG, border_width=3, border_color=INK)
         self.grab_set()
 
         self._df       = df
@@ -41,7 +91,7 @@ class DeduplicationDialog(ctk.CTkToplevel):
         self.grid_columnconfigure(0, weight=1)
 
         # Header
-        hdr = ctk.CTkFrame(self, fg_color=CONTENT_BG)
+        hdr = ctk.CTkFrame(self, fg_color=CONTENT_BG, border_width=3, border_color=INK)
         hdr.grid(row=0, column=0, sticky="ew", padx=20, pady=(16, 4))
         ctk.CTkLabel(
             hdr,
@@ -50,7 +100,7 @@ class DeduplicationDialog(ctk.CTkToplevel):
         ).pack(side="left")
         ctk.CTkButton(
             hdr, text="Todos", width=72, height=28,
-            fg_color=TEAL, hover_color=TEAL_HOV,
+            fg_color=INK, hover_color=INK_HOV,
             command=lambda: [v.set(True) for v in self._vars],
         ).pack(side="right", padx=(6, 0))
         ctk.CTkButton(
@@ -60,7 +110,7 @@ class DeduplicationDialog(ctk.CTkToplevel):
         ).pack(side="right")
 
         # Scrollable pair list
-        sf = ctk.CTkScrollableFrame(self, fg_color=CARD2_BG, corner_radius=10)
+        sf = ctk.CTkScrollableFrame(self, fg_color=CARD2_BG, corner_radius=0)
         sf.grid(row=1, column=0, sticky="nsew", padx=20, pady=4)
         sf.grid_columnconfigure(1, weight=1)
 
@@ -75,7 +125,7 @@ class DeduplicationDialog(ctk.CTkToplevel):
             yr           = df.at[ri, "year"]
 
             bg = CARD_BG if idx % 2 == 0 else CARD2_BG
-            row_f = ctk.CTkFrame(sf, fg_color=bg, corner_radius=6)
+            row_f = ctk.CTkFrame(sf, fg_color=bg, corner_radius=0)
             row_f.grid(row=idx, column=0, columnspan=2, sticky="ew", pady=2, padx=2)
             row_f.grid_columnconfigure(1, weight=1)
 
@@ -105,7 +155,7 @@ class DeduplicationDialog(ctk.CTkToplevel):
             ).grid(row=2, column=1, padx=4, pady=(0, 6), sticky="w")
 
         # Footer
-        foot = ctk.CTkFrame(self, fg_color=CONTENT_BG)
+        foot = ctk.CTkFrame(self, fg_color=CONTENT_BG, border_width=3, border_color=INK)
         foot.grid(row=2, column=0, sticky="ew", padx=20, pady=(4, 16))
         ctk.CTkButton(
             foot, text="✕  Cancelar", width=110, height=38,
@@ -187,7 +237,7 @@ class AIInsightsWindow(ctk.CTkToplevel):
         self.title("Blicsa — Insights Analíticos com IA")
         self.geometry("820x600")
         self.minsize(600, 400)
-        self.configure(fg_color=CONTENT_BG)
+        self.configure(fg_color=CONTENT_BG, border_width=3, border_color=INK)
         
         # Center on screen
         self.transient(parent)
@@ -198,7 +248,7 @@ class AIInsightsWindow(ctk.CTkToplevel):
         self.grid_rowconfigure(1, weight=1)
         
         # Header
-        hdr = ctk.CTkFrame(self, fg_color=CARD_BG, height=52, corner_radius=8)
+        hdr = ctk.CTkFrame(self, fg_color=CARD_BG, height=52, corner_radius=0)
         hdr.grid(row=0, column=0, sticky="ew", padx=12, pady=(12, 4))
         hdr.grid_columnconfigure(0, weight=1)
         
@@ -254,7 +304,7 @@ class TrendChartWindow(ctk.CTkToplevel):
         self.title("Blicsa — Tendências de Termos")
         self.geometry("1140x680")
         self.minsize(820, 500)
-        self.configure(fg_color=CONTENT_BG)
+        self.configure(fg_color=CONTENT_BG, border_width=3, border_color=INK)
 
         self._df         = df
         self._field      = field
@@ -295,7 +345,7 @@ class TrendChartWindow(ctk.CTkToplevel):
         qf.grid(row=3, column=0, padx=8, pady=8, sticky="ew")
         ctk.CTkButton(
             qf, text="Top 5", width=64, height=26,
-            fg_color=TEAL, hover_color=TEAL_HOV,
+            fg_color=INK, hover_color=INK_HOV,
             command=self._select_top5,
         ).pack(side="left", padx=2)
         ctk.CTkButton(
@@ -429,7 +479,7 @@ class VerificationDialog(ctk.CTkToplevel):
         self.title("Verificação de Termos")
         self.geometry("800x600")
         self.minsize(600, 400)
-        self.configure(fg_color=CONTENT_BG)
+        self.configure(fg_color=CONTENT_BG, border_width=3, border_color=INK)
         self.resizable(True, True)
         self.grab_set()
 
@@ -446,7 +496,7 @@ class VerificationDialog(ctk.CTkToplevel):
 
     def _build(self):
         # Top filters
-        top = ctk.CTkFrame(self, fg_color=CONTENT_BG)
+        top = ctk.CTkFrame(self, fg_color=CONTENT_BG, border_width=3, border_color=INK)
         top.grid(row=0, column=0, sticky="ew", padx=20, pady=(16, 4))
 
         ctk.CTkLabel(top, text="Filtrar por nome:", font=ctk.CTkFont(size=12)).pack(side="left", padx=(0, 6))
@@ -456,7 +506,7 @@ class VerificationDialog(ctk.CTkToplevel):
 
         # Select all / Deselect all / inverse
         ctk.CTkButton(
-            top, text="Marcar Todos", width=100, height=28, fg_color=TEAL, hover_color=TEAL_HOV,
+            top, text="Marcar Todos", width=100, height=28, fg_color=INK, hover_color=INK_HOV,
             command=self._select_all
         ).pack(side="right", padx=(4, 0))
         ctk.CTkButton(
@@ -465,7 +515,7 @@ class VerificationDialog(ctk.CTkToplevel):
         ).pack(side="right", padx=(4, 0))
 
         # Stats bar
-        sf = ctk.CTkFrame(self, fg_color=CONTENT_BG)
+        sf = ctk.CTkFrame(self, fg_color=CONTENT_BG, border_width=3, border_color=INK)
         sf.grid(row=1, column=0, sticky="ew", padx=20, pady=2)
         self._count_lbl = ctk.CTkLabel(sf, text="0 selecionados", font=ctk.CTkFont(size=12, weight="bold"))
         self._count_lbl.pack(side="left")
@@ -474,7 +524,7 @@ class VerificationDialog(ctk.CTkToplevel):
         ctk.CTkLabel(sf, text=hint, font=ctk.CTkFont(size=11), text_color=TEXT_MUTED).pack(side="right")
 
         # Scroll list card
-        card = ctk.CTkFrame(self, fg_color=CARD_BG, corner_radius=10)
+        card = ctk.CTkFrame(self, fg_color=CARD_BG, corner_radius=0)
         card.grid(row=2, column=0, sticky="nsew", padx=20, pady=4)
         card.grid_rowconfigure(0, weight=1)
         card.grid_columnconfigure(0, weight=1)
@@ -520,7 +570,7 @@ class VerificationDialog(ctk.CTkToplevel):
         self._tree.bind("<space>", self._toggle_row)
 
         # Footer
-        foot = ctk.CTkFrame(self, fg_color=CONTENT_BG)
+        foot = ctk.CTkFrame(self, fg_color=CONTENT_BG, border_width=3, border_color=INK)
         foot.grid(row=3, column=0, sticky="ew", padx=20, pady=(4, 16))
         self._btn = ctk.CTkButton(
             foot, text="Confirmar e Gerar Mapa",
@@ -1019,7 +1069,7 @@ class BurstDetectionWindow(ctk.CTkToplevel):
         self.title("Blicsa — Detecção de Surtos (Bursts)")
         self.geometry("680x540")
         self.minsize(500, 400)
-        self.configure(fg_color=CONTENT_BG)
+        self.configure(fg_color=CONTENT_BG, border_width=3, border_color=INK)
         self.grab_set()
 
         # Title
@@ -1039,7 +1089,7 @@ class BurstDetectionWindow(ctk.CTkToplevel):
         ).pack(pady=(0, 10), padx=20, anchor="w")
 
         # Scrollable table card
-        card = ctk.CTkFrame(self, fg_color=CARD_BG, corner_radius=10)
+        card = ctk.CTkFrame(self, fg_color=CARD_BG, corner_radius=0)
         card.pack(fill="both", expand=True, padx=20, pady=(0, 20))
         card.grid_rowconfigure(0, weight=1)
         card.grid_columnconfigure(0, weight=1)

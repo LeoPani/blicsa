@@ -1,0 +1,17 @@
+figure.facecolor: F6F4EE
+axes.facecolor: F6F4EE
+axes.edgecolor: 141414
+axes.labelcolor: 8A877F
+axes.spines.top: False
+axes.spines.right: False
+xtick.color: 8A877F
+ytick.color: 8A877F
+xtick.labelsize: 9
+ytick.labelsize: 9
+font.family: sans-serif
+font.sans-serif: Archivo, DejaVu Sans, Arial
+axes.prop_cycle: cycler('color', ['DF3117', '1E4DA0', 'F5BE00', '141414', '7A9E7E', 'B65CA2', '5CB0B8', 'C97B2D'])
+lines.linewidth: 1.5
+grid.color: 8A877F
+grid.alpha: 0.2
+grid.linestyle: -

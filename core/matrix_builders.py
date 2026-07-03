@@ -10,12 +10,7 @@ import community as community_louvain
 
 from .nlp import extract_ngrams, apply_thesaurus
 
-CLUSTER_PALETTE = [
-    "#E63946", "#2A9D8F", "#E9C46A", "#457B9D", "#F4A261",
-    "#6A4C93", "#43AA8B", "#F77F00", "#4361EE", "#D62828",
-    "#3A86FF", "#8338EC", "#FB5607", "#06D6A0", "#FFBE0B",
-    "#A8DADC", "#C77DFF", "#52B788", "#F72585", "#4CC9F0",
-]
+CLUSTER_PALETTE = ['#DF3117', '#1E4DA0', '#F5BE00', '#141414', '#7A9E7E', '#B65CA2', '#5CB0B8', '#C97B2D']
 
 
 def _apply_clustering(G: nx.Graph, algorithm: str = "louvain", resolution: float = 1.0) -> dict[str, int]:

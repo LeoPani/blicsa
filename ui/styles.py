@@ -1,25 +1,26 @@
 import sys
 import customtkinter as ctk
 
-# ── Color Definitions ─────────────────────────────────────────────────────────
-SIDEBAR_BG  = ("#e6e6fa", "#0f0f1a")
-CONTENT_BG  = ("#f0f2f5", "#13131f")
-CARD_BG     = ("#ffffff", "#1a1a2e")
-CARD2_BG    = ("#eef0f6", "#0d0d1f")
-ACCENT      = "#D4A017"
-ACCENT_HOV  = "#b88a10"
-TEXT_MUTED  = ("#555566", "#888899")
-GREEN       = "#1a7a4a"
-GREEN_HOV   = "#145c38"
-PURPLE      = "#7c3aed"
-PURPLE_HOV  = "#5b21b6"
-TEAL        = "#0e7490"
-TEAL_HOV    = "#0c5f76"
+# ── Brand v2 Palette ────────────────────────────────────────────────────────
+PAPER  = "#F6F4EE"
+INK    = "#141414"
+RED    = "#DF3117"
+BLUE   = "#1E4DA0"
+YELLOW = "#F5BE00"
+MUTED  = "#8A877F"
+
+# UI mapping
+SIDEBAR_BG  = PAPER
+CONTENT_BG  = PAPER
+CARD_BG     = PAPER
+CARD2_BG    = PAPER
+TEXT_MUTED  = MUTED
+ACCENT      = RED
+ACCENT_HOV  = "#B82813"
 
 def get_color(color_val):
     if isinstance(color_val, tuple):
-        mode = ctk.get_appearance_mode().lower()
-        return color_val[0] if mode == "light" else color_val[1]
+        return color_val[0]
     return color_val
 
 class LogWriter:
@@ -41,3 +42,7 @@ class LogWriter:
 
     def flush(self):
         pass
+INK_HOV = "#2a2a2a"
+BLUE_HOV = "#153a60"
+YELLOW_HOV = "#d4a017"
+RED_HOV = "#B82813"

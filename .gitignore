@@ -33,3 +33,4 @@ Thumbs.db
 
 # User config files (may contain API keys)
 blicsa_config.json
+.blicsa_settings.json

@@ -1,3 +1,4 @@
+import sys
 # -*- mode: python ; coding: utf-8 -*-
 from PyInstaller.utils.hooks import collect_all
 import os
@@ -98,6 +99,6 @@ coll = COLLECT(
 app = BUNDLE(
     coll,
     name='Blicsa.app',
-    icon=None,
+    icon='assets/branding/blicsa-icon.icns' if sys.platform == 'darwin' else 'assets/branding/blicsa-icon.ico',
     bundle_identifier=None,
 )

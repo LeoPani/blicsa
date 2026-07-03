@@ -34,9 +34,8 @@ from core.visualizer import compute_fa2_layout, build_plotly_map, build_plotly_d
 from core.nlp import load_thesaurus
 from ai.client import GroqBibliometricAnalyst
 
-# Import styles and components from ui package
-from ui.styles import get_color, LogWriter, SIDEBAR_BG, CONTENT_BG, CARD_BG, CARD2_BG, ACCENT, ACCENT_HOV, TEXT_MUTED, GREEN, GREEN_HOV, PURPLE, PURPLE_HOV, TEAL, TEAL_HOV
-from ui.components import DeduplicationDialog, TrendChartWindow, VerificationDialog, MapCanvas, BurstDetectionWindow
+from ui.styles import get_color, LogWriter, SIDEBAR_BG, CONTENT_BG, CARD_BG, CARD2_BG, ACCENT, ACCENT_HOV, TEXT_MUTED, BLUE, YELLOW, RED, INK, PAPER, INK_HOV, BLUE_HOV, YELLOW_HOV, RED_HOV
+from ui.components import DeduplicationDialog, TrendChartWindow, VerificationDialog, MapCanvas, BurstDetectionWindow, HoverTooltip
 
 ctk.set_appearance_mode("light")
 ctk.set_default_color_theme("blue")
@@ -130,13 +129,14 @@ class BlicsaApp(ctk.CTk):
         self._content.grid_rowconfigure(0, weight=1)
 
         self._tabs: dict[str, ctk.CTkFrame] = {
+            "home":    self._build_tab_home(),
             "import":  self._build_tab_import(),
             "viz":     self._build_tab_viz(),
             "ranking": self._build_tab_ranking(),
             "export":  self._build_tab_export(),
             "stats":   self._build_tab_stats(),
         }
-        self._switch_tab("import")
+        self._switch_tab("home")
 
     def _build_sidebar(self):
         sb = ctk.CTkFrame(self, width=220, fg_color=SIDEBAR_BG, corner_radius=0)
@@ -145,13 +145,19 @@ class BlicsaApp(ctk.CTk):
         sb.grid_columnconfigure(0, weight=1)
         sb.grid_rowconfigure(9, weight=1)
 
-        ctk.CTkLabel(sb, text="Blicsa",
-                     font=ctk.CTkFont(size=34, weight="bold"),
-                     text_color=ACCENT).grid(
-            row=0, column=0, padx=22, pady=(30, 22), sticky="w")
+        try:
+            from PIL import Image
+            logo_img = ctk.CTkImage(light_image=Image.open("assets/branding/blicsa-logo-horizontal.png"), size=(180, 48))
+            ctk.CTkLabel(sb, image=logo_img, text="").grid(row=0, column=0, padx=16, pady=(30, 22), sticky="w")
+        except:
+            ctk.CTkLabel(sb, text="Blicsa",
+                         font=ctk.CTkFont(size=34, weight="bold"),
+                         text_color=ACCENT).grid(
+                row=0, column=0, padx=22, pady=(30, 22), sticky="w")
 
         self._nav_btns: dict[str, ctk.CTkButton] = {}
         for i, (key, icon, label_key) in enumerate([
+            ("home",    "🏠", "menu_home"),
             ("import",  "📂", "tab_import"),
             ("viz",     "🗺️", "tab_map_ai"),
             ("ranking", "📊", "tab_rankings"),
@@ -159,11 +165,7 @@ class BlicsaApp(ctk.CTk):
             ("stats",   "📈", "tab_stats"),
         ], start=1):
             label = t(label_key)
-            btn = ctk.CTkButton(
-                sb, text=f"{icon}  {label}", anchor="w",
-                font=ctk.CTkFont(size=13),
-                fg_color="transparent", hover_color=("#d0d0ea", "#1a1a35"),
-                text_color=("gray10", "white"), corner_radius=8, height=44,
+            btn = ctk.CTkButton(sb, text=f"{icon}  {label}", anchor="w", font=ctk.CTkFont(size=13, weight="bold"), fg_color="transparent", hover_color="#e0e0e0", text_color=INK, corner_radius=0, height=44, border_width=0, border_color=RED,
                 command=lambda k=key: self._switch_tab(k),
             )
             btn.grid(row=i, column=0, padx=10, pady=2, sticky="ew")
@@ -174,27 +176,29 @@ class BlicsaApp(ctk.CTk):
             sb, text="🌓 Alternar Tema",
             font=ctk.CTkFont(size=11),
             fg_color="transparent", hover_color=("#d0d0ea", "#1a1a35"),
-            text_color=("gray10", "white"), corner_radius=8, height=32,
+            text_color=("gray10", "white"), corner_radius=0, height=32,
             border_width=1, border_color=ACCENT,
             command=self._toggle_theme,
         )
-        self._theme_btn.grid(row=9, column=0, padx=16, pady=(10, 10), sticky="ew")
+        self._theme_btn.grid(row=9, column=0, padx=16, pady=(10, 5), sticky="ew")
+        
+        self._settings_btn = ctk.CTkButton(sb, text="⚙️ " + t("menu_settings"), font=ctk.CTkFont(size=11), fg_color="transparent", hover_color="#e0e0e0", text_color=INK, corner_radius=0, height=32, border_width=1, border_color=INK, command=self._show_settings)
+        self._settings_btn.grid(row=10, column=0, padx=16, pady=(0, 10), sticky="ew")
 
+        self._status_square = ctk.CTkFrame(sb, width=10, height=10, fg_color=BLUE, corner_radius=0)
+        self._status_square.grid(row=11, column=0, padx=(16, 0), pady=(0, 2), sticky="sw")
         self._status_lbl = ctk.CTkLabel(
             sb, text="", font=ctk.CTkFont(size=10),
             text_color=TEXT_MUTED, anchor="w",
         )
-        self._status_lbl.grid(row=10, column=0, padx=16, pady=(0, 2), sticky="sew")
+        self._status_lbl.grid(row=11, column=0, padx=(32, 16), pady=(0, 2), sticky="sew")
 
-        self._progress_bar = ctk.CTkProgressBar(sb, mode="indeterminate", height=5,
-                                                 progress_color=ACCENT, fg_color=CARD2_BG)
-        self._progress_bar.grid(row=11, column=0, padx=16, pady=(0, 8), sticky="sew")
+        self._progress_bar = ctk.CTkProgressBar(sb, mode="indeterminate", height=5, progress_color=YELLOW, fg_color=PAPER, border_width=1, border_color=INK, corner_radius=0)
+        self._progress_bar.grid(row=12, column=0, padx=16, pady=(0, 8), sticky="sew")
         self._progress_bar.grid_remove()
 
-        ctk.CTkLabel(sb, text="v3.0  •  Blicsa Engine",
-                     font=ctk.CTkFont(size=10),
-                     text_color=TEXT_MUTED).grid(
-            row=12, column=0, padx=22, pady=(0, 16), sticky="sw")
+        self._about_btn = ctk.CTkButton(sb, text="v3.0 • Blicsa Engine", font=ctk.CTkFont(size=10), text_color=TEXT_MUTED, fg_color="transparent", hover_color="#e0e0e0", corner_radius=0, command=self._show_about)
+        self._about_btn.grid(row=13, column=0, padx=22, pady=(0, 16), sticky="sw")
 
     # ── Drag-and-drop ──────────────────────────────────────────────────
     def _setup_dnd(self):
@@ -231,28 +235,162 @@ class BlicsaApp(ctk.CTk):
         self.bind_all("<Control-I>", lambda _: self._run_ai())
         self.bind_all("<Control-r>", lambda _: self._reset_view())
         self.bind_all("<Control-R>", lambda _: self._reset_view())
-        self.bind_all("<Control-f>", lambda _: self._switch_tab("import"))
-        self.bind_all("<Control-F>", lambda _: self._switch_tab("import"))
+        self.bind_all("<Control-f>", lambda _: self._switch_tab("home"))
+        self.bind_all("<Control-F>", lambda _: self._switch_tab("home"))
         self.bind_all("<Escape>",    lambda _: self._reset_view())
 
     def _set_busy(self, msg: str = "Processando…"):
         self._status_lbl.configure(text=msg)
+        if msg == 'Concluído' or 'Sucesso' in msg: self.blink_status()
         self._progress_bar.grid()
         self._progress_bar.start()
+
+    
+    def blink_status(self):
+        try:
+            settings_path = os.path.join(os.path.dirname(__file__), ".blicsa_settings.json")
+            if os.path.exists(settings_path):
+                import json
+                s = json.load(open(settings_path))
+                if s.get("reduce_animations"): return
+        except: pass
+        if hasattr(self, '_status_square'):
+            orig_h = self._status_square.winfo_height()
+            self._status_square.configure(height=2)
+            self.after(250, lambda: self._status_square.configure(height=10))
+
+    
+    
+    def _show_settings(self):
+        import tkinter as tk
+        from PIL import Image, ImageTk
+        
+        dlg = tk.Toplevel(self)
+        dlg.title(t("menu_settings"))
+        dlg.geometry("400x300")
+        dlg.configure(bg="#F6F4EE")
+        dlg.overrideredirect(True)
+        dlg.attributes("-topmost", True)
+        dlg.tk.eval('tk::PlaceWindow %s center' % dlg)
+        
+        f = tk.Frame(dlg, bg="#141414")
+        f.pack(fill="both", expand=True)
+        content = tk.Frame(f, bg="#F6F4EE")
+        content.pack(fill="both", expand=True, padx=3, pady=3)
+        
+        tk.Label(content, text=t("menu_settings"), font=("Arial", 16, "bold"), bg="#F6F4EE", fg="#141414").pack(pady=(20, 10))
+        
+        # Animations toggle
+        import os, json
+        s_path = os.path.join(os.path.dirname(__file__), ".blicsa_settings.json")
+        reduce = False
+        if os.path.exists(s_path):
+            try: reduce = json.load(open(s_path)).get("reduce_animations", False)
+            except: pass
+            
+        import customtkinter as ctk
+        var = ctk.BooleanVar(value=reduce)
+        def toggle():
+            s = {}
+            if os.path.exists(s_path):
+                try: s = json.load(open(s_path))
+                except: pass
+            s["reduce_animations"] = var.get()
+            json.dump(s, open(s_path, "w"))
+            
+        chk = ctk.CTkCheckBox(content, text=t("reduce_animations"), variable=var, command=toggle, text_color="#141414", fg_color="#DF3117", hover_color="#B82813", corner_radius=0)
+        chk.pack(pady=10)
+        
+        # Flags
+        flag_f = tk.Frame(content, bg="#F6F4EE")
+        flag_f.pack(pady=10)
+        def set_l(l):
+            from core.i18n import set_lang
+            set_lang(l)
+            self._refresh_language()
+            dlg.destroy()
+            
+        try:
+            for i, (l, f_name) in enumerate([("pt_BR", "flag-pt-br.png"), ("en", "flag-en.png"), ("fr", "flag-fr.png"), ("de", "flag-de.png")]):
+                img = ImageTk.PhotoImage(Image.open(f"assets/branding/{f_name}").resize((32, 22)))
+                btn = tk.Button(flag_f, image=img, command=lambda x=l: set_l(x), bg="#F6F4EE", relief="flat", bd=2, highlightbackground="#141414")
+                btn.image = img
+                btn.grid(row=0, column=i, padx=5)
+        except:
+            pass
+            
+        close = tk.Button(content, text="OK", command=dlg.destroy, bg="#DF3117", fg="white", relief="flat", highlightbackground="#141414", bd=2)
+        close.pack(side="bottom", pady=20)
+
+    def _refresh_language(self):
+        curr_tab = getattr(self, '_current_tab_key', "home")
+        for widget in self.winfo_children():
+            widget.destroy()
+        self._build_layout()
+        import sys
+        if hasattr(self, '_log_box'):
+            sys.stdout = LogWriter(self._log_box)
+        self._setup_shortcuts()
+        self._setup_dnd()
+        self._switch_tab(curr_tab)
+
+    def _show_about(self):
+        import tkinter as tk
+        from PIL import Image
+        import webbrowser
+        
+        dlg = tk.Toplevel(self)
+        dlg.title(t("menu_about"))
+        dlg.geometry("400x350")
+        dlg.configure(bg="#F6F4EE")
+        dlg.overrideredirect(True)
+        dlg.attributes("-topmost", True)
+        dlg.tk.eval('tk::PlaceWindow %s center' % dlg)
+        
+        # 3px ink border
+        f = tk.Frame(dlg, bg="#141414")
+        f.pack(fill="both", expand=True)
+        content = tk.Frame(f, bg="#F6F4EE")
+        content.pack(fill="both", expand=True, padx=3, pady=3)
+        
+        try:
+            from PIL import ImageTk
+            img = ImageTk.PhotoImage(Image.open("assets/branding/blicsa-logo-horizontal.png").resize((200, 54)))
+            lbl = tk.Label(content, image=img, bg="#F6F4EE")
+            lbl.image = img
+            lbl.pack(pady=(20, 0))
+        except:
+            tk.Label(content, text="Blicsa", font=("Arial", 24, "bold"), bg="#F6F4EE", fg="#141414").pack(pady=(20, 0))
+            
+        tk.Label(content, text="just blink", font=("Arial", 12), bg="#F6F4EE", fg="#8A877F").pack(pady=(0, 10))
+        tk.Label(content, text="v3.0", font=("Arial", 10), bg="#F6F4EE", fg="#141414").pack(pady=5)
+        
+        tk.Label(content, text="Desenvolvido por ICSA/UFOP", font=("Arial", 10), bg="#F6F4EE", fg="#141414").pack(pady=5)
+        tk.Label(content, text="Licença MIT", font=("Arial", 10), bg="#F6F4EE", fg="#141414").pack(pady=5)
+        
+        btn_f = tk.Frame(content, bg="#F6F4EE")
+        btn_f.pack(side="bottom", fill="x", pady=20, padx=20)
+        
+        gh = tk.Button(btn_f, text="GitHub", command=lambda: webbrowser.open("https://github.com"), bg="#F6F4EE", fg="#141414", relief="flat", highlightbackground="#141414", bd=2)
+        gh.pack(side="left", padx=10)
+        
+        close = tk.Button(btn_f, text="OK", command=dlg.destroy, bg="#DF3117", fg="white", relief="flat", highlightbackground="#141414", bd=2)
+        close.pack(side="right", padx=10)
 
     def _set_idle(self, msg: str = ""):
         self._progress_bar.stop()
         self._progress_bar.grid_remove()
         self._status_lbl.configure(text=msg)
+        if msg == 'Concluído' or 'Sucesso' in msg: self.blink_status()
 
-    def _switch_tab(self, key: str):
-        for f in self._tabs.values():
-            f.grid_remove()
-        self._tabs[key].grid(row=0, column=0, sticky="nsew")
+    def _switch_tab(self, tab_key: str):
+        self._current_tab_key = tab_key
+        for key, frame in self._tabs.items():
+            frame.grid_remove()
+        self._tabs[tab_key].grid(row=0, column=0, sticky="nsew")
         for k, btn in self._nav_btns.items():
-            active = k == key
-            btn.configure(fg_color=ACCENT if active else "transparent",
-                          text_color="#000" if active else ("gray10", "white"))
+            active = k == tab_key
+            btn.configure(border_width=6 if active else 0, font=ctk.CTkFont(size=13, weight="bold" if active else "normal"))
 
     def _toggle_theme(self):
         current = ctk.get_appearance_mode().lower()
@@ -311,7 +449,7 @@ class BlicsaApp(ctk.CTk):
         return f
 
     def _card(self, parent, row: int, pady: int = 8) -> ctk.CTkFrame:
-        c = ctk.CTkFrame(parent, fg_color=CARD_BG, corner_radius=12)
+        c = ctk.CTkFrame(parent, fg_color=CARD_BG, corner_radius=0)
         c.grid(row=row, column=0, padx=24, pady=pady, sticky="nsew")
         c.grid_columnconfigure(0, weight=1)
         return c
@@ -332,6 +470,133 @@ class BlicsaApp(ctk.CTk):
             command=cmd, **kw)
 
     # ── Tab: Importação ────────────────────────────────────────────────
+    def _build_tab_home(self) -> ctk.CTkFrame:
+        from PIL import Image
+        frame = self._tab()
+        
+        # Slogan & Logo strip
+        top_strip = ctk.CTkFrame(frame, fg_color="transparent")
+        top_strip.grid(row=0, column=0, padx=24, pady=(24, 16), sticky="ew")
+        top_strip.grid_columnconfigure(1, weight=1)
+        
+        # Remove logo, keeping only top_strip as a flex container for flags
+        pass
+            
+        # Flags
+        flag_f = ctk.CTkFrame(top_strip, fg_color="transparent")
+        flag_f.grid(row=0, column=2, rowspan=2, sticky="e")
+        
+        def set_l(l):
+            from core.i18n import set_lang
+            set_lang(l)
+            self._refresh_language()
+            
+        try:
+            for i, (l, f_name) in enumerate([("pt_BR", "flag-pt-br.png"), ("en", "flag-en.png"), ("fr", "flag-fr.png"), ("de", "flag-de.png")]):
+                img = ctk.CTkImage(light_image=Image.open(f"assets/branding/{f_name}"), size=(32, 22))
+                btn = ctk.CTkButton(flag_f, image=img, text="", width=32, height=22, fg_color="transparent", corner_radius=0, border_width=2, border_color=INK, hover_color="#e0e0e0", command=lambda x=l: set_l(x))
+                btn.grid(row=0, column=i, padx=4)
+        except:
+            pass
+
+        # Chat Interface
+        chat_container = ctk.CTkFrame(frame, fg_color="transparent")
+        chat_container.grid(row=1, column=0, padx=24, pady=16, sticky="nsew")
+        frame.grid_rowconfigure(1, weight=1)
+        chat_container.grid_rowconfigure(1, weight=1)
+        chat_container.grid_columnconfigure(0, weight=1)
+        
+        title_f = ctk.CTkFrame(chat_container, fg_color="transparent")
+        title_f.grid(row=0, column=0, pady=(0, 20), sticky="w")
+        ctk.CTkLabel(title_f, text="✨ O que vamos ", font=ctk.CTkFont(size=32, weight="bold"), text_color=INK).pack(side="left")
+        ctk.CTkLabel(title_f, text="pesquisar", font=ctk.CTkFont(size=32, weight="bold"), text_color=RED).pack(side="left")
+        ctk.CTkLabel(title_f, text=" hoje?", font=ctk.CTkFont(size=32, weight="bold"), text_color=INK).pack(side="left")
+        
+        self._research_chat_history = ctk.CTkTextbox(chat_container, wrap="word", font=ctk.CTkFont(size=14), fg_color=CARD_BG, text_color=INK, border_width=3, border_color=INK, corner_radius=0)
+        self._research_chat_history.grid(row=1, column=0, sticky="nsew", pady=(0, 20))
+        self._research_chat_history.insert("end", "Blink Research: Olá! Sou seu assistente de pesquisa do Blicsa. Diga-me o que deseja investigar hoje, e eu te darei insights e direções de onde encontrar essas informações nas abas do Blicsa.\n\n")
+        self._research_chat_history.configure(state="disabled")
+        
+        input_f = ctk.CTkFrame(chat_container, fg_color="transparent")
+        input_f.grid(row=2, column=0, sticky="ew", pady=(0, 20))
+        input_f.grid_columnconfigure(0, weight=1)
+        
+        self._research_chat_input = ctk.CTkEntry(input_f, placeholder_text="Digite sua pergunta ou tema de pesquisa...", font=ctk.CTkFont(size=14), height=44, corner_radius=0, border_width=2, border_color=INK)
+        self._research_chat_input.grid(row=0, column=0, sticky="ew", padx=(0, 10))
+        self._research_chat_input.bind("<Return>", lambda e: self._send_research_chat())
+        
+        ctk.CTkButton(input_f, text="Enviar", font=ctk.CTkFont(size=14, weight="bold"), fg_color=RED, text_color="white", hover_color=RED_HOV, corner_radius=0, border_width=2, border_color=INK, height=44, width=100, command=self._send_research_chat).grid(row=0, column=1)
+        
+        # Suggestions
+        sug_f = ctk.CTkFrame(chat_container, fg_color="transparent")
+        sug_f.grid(row=3, column=0, sticky="ew")
+        
+        sug_f_1 = ctk.CTkFrame(sug_f, fg_color="transparent")
+        sug_f_1.pack(fill="x", pady=5)
+        sug_f_2 = ctk.CTkFrame(sug_f, fg_color="transparent")
+        sug_f_2.pack(fill="x", pady=5)
+        
+        sugs_1 = [
+            "Quais as tendências mais recentes?",
+            "Me ensine a importar do Scopus",
+            "O que é a Lei de Lotka?"
+        ]
+        sugs_2 = [
+            "Como faço análise de rede de citações?",
+            "Detectar picos de publicações",
+            "O que é um cluster bibliométrico?"
+        ]
+        
+        for i, s_txt in enumerate(sugs_1):
+            ctk.CTkButton(sug_f_1, text=s_txt, font=ctk.CTkFont(size=12), fg_color=PAPER, text_color=INK, hover_color="#e0e0e0", corner_radius=0, border_width=1, border_color=INK, command=lambda txt=s_txt: self._research_chat_input.insert(0, txt) or self._send_research_chat()).grid(row=0, column=i, padx=(0, 10))
+            
+        for i, s_txt in enumerate(sugs_2):
+            ctk.CTkButton(sug_f_2, text=s_txt, font=ctk.CTkFont(size=12), fg_color=PAPER, text_color=INK, hover_color="#e0e0e0", corner_radius=0, border_width=1, border_color=INK, command=lambda txt=s_txt: self._research_chat_input.insert(0, txt) or self._send_research_chat()).grid(row=0, column=i, padx=(0, 10))
+            
+        self._research_messages = []
+
+        return frame
+
+    def _send_research_chat(self):
+        msg = self._research_chat_input.get().strip()
+        if not msg: return
+        
+        self._research_chat_input.delete(0, "end")
+        self._research_chat_history.configure(state="normal")
+        self._research_chat_history.insert("end", f"Você: {msg}\n\n")
+        self._research_chat_history.see("end")
+        self._research_chat_history.configure(state="disabled")
+        
+        if not self._research_messages:
+            self._research_messages.append({
+                "role": "system",
+                "content": "Você é o 'Blink Research', um assistente de IA focado em pesquisa dentro do software Blicsa. Ajude o usuário com sua pesquisa bibliométrica, sugerindo que abas usar (Importação, Mapa & IA, Rankings, etc), quais métodos de contagem ou parâmetros de rede funcionariam melhor. Seja proativo, direto e use linguagem clara em português. Lembre-o de importar os dados na aba 'Importação' se ele ainda não o fez."
+            })
+            
+        self._research_messages.append({"role": "user", "content": msg})
+        
+        import threading
+        def worker():
+            from ai.client import AIAnalyst
+            analyst = AIAnalyst(
+                api_key=self._api_key_var.get() or None,
+                base_url=self._ai_base_url_var.get(),
+                model=self._ai_model_var.get()
+            )
+            # using our newly added chat_history method
+            resp = analyst.chat_history(self._research_messages, temperature=0.7)
+            self._research_messages.append({"role": "assistant", "content": resp})
+            
+            def update_ui():
+                self._research_chat_history.configure(state="normal")
+                self._research_chat_history.insert("end", f"Blink: {resp}\n\n")
+                self._research_chat_history.see("end")
+                self._research_chat_history.configure(state="disabled")
+                
+            self.after(0, update_ui)
+            
+        threading.Thread(target=worker, daemon=True).start()
+
     def _build_tab_import(self) -> ctk.CTkFrame:
         frame = self._tab()
         frame.grid_rowconfigure(4, weight=1)
@@ -364,7 +629,7 @@ class BlicsaApp(ctk.CTk):
         ctk.CTkLabel(card, text="Arquivos:",
                      font=ctk.CTkFont(size=13)).grid(
             row=1, column=0, padx=16, pady=(8, 0), sticky="nw")
-        list_frame = ctk.CTkFrame(card, fg_color=CARD2_BG, corner_radius=8)
+        list_frame = ctk.CTkFrame(card, fg_color=CARD2_BG, corner_radius=0)
         list_frame.grid(row=1, column=1, padx=8, pady=(8, 0), sticky="ew")
         list_frame.grid_columnconfigure(0, weight=1)
         self._file_list_frame = ctk.CTkScrollableFrame(
@@ -388,10 +653,10 @@ class BlicsaApp(ctk.CTk):
         self._btn(act_f, "⚡  Carregar e Combinar", self._load_data).grid(
             row=0, column=0, padx=(0, 4), sticky="ew")
         self._btn(act_f, "🔍  Deduplicar", self._run_dedup,
-                  color=TEAL, hover=TEAL_HOV).grid(
+                  color=INK, hover=INK_HOV).grid(
             row=0, column=1, padx=4, sticky="ew")
         self._btn(act_f, "📂  Abrir Projeto (.blicsa)", self._load_project_gui,
-                  color=GREEN, hover=GREEN_HOV).grid(
+                  color=BLUE, hover=BLUE_HOV).grid(
             row=0, column=2, padx=(4, 0), sticky="ew")
 
         # Search card (Row 2)
@@ -476,7 +741,7 @@ class BlicsaApp(ctk.CTk):
         frame.grid_rowconfigure(0, weight=1)
         
         # ── Left Config Sidebar ──
-        config_panel = ctk.CTkFrame(frame, width=290, fg_color=CARD_BG, corner_radius=12)
+        config_panel = ctk.CTkFrame(frame, width=290, fg_color=CARD_BG, corner_radius=0)
         config_panel.grid(row=0, column=0, padx=(20, 6), pady=16, sticky="nsew")
         config_panel.grid_propagate(False)
         config_panel.grid_columnconfigure(0, weight=1)
@@ -514,20 +779,20 @@ class BlicsaApp(ctk.CTk):
             row=0, column=1, padx=4, sticky="ew")
         self._btn(br, "🌐  HTML no Navegador",
                   self._open_map_browser,
-                  color=GREEN, hover=GREEN_HOV, height=44).grid(
+                  color=BLUE, hover=BLUE_HOV, height=44).grid(
             row=0, column=2, padx=4, sticky="ew")
         self._btn(br, "✨  Insights com IA", self._run_ai,
-                  color=PURPLE, hover=PURPLE_HOV, height=44).grid(
+                  color=YELLOW, hover=YELLOW_HOV, height=44).grid(
             row=0, column=3, padx=4, sticky="ew")
             
         self._btn(br, "🏷️  Nomear Clusters", self._auto_label_clusters,
                   color="#1a5a3a", hover="#144a2e", height=44).grid(
             row=1, column=0, padx=4, pady=(4, 0), sticky="ew")
         self._btn(br, "📈  Tendências", self._open_trends,
-                  color=TEAL, hover=TEAL_HOV, height=44).grid(
+                  color=INK, hover=INK_HOV, height=44).grid(
             row=1, column=1, padx=4, pady=(4, 0), sticky="ew")
         self._btn(br, "☁  Word Cloud", self._show_wordcloud,
-                  color=PURPLE, hover=PURPLE_HOV, height=44).grid(
+                  color=YELLOW, hover=YELLOW_HOV, height=44).grid(
             row=1, column=2, columnspan=2, padx=4, pady=(4, 0), sticky="ew")
 
         # Row 2 Actions
@@ -624,7 +889,7 @@ class BlicsaApp(ctk.CTk):
             ("avg_citations",   "Média Cit."),
             ("network_density", "Densidade"),
         ]):
-            inner = ctk.CTkFrame(sc, fg_color=CARD2_BG, corner_radius=8)
+            inner = ctk.CTkFrame(sc, fg_color=CARD2_BG, corner_radius=0)
             inner.grid(row=0, column=col, padx=4, pady=6, sticky="ew")
             v = ctk.CTkLabel(inner, text="—",
                              font=ctk.CTkFont(size=18, weight="bold"),
@@ -642,7 +907,7 @@ class BlicsaApp(ctk.CTk):
         self._map_canvas = MapCanvas(map_card, node_click_cb=self._on_node_click)
 
         # ── Right IA & Info Panel ──
-        info_panel = ctk.CTkFrame(frame, width=340, fg_color=CARD_BG, corner_radius=12)
+        info_panel = ctk.CTkFrame(frame, width=340, fg_color=CARD_BG, corner_radius=0)
         info_panel.grid(row=0, column=2, padx=(6, 20), pady=16, sticky="nsew")
         info_panel.grid_propagate(False)
         info_panel.grid_columnconfigure(0, weight=1)
@@ -715,11 +980,15 @@ class BlicsaApp(ctk.CTk):
 
     def _build_config_widgets(self, sc):
         # 1. Tipo de Mapa
-        ctk.CTkLabel(sc, text="Tipo de Mapa:", font=ctk.CTkFont(size=11, weight="bold")).pack(anchor="w", padx=10, pady=(8, 2))
+        lbl_tipo = ctk.CTkLabel(sc, text="Tipo de Mapa:", font=ctk.CTkFont(size=11, weight="bold"))
+        lbl_tipo.pack(anchor="w", padx=10, pady=(8, 2))
+        HoverTooltip(lbl_tipo, "O tipo de rede a ser construída.\n- Coocorrência: Itens que aparecem juntos no mesmo artigo.\n- Coautoria: Autores que publicam juntos.\n- Cocitação: Duas referências citadas pelo mesmo artigo.\n- Acoplamento: Artigos que citam as mesmas referências.")
         ctk.CTkComboBox(sc, values=MAP_TYPES, variable=self._map_type_var, height=28, button_color=ACCENT, border_color=ACCENT).pack(fill="x", padx=10, pady=(0, 6))
         
         # 2. Campo
-        ctk.CTkLabel(sc, text="Campo:", font=ctk.CTkFont(size=11, weight="bold")).pack(anchor="w", padx=10, pady=(4, 2))
+        lbl_campo = ctk.CTkLabel(sc, text="Campo:", font=ctk.CTkFont(size=11, weight="bold"))
+        lbl_campo.pack(anchor="w", padx=10, pady=(4, 2))
+        HoverTooltip(lbl_campo, "A coluna do conjunto de dados a ser extraída.\nPara Coocorrência, Palavras-chave é o padrão.\nPara Coautoria, Autores.\nPara Cocitação, Referências.")
         FIELD_LABELS = [x[0] for x in FIELD_OPTS]
         FIELD_KEYS = [x[1] for x in FIELD_OPTS]
         
@@ -732,14 +1001,20 @@ class BlicsaApp(ctk.CTk):
         ctk.CTkComboBox(sc, values=FIELD_LABELS, variable=self._field_label_var, height=28, button_color=ACCENT, border_color=ACCENT, command=_on_field_combo).pack(fill="x", padx=10, pady=(0, 6))
         
         # 3. Método de Contagem
-        ctk.CTkLabel(sc, text="Contagem:", font=ctk.CTkFont(size=11, weight="bold")).pack(anchor="w", padx=10, pady=(4, 2))
+        lbl_contagem = ctk.CTkLabel(sc, text="Contagem:", font=ctk.CTkFont(size=11, weight="bold"))
+        lbl_contagem.pack(anchor="w", padx=10, pady=(4, 2))
+        HoverTooltip(lbl_contagem, "Full: peso 1 para cada conexão. Fractional: peso diluído pelo número total de conexões no artigo (minimiza o peso de artigos com dezenas de referências).")
         ctk.CTkComboBox(sc, values=["full", "fractional"], variable=self._counting_var, height=28, button_color=ACCENT, border_color=ACCENT).pack(fill="x", padx=10, pady=(0, 6))
         
         # 4. Normalização
-        ctk.CTkCheckBox(sc, text="Assoc. Strength", variable=self._assoc_var, font=ctk.CTkFont(size=11), fg_color=ACCENT, hover_color=ACCENT_HOV).pack(anchor="w", padx=10, pady=8)
+        chk_assoc = ctk.CTkCheckBox(sc, text="Assoc. Strength", variable=self._assoc_var, font=ctk.CTkFont(size=11), fg_color=ACCENT, hover_color=ACCENT_HOV)
+        chk_assoc.pack(anchor="w", padx=10, pady=8)
+        HoverTooltip(chk_assoc, "Aplica Associação Van Eck & Waltman (VOSviewer) dividindo o peso das arestas pelas frequências de ocorrência dos nós, evidenciando as relações mais raras e significativas.")
         
         # 5. Frequência Mínima
-        ctk.CTkLabel(sc, text="Freq. Mínima:", font=ctk.CTkFont(size=11, weight="bold")).pack(anchor="w", padx=10, pady=(4, 2))
+        lbl_freq = ctk.CTkLabel(sc, text="Freq. Mínima:", font=ctk.CTkFont(size=11, weight="bold"))
+        lbl_freq.pack(anchor="w", padx=10, pady=(4, 2))
+        HoverTooltip(lbl_freq, "O número mínimo de documentos em que um termo/autor deve aparecer para ser incluído no mapa.")
         occ_f = ctk.CTkFrame(sc, fg_color="transparent")
         occ_f.pack(fill="x", padx=10, pady=(0, 6))
         self._occ_lbl = ctk.CTkLabel(occ_f, text="3", font=ctk.CTkFont(size=13, weight="bold"), text_color=ACCENT)
@@ -756,14 +1031,20 @@ class BlicsaApp(ctk.CTk):
         self._thresh_lbl.pack(anchor="w", padx=10, pady=(0, 6))
         
         # 6. Filtro de Nós (Máx. nós ou Top %)
-        ctk.CTkLabel(sc, text="Máx. Nós (0=∞):", font=ctk.CTkFont(size=11, weight="bold")).pack(anchor="w", padx=10, pady=(4, 2))
+        lbl_max = ctk.CTkLabel(sc, text="Máx. Nós (0=∞):", font=ctk.CTkFont(size=11, weight="bold"))
+        lbl_max.pack(anchor="w", padx=10, pady=(4, 2))
+        HoverTooltip(lbl_max, "Limita o número total de nós no mapa filtrando pelos mais relevantes (com maior grau de conexão). Zero significa sem limites.")
         ctk.CTkEntry(sc, textvariable=self._max_nodes_var, height=28, border_color=ACCENT).pack(fill="x", padx=10, pady=(0, 6))
         
-        ctk.CTkLabel(sc, text="ou Top % Relevância:", font=ctk.CTkFont(size=11, weight="bold")).pack(anchor="w", padx=10, pady=(4, 2))
+        lbl_top = ctk.CTkLabel(sc, text="ou Top % Relevância:", font=ctk.CTkFont(size=11, weight="bold"))
+        lbl_top.pack(anchor="w", padx=10, pady=(4, 2))
+        HoverTooltip(lbl_top, "Filtra apenas a porcentagem (ex: 60) de termos mais relevantes de acordo com a pontuação de densidade / tf-idf.")
         ctk.CTkEntry(sc, textvariable=self._max_pct_var, placeholder_text="ex: 60", height=28, border_color=ACCENT).pack(fill="x", padx=10, pady=(0, 6))
         
         # 7. Iterações Layout FA2
-        ctk.CTkLabel(sc, text="Iterações FA2:", font=ctk.CTkFont(size=11, weight="bold")).pack(anchor="w", padx=10, pady=(4, 2))
+        lbl_fa2 = ctk.CTkLabel(sc, text="Iterações FA2:", font=ctk.CTkFont(size=11, weight="bold"))
+        lbl_fa2.pack(anchor="w", padx=10, pady=(4, 2))
+        HoverTooltip(lbl_fa2, "Quantidade de iterações do algoritmo de espacialização ForceAtlas2. Um valor maior torna o mapa mais estável e agrupado, porém demora mais para calcular.")
         fa2_f = ctk.CTkFrame(sc, fg_color="transparent")
         fa2_f.pack(fill="x", padx=10, pady=(0, 6))
         self._fa2_lbl = ctk.CTkLabel(fa2_f, text="500", font=ctk.CTkFont(size=13, weight="bold"), text_color=ACCENT)
@@ -776,13 +1057,19 @@ class BlicsaApp(ctk.CTk):
             command=lambda v: self._fa2_lbl.configure(text=str(int(v))),
         ).pack(side="left", fill="x", expand=True)
         
-        ctk.CTkCheckBox(sc, text="LinLog Mode", variable=self._linlog_var, font=ctk.CTkFont(size=11), fg_color=ACCENT, hover_color=ACCENT_HOV).pack(anchor="w", padx=10, pady=6)
+        chk_linlog = ctk.CTkCheckBox(sc, text="LinLog Mode", variable=self._linlog_var, font=ctk.CTkFont(size=11), fg_color=ACCENT, hover_color=ACCENT_HOV)
+        chk_linlog.pack(anchor="w", padx=10, pady=6)
+        HoverTooltip(chk_linlog, "Um modo alternativo de força no ForceAtlas2 que afasta mais os clusters uns dos outros para uma visualização com menos sobreposição.")
         
         # Algoritmo de Cluster & Resolução
-        ctk.CTkLabel(sc, text="Algoritmo de Cluster:", font=ctk.CTkFont(size=11, weight="bold")).pack(anchor="w", padx=10, pady=(4, 2))
+        lbl_alg = ctk.CTkLabel(sc, text="Algoritmo de Cluster:", font=ctk.CTkFont(size=11, weight="bold"))
+        lbl_alg.pack(anchor="w", padx=10, pady=(4, 2))
+        HoverTooltip(lbl_alg, "O algoritmo para detectar comunidades na rede. O Leiden é mais rápido e garante melhor otimização matemática para grafos complexos do que o Louvain tradicional.")
         ctk.CTkComboBox(sc, values=["louvain", "leiden"], variable=self._cluster_alg_var, height=28, button_color=ACCENT, border_color=ACCENT).pack(fill="x", padx=10, pady=(0, 6))
         
-        ctk.CTkLabel(sc, text="Resolução Cluster:", font=ctk.CTkFont(size=11, weight="bold")).pack(anchor="w", padx=10, pady=(4, 2))
+        lbl_res = ctk.CTkLabel(sc, text="Resolução Cluster:", font=ctk.CTkFont(size=11, weight="bold"))
+        lbl_res.pack(anchor="w", padx=10, pady=(4, 2))
+        HoverTooltip(lbl_res, "Controla o número de clusters gerados.\n- Valores > 1 geram mais clusters (menores).\n- Valores < 1 geram menos clusters (maiores).")
         res_f = ctk.CTkFrame(sc, fg_color="transparent")
         res_f.pack(fill="x", padx=10, pady=(0, 6))
         self._res_lbl = ctk.CTkLabel(res_f, text="1.00", font=ctk.CTkFont(size=13, weight="bold"), text_color=ACCENT)
@@ -796,11 +1083,15 @@ class BlicsaApp(ctk.CTk):
         ).pack(side="left", fill="x", expand=True)
 
         # 8. Modo de Visualização
-        ctk.CTkLabel(sc, text="Modo de Visualização:", font=ctk.CTkFont(size=11, weight="bold")).pack(anchor="w", padx=10, pady=(4, 2))
+        lbl_viz = ctk.CTkLabel(sc, text="Modo de Visualização:", font=ctk.CTkFont(size=11, weight="bold"))
+        lbl_viz.pack(anchor="w", padx=10, pady=(4, 2))
+        HoverTooltip(lbl_viz, "As cores dos nós serão baseadas nesta métrica:\n- Clusters: Cores por agrupamento.\n- Ano Médio: Heatmap temporal.\n- Grau / Betweenness / Densidade: Métricas de centralidade.")
         ctk.CTkComboBox(sc, values=VIZ_MODES, variable=self._viz_mode_var, height=28, button_color=ACCENT, border_color=ACCENT).pack(fill="x", padx=10, pady=(0, 6))
         
         # 9. Filtro de Período (Anos)
-        ctk.CTkLabel(sc, text="Período (Anos):", font=ctk.CTkFont(size=11, weight="bold")).pack(anchor="w", padx=10, pady=(4, 2))
+        lbl_yr = ctk.CTkLabel(sc, text="Período (Anos):", font=ctk.CTkFont(size=11, weight="bold"))
+        lbl_yr.pack(anchor="w", padx=10, pady=(4, 2))
+        HoverTooltip(lbl_yr, "Filtra a base antes da geração do mapa considerando apenas publicações entre os anos indicados.")
         yr_f = ctk.CTkFrame(sc, fg_color="transparent")
         yr_f.pack(fill="x", padx=10, pady=(0, 6))
         ctk.CTkEntry(yr_f, textvariable=self._year_min_var, placeholder_text="De", width=70, height=28, border_color=ACCENT).pack(side="left", fill="x", expand=True, padx=(0, 4))
@@ -808,7 +1099,9 @@ class BlicsaApp(ctk.CTk):
         ctk.CTkEntry(yr_f, textvariable=self._year_max_var, placeholder_text="Até", width=70, height=28, border_color=ACCENT).pack(side="left", fill="x", expand=True, padx=(4, 0))
         
         # 10. Stopwords extras
-        ctk.CTkLabel(sc, text="Stopwords Extras:", font=ctk.CTkFont(size=11, weight="bold")).pack(anchor="w", padx=10, pady=(4, 2))
+        lbl_sw = ctk.CTkLabel(sc, text="Stopwords Extras:", font=ctk.CTkFont(size=11, weight="bold"))
+        lbl_sw.pack(anchor="w", padx=10, pady=(4, 2))
+        HoverTooltip(lbl_sw, "Palavras para remover explicitamente das palavras-chave separadas por vírgula (Ex: review, human, article).")
         ctk.CTkEntry(sc, textvariable=self._extra_sw_var, placeholder_text="ex: word, study", height=28, border_color=ACCENT).pack(fill="x", padx=10, pady=(0, 6))
         
         # 11. Thesaurus CSV
@@ -846,8 +1139,8 @@ class BlicsaApp(ctk.CTk):
         # 15. Config Persistence
         pf = ctk.CTkFrame(sc, fg_color="transparent")
         pf.pack(fill="x", padx=10, pady=8)
-        self._btn(pf, "💾 Salvar", self._save_config, height=28, color=TEAL, hover=TEAL_HOV).pack(side="left", fill="x", expand=True, padx=(0, 4))
-        self._btn(pf, "📂 Carregar", self._load_config, height=28, color=TEAL, hover=TEAL_HOV).pack(side="right", fill="x", expand=True, padx=(4, 0))
+        self._btn(pf, "💾 Salvar", self._save_config, height=28, color=INK, hover=INK_HOV).pack(side="left", fill="x", expand=True, padx=(0, 4))
+        self._btn(pf, "📂 Carregar", self._load_config, height=28, color=INK, hover=INK_HOV).pack(side="right", fill="x", expand=True, padx=(4, 0))
     # ── Tab: Rankings ──────────────────────────────────────────────────
     def _build_tab_ranking(self) -> ctk.CTkFrame:
         frame = self._tab()
@@ -927,7 +1220,7 @@ class BlicsaApp(ctk.CTk):
         xcard = self._card(frame, 3)
         xcard.grid_columnconfigure(0, weight=1)
         self._btn(xcard, "📊  Exportar Tudo para Excel (.xlsx)",
-                  self._export_excel, color=GREEN, hover=GREEN_HOV,
+                  self._export_excel, color=BLUE, hover=BLUE_HOV,
                   height=44).grid(row=0, column=0, padx=16, pady=12, sticky="ew")
 
         # Graph format exports
@@ -941,7 +1234,7 @@ class BlicsaApp(ctk.CTk):
             ("{ }  JSON Topologia (frontend)", self._export_json),
             ("📊  VOSviewer Map/Net",          self._export_vosviewer),
         ]):
-            self._btn(gcard, lbl, cmd, height=44, color=TEAL, hover=TEAL_HOV).grid(
+            self._btn(gcard, lbl, cmd, height=44, color=INK, hover=INK_HOV).grid(
                 row=0, column=col, padx=10, pady=12, sticky="ew")
 
         # Project Save
@@ -949,7 +1242,7 @@ class BlicsaApp(ctk.CTk):
         pcard = self._card(frame, 7)
         pcard.grid_columnconfigure(0, weight=1)
         self._btn(pcard, "💾  Salvar Projeto Completo (.blicsa)",
-                  self._save_project_gui, color=GREEN, hover=GREEN_HOV,
+                  self._save_project_gui, color=BLUE, hover=BLUE_HOV,
                   height=44).grid(row=0, column=0, padx=16, pady=12, sticky="ew")
 
         return frame
@@ -1027,7 +1320,7 @@ class BlicsaApp(ctk.CTk):
                 self._add_file_row(p, fmt)
 
     def _add_file_row(self, path: str, fmt: str):
-        row_f = ctk.CTkFrame(self._file_list_frame, fg_color=CARD_BG, corner_radius=6)
+        row_f = ctk.CTkFrame(self._file_list_frame, fg_color=CARD_BG, corner_radius=0)
         row_f.pack(fill="x", pady=2)
         row_f.grid_columnconfigure(0, weight=1)
         ctk.CTkLabel(row_f, text=Path(path).name, anchor="w",
@@ -2984,12 +3277,105 @@ if __name__ == "__main__":
             from core.matrix_builders import NetworkGenerator
             from core.visualizer import build_plotly_map
             from core.nlp import extract_ngrams
-            print("Blicsa v2.0-upgrade")
-            print("Self-check passed: Core modules imported successfully.")
+            # Check translation parity
+            import json, os
+            locales_dir = os.path.join(os.path.dirname(__file__), "locales")
+            with open(os.path.join(locales_dir, "en.json")) as f: en = json.load(f)
+            with open(os.path.join(locales_dir, "fr.json")) as f: fr = json.load(f)
+            with open(os.path.join(locales_dir, "pt_BR.json")) as f: pt = json.load(f)
+            en_keys = set(k for k in en.keys() if k != "_note")
+            fr_keys = set(k for k in fr.keys() if k != "_note")
+            pt_keys = set(k for k in pt.keys() if k != "_note")
+            if not (en_keys == fr_keys == pt_keys):
+                print(f"Self-check FAILED: Translation keys do not match. Missing in fr: {en_keys - fr_keys}, Missing in pt: {en_keys - pt_keys}", file=sys.stderr)
+                sys.exit(1)
+            print("Blicsa v3.0-upgrade")
+            print("Self-check passed: Core modules imported successfully and catalogs match.")
             sys.exit(0)
         except Exception as e:
             print(f"Self-check FAILED: {e}", file=sys.stderr)
             sys.exit(1)
 
+    import tkinter as tk
+    from PIL import Image, ImageTk
+    
     app = BlicsaApp()
+    app.withdraw()
+    
+    splash = tk.Toplevel(app)
+    splash.overrideredirect(True)
+    splash.geometry("600x400")
+    
+    # 3px ink border
+    splash.configure(bg="#141414")
+    content = tk.Frame(splash, bg="#F6F4EE")
+    content.pack(fill="both", expand=True, padx=3, pady=3)
+    
+    lbl = tk.Label(content, bg="#F6F4EE")
+    lbl.place(relx=0.5, rely=0.5, anchor="center")
+    
+    # Version string
+    ver = tk.Label(content, text="v3.0", bg="#F6F4EE", fg="#8A877F", font=("Arial", 11))
+    ver.place(relx=0.98, rely=0.98, anchor="se")
+    
+    frames = []
+    try:
+        gif = Image.open("assets/branding/blicsa-splash.gif")
+        for i in range(gif.n_frames):
+            gif.seek(i)
+            frames.append(ImageTk.PhotoImage(gif.copy()))
+    except:
+        pass
+        
+    def play_gif(idx):
+        if not frames: return
+        
+        # Check settings
+        import os, json
+        s_path = os.path.join(os.path.dirname(__file__), ".blicsa_settings.json")
+        reduce = False
+        if os.path.exists(s_path):
+            try:
+                s = json.load(open(s_path))
+                reduce = s.get("reduce_animations", False)
+            except: pass
+            
+        if reduce:
+            lbl.config(image=frames[-1])
+            return
+            
+        lbl.config(image=frames[idx])
+        splash.after(42, play_gif, (idx + 1) % len(frames))
+        
+    if frames:
+        play_gif(0)
+        
+    # Apply app icon
+    try:
+        if sys.platform == "win32":
+            app.iconbitmap("assets/branding/blicsa-icon.ico")
+        else:
+            ico = tk.PhotoImage(file="assets/branding/blicsa-icon-256.png")
+            app.iconphoto(True, ico)
+    except:
+        pass
+        
+    def center_splash():
+        splash.update_idletasks()
+        w = splash.winfo_width()
+        h = splash.winfo_height()
+        ws = splash.winfo_screenwidth()
+        hs = splash.winfo_screenheight()
+        x = (ws/2) - (w/2)
+        y = (hs/2) - (h/2)
+        splash.geometry('%dx%d+%d+%d' % (w, h, x, y))
+        
+    center_splash()
+    
+    def close_splash():
+        splash.destroy()
+        app.deiconify()
+        
+    # Close after 3 seconds (max) or let one pass finish
+    app.after(3000, close_splash)
     app.mainloop()

@@ -1,4 +1,6 @@
-# Blicsa — Inteligência Bibliométrica
+![Blicsa](assets/branding/blicsa-logo-horizontal.png)
+
+![Animated Splash](assets/branding/blicsa-logo-animated.svg)
 
 Desktop application for bibliometric network analysis and visualization, built with Python.  
 Maps scientific literature into interactive networks to reveal research fronts, clusters, and knowledge gaps.
