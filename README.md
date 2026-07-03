@@ -87,14 +87,24 @@ Maps scientific literature into interactive networks to reveal research fronts, 
 
 ## Releases & Standalone Binaries
 
-Standalone pre-compiled binaries are generated automatically via GitHub Actions release workflows:
+Pre-compiled binaries are published automatically via GitHub Actions on every tagged release.
+**No Python installation required.**
 
-*   **Windows**: [Blicsa-windows.zip](https://github.com/leopani/PyBibliomics/releases/latest/download/Blicsa-windows.zip) (Extract and run `Blicsa-onefile.exe` or use `Blicsa-dir`)
-*   **macOS**: [Blicsa-macos.dmg](https://github.com/leopani/PyBibliomics/releases/latest/download/Blicsa-macos.dmg) (Open and drag Blicsa to Applications)
-*   **Linux**: [Blicsa-linux.AppImage](https://github.com/leopani/PyBibliomics/releases/latest/download/Blicsa-linux.AppImage) (Make executable: `chmod +x Blicsa-linux.AppImage` and run)
+| Platform | Download | Notes |
+|----------|----------|-------|
+| **Windows** | [`Blicsa_Setup.exe`](https://github.com/LeoPani/PyBibliomics/releases/latest) | Recommended — includes installer |
+| **Windows** | [`Blicsa-windows-portable.zip`](https://github.com/LeoPani/PyBibliomics/releases/latest) | Portable, extract and run |
+| **macOS** | [`Blicsa.dmg`](https://github.com/LeoPani/PyBibliomics/releases/latest) | Open and drag to Applications |
+| **Linux** | [`Blicsa-x86_64.AppImage`](https://github.com/LeoPani/PyBibliomics/releases/latest) | `chmod +x Blicsa-x86_64.AppImage` then run |
+
+Download `CHECKSUMS.txt` alongside your file to verify integrity:
+
+```bash
+sha256sum -c CHECKSUMS.txt
+```
 
 > [!NOTE]
-> **macOS Gatekeeper Workaround**: Because these standalone builds are unsigned, macOS will block the initial double-click launch. To bypass this, **right-click** `Blicsa.app` (or click while holding Control), choose **Open**, and then click **Open** on the confirmation dialog.
+> **macOS Gatekeeper**: Builds are currently unsigned. First launch: right-click `Blicsa.app` → **Open** → **Open**.
 
 ---
 
