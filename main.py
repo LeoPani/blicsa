@@ -1150,62 +1150,84 @@ class BlicsaApp(ctk.CTk):
     # ── Tab: Exportar ──────────────────────────────────────────────────
     def _build_tab_export(self) -> ctk.CTkFrame:
         frame = self._tab()
-        self._h1(frame, "Exportar Resultados", 0)
-
-        card = self._card(frame, 1)
-        card.grid_columnconfigure((0, 1), weight=1)
-
-        exports = [
-            # col 0
-            [
-                ("📋  Ranking de Nós (CSV)",        self._export_nodes_csv),
-                ("🔗  Arestas / Matriz (CSV)",       self._export_edges_csv),
-                ("📄  DataFrame Completo (CSV)",      self._export_df_csv),
-                ("🏷️  Relatório de Clusters (TXT)",  self._export_clusters_txt),
-            ],
-            # col 1
-            [
-                ("✦   Mapa Plotly Interativo (HTML)", self._export_plotly_html),
-                ("🌐  Mapa PyVis (HTML)",             self._export_pyvis_html),
-                ("🖼️  Imagem PNG (300dpi)",           self._export_png),
-                ("✏️  Imagem SVG (vetorial)",         self._export_svg),
-                ("📑  Imagem PDF (para artigos)",     self._export_pdf),
-            ],
+        
+        self._h1(frame, "Exportação em Lote", 0)
+        
+        # Configure variables
+        self._exp_adj_var = ctk.BooleanVar(value=True)
+        self._exp_gml_var = ctk.BooleanVar(value=True)
+        self._exp_ai_var = ctk.BooleanVar(value=True)
+        self._exp_xls_var = ctk.BooleanVar(value=True)
+        
+        options = [
+            ("Matriz de Adjacência (CSV)", self._exp_adj_var),
+            ("Rede Gephi/VOSviewer (GML)", self._exp_gml_var),
+            ("Relatório AI (TXT)", self._exp_ai_var),
+            ("Tabela de Corpus Completa (Excel)", self._exp_xls_var),
         ]
-        for col, items in enumerate(exports):
-            for i, (lbl, cmd) in enumerate(items):
-                self._btn(card, lbl, cmd, height=44).grid(
-                    row=i, column=col, padx=16, pady=8, sticky="ew")
+        
+        list_f = ctk.CTkFrame(frame, fg_color="transparent")
+        list_f.grid(row=1, column=0, sticky="ew", padx=30, pady=20)
+        
+        for i, (text, var) in enumerate(options):
+            card = ctk.CTkFrame(list_f, fg_color=CARD_BG, corner_radius=8)
+            card.pack(fill="x", pady=5)
+            cb = ctk.CTkCheckBox(
+                card, text=text, variable=var, 
+                font=ctk.CTkFont(size=14, weight="bold"),
+                fg_color=RED, hover_color=RED_HOVER, text_color=INK
+            )
+            cb.pack(padx=20, pady=15, anchor="w")
+            
+        def run_export():
+            import os, time
+            os.makedirs("reports", exist_ok=True)
+            ts = int(time.time())
+            files_saved = []
+            
+            try:
+                if self._exp_adj_var.get() and getattr(self, '_graph', None):
+                    import networkx as nx
+                    import pandas as pd
+                    df_adj = nx.to_pandas_adjacency(self._graph)
+                    p = f"reports/adj_{ts}.csv"
+                    df_adj.to_csv(p)
+                    files_saved.append(p)
+                    
+                if self._exp_gml_var.get() and getattr(self, '_graph', None):
+                    import networkx as nx
+                    p = f"reports/rede_{ts}.gml"
+                    nx.write_gml(self._graph, p)
+                    files_saved.append(p)
+                    
+                if self._exp_ai_var.get() and getattr(self, '_generator', None):
+                    p = f"reports/ai_report_{ts}.txt"
+                    with open(p, "w", encoding="utf-8") as f:
+                        f.write(self._generator.get_cluster_report())
+                    files_saved.append(p)
+                    
+                if self._exp_xls_var.get() and getattr(self, '_dataframe', None) is not None:
+                    p = f"reports/corpus_{ts}.xlsx"
+                    self._dataframe.to_excel(p, index=False)
+                    files_saved.append(p)
+                    
+                if files_saved:
+                    msg = "Arquivos exportados com sucesso!\n" + "\n".join(files_saved)
+                    messagebox.showinfo("Exportação Concluída", msg)
+                else:
+                    messagebox.showwarning("Atenção", "Nenhum dado para exportar (verifique se os dados estão carregados).")
+            except Exception as e:
+                messagebox.showerror("Erro na exportação", str(e))
 
-        # Excel export
-        self._h1(frame, "Excel / Planilha", 2)
-        xcard = self._card(frame, 3)
-        xcard.grid_columnconfigure(0, weight=1)
-        self._btn(xcard, "📊  Exportar Tudo para Excel (.xlsx)",
-                  self._export_excel, color=BLUE, hover=BLUE_HOV,
-                  height=44).grid(row=0, column=0, padx=16, pady=12, sticky="ew")
-
-        # Graph format exports
-        self._h1(frame, "Formatos de Grafo", 4)
-        gcard = self._card(frame, 5)
-        gcard.grid_columnconfigure((0, 1, 2, 3, 4), weight=1)
-        for col, (lbl, cmd) in enumerate([
-            ("🔷  GML (Gephi / Cytoscape)",    self._export_gml),
-            ("🟣  GEXF (Gephi nativo)",         self._export_gexf),
-            ("🕸️  Pajek .net",                 self._export_pajek),
-            ("{ }  JSON Topologia (frontend)", self._export_json),
-            ("📊  VOSviewer Map/Net",          self._export_vosviewer),
-        ]):
-            self._btn(gcard, lbl, cmd, height=44, color=INK, hover=INK_HOV).grid(
-                row=0, column=col, padx=10, pady=12, sticky="ew")
-
-        # Project Save
-        self._h1(frame, "Projeto Blicsa", 6)
-        pcard = self._card(frame, 7)
-        pcard.grid_columnconfigure(0, weight=1)
-        self._btn(pcard, "💾  Salvar Projeto Completo (.blicsa)",
-                  self._save_project_gui, color=BLUE, hover=BLUE_HOV,
-                  height=44).grid(row=0, column=0, padx=16, pady=12, sticky="ew")
+        # Bottom right button
+        bottom_f = ctk.CTkFrame(frame, fg_color="transparent")
+        bottom_f.grid(row=2, column=0, sticky="ew", padx=30, pady=40)
+        bottom_f.grid_columnconfigure(0, weight=1)
+        
+        self._btn(
+            bottom_f, "Exportar Selecionados", run_export,
+            color=RED, hover=RED_HOV, height=50
+        ).pack(side="right")
 
         return frame
 
