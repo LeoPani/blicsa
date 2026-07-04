@@ -411,6 +411,8 @@ class BlicsaApp(ctk.CTk):
         for key, frame in self._tabs.items():
             frame.grid_remove()
         if tab_key in self._tabs:
+            if tab_key == "corpus":
+                self._refresh_corpus_tab()
             self._tabs[tab_key].grid(row=0, column=0, sticky="nsew")
         
         for k, btn in self._nav_btns.items():
@@ -3355,11 +3357,149 @@ class BlicsaApp(ctk.CTk):
         return f
 
     def _build_tab_corpus(self) -> ctk.CTkFrame:
-        f = self._tab()
-        # Stub for Phase 1 (will be built in Phase 4)
-        lbl = ctk.CTkLabel(f, text="Corpus (Em desenvolvimento)", font=ctk.CTkFont(size=24, weight="bold"), text_color=MUTED)
-        lbl.pack(expand=True)
-        return f
+        self._corpus_tab_frame = self._tab()
+        self._corpus_tab_frame.grid_columnconfigure(0, weight=1)
+        self._corpus_tab_frame.grid_rowconfigure(1, weight=1)
+        self._refresh_corpus_tab()
+        return self._corpus_tab_frame
+        
+    def _refresh_corpus_tab(self):
+        if not hasattr(self, '_corpus_tab_frame'):
+            return
+            
+        # Clear existing
+        for w in self._corpus_tab_frame.winfo_children():
+            w.destroy()
+            
+        if self._dataframe is None or self._dataframe.empty:
+            empty_container = ctk.CTkFrame(self._corpus_tab_frame, fg_color="transparent")
+            empty_container.pack(expand=True)
+            
+            ctk.CTkLabel(empty_container, text="📂", font=ctk.CTkFont(size=64)).pack(pady=10)
+            ctk.CTkLabel(empty_container, text="Nenhum corpus carregado.", font=ctk.CTkFont(size=20, weight="bold"), text_color=MUTED).pack(pady=10)
+            self._btn(empty_container, "Coletar Dados", lambda: self._switch_tab("import"), height=40).pack(pady=20)
+            return
+
+        # Header
+        hdr = ctk.CTkFrame(self._corpus_tab_frame, fg_color="transparent")
+        hdr.grid(row=0, column=0, sticky="ew", padx=30, pady=(30, 20))
+        hdr.grid_columnconfigure(1, weight=1)
+        
+        df = self._dataframe
+        total_docs = len(df)
+        total_cites = int(df['citations'].sum()) if 'citations' in df.columns else 0
+        
+        ctk.CTkLabel(hdr, text="Seu Corpus", font=ctk.CTkFont(size=28, weight="bold")).grid(row=0, column=0, sticky="w")
+        ctk.CTkLabel(hdr, text=f"{total_docs} documentos • {total_cites} citações totais", font=ctk.CTkFont(size=14), text_color=MUTED).grid(row=1, column=0, sticky="w")
+        
+        self._btn(hdr, "Ir para Análises", lambda: self._switch_tab("analises"), height=40, color=RED).grid(row=0, column=2, rowspan=2, sticky="e")
+        
+        # Main content
+        main = ctk.CTkFrame(self._corpus_tab_frame, fg_color="transparent")
+        main.grid(row=1, column=0, sticky="nsew", padx=30, pady=10)
+        main.grid_columnconfigure(0, weight=7)
+        main.grid_columnconfigure(1, weight=3)
+        main.grid_rowconfigure(0, weight=1)
+        main.grid_rowconfigure(1, weight=1)
+        
+        # Left: Histogram
+        hist_card = self._card(main, 0, pady=0)
+        hist_card.grid(row=0, column=0, sticky="nsew", padx=(0, 10))
+        hist_card.grid_rowconfigure(1, weight=1)
+        ctk.CTkLabel(hist_card, text="Publicações por Ano", font=ctk.CTkFont(size=16, weight="bold")).grid(row=0, column=0, padx=20, pady=15, sticky="w")
+        
+        hist_f = ctk.CTkFrame(hist_card, fg_color="transparent")
+        hist_f.grid(row=1, column=0, sticky="nsew", padx=10, pady=(0, 10))
+        
+        try:
+            from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
+            from matplotlib.figure import Figure
+            fig = Figure(figsize=(6, 3), dpi=100)
+            fig.patch.set_facecolor(CARD_BG)
+            ax = fig.add_subplot(111)
+            ax.set_facecolor(CARD_BG)
+            if 'year' in df.columns:
+                years = df['year'].dropna()
+                years = years[years > 0]
+                if not years.empty:
+                    counts = years.value_counts().sort_index()
+                    ax.bar(counts.index, counts.values, color=RED)
+                    ax.tick_params(colors=INK)
+                    for spine in ax.spines.values():
+                        spine.set_color(MUTED)
+            fig.tight_layout()
+            
+            canvas = FigureCanvasTkAgg(fig, master=hist_f)
+            canvas.draw()
+            canvas.get_tk_widget().pack(fill="both", expand=True)
+        except Exception as e:
+            ctk.CTkLabel(hist_f, text=f"Erro no gráfico: {e}").pack()
+
+        # Right: Quick Summary
+        sum_card = self._card(main, 0, pady=0)
+        sum_card.grid(row=0, column=1, sticky="nsew", padx=(10, 0))
+        
+        ctk.CTkLabel(sum_card, text="Visão Geral", font=ctk.CTkFont(size=16, weight="bold")).grid(row=0, column=0, padx=20, pady=15, sticky="w")
+        sum_f = ctk.CTkFrame(sum_card, fg_color="transparent")
+        sum_f.grid(row=1, column=0, sticky="nsew", padx=20, pady=(0, 10))
+        
+        def get_top3(col):
+            if col not in df.columns: return []
+            items = df[col].dropna().astype(str)
+            all_items = []
+            for it in items:
+                all_items.extend([x.strip() for x in it.split(";") if x.strip()])
+            from collections import Counter
+            return [x[0] for x in Counter(all_items).most_common(3)]
+            
+        top_auth = get_top3('authors')
+        top_src = get_top3('source')
+        
+        ctk.CTkLabel(sum_f, text="Top Autores:", font=ctk.CTkFont(weight="bold")).pack(anchor="w", pady=(5,0))
+        for a in top_auth: ctk.CTkLabel(sum_f, text=f"• {a}", text_color=MUTED).pack(anchor="w", padx=10)
+        
+        ctk.CTkLabel(sum_f, text="Top Fontes:", font=ctk.CTkFont(weight="bold")).pack(anchor="w", pady=(15,0))
+        for s in top_src: ctk.CTkLabel(sum_f, text=f"• {s[:30]}", text_color=MUTED).pack(anchor="w", padx=10)
+        
+        # Bottom: Preview Table
+        tab_card = self._card(main, 1, pady=0)
+        tab_card.grid(row=1, column=0, columnspan=2, sticky="nsew", pady=(20, 0))
+        tab_card.grid_rowconfigure(1, weight=1)
+        
+        ctk.CTkLabel(tab_card, text="Prévia dos Dados (10 registros)", font=ctk.CTkFont(size=16, weight="bold")).grid(row=0, column=0, padx=20, pady=15, sticky="w")
+        
+        try:
+            import tkinter.ttk as ttk
+            style = ttk.Style()
+            style.theme_use("default")
+            style.configure("Treeview", background=WHITE, foreground=INK, rowheight=25, fieldbackground=WHITE, borderwidth=0)
+            style.configure("Treeview.Heading", background=PAPER, foreground=INK, font=('Archivo', 10, 'bold'))
+            
+            tree_f = ctk.CTkFrame(tab_card, fg_color="transparent")
+            tree_f.grid(row=1, column=0, sticky="nsew", padx=20, pady=(0, 20))
+            
+            cols = [c for c in ['title', 'authors', 'year', 'source', 'citations'] if c in df.columns]
+            if not cols: cols = list(df.columns[:5])
+            
+            tree = ttk.Treeview(tree_f, columns=cols, show="headings", selectmode="none")
+            vsb = ttk.Scrollbar(tree_f, orient="vertical", command=tree.yview)
+            hsb = ttk.Scrollbar(tree_f, orient="horizontal", command=tree.xview)
+            tree.configure(yscrollcommand=vsb.set, xscrollcommand=hsb.set)
+            
+            tree.grid(row=0, column=0, sticky="nsew")
+            vsb.grid(row=0, column=1, sticky="ns")
+            hsb.grid(row=1, column=0, sticky="ew")
+            tree_f.grid_columnconfigure(0, weight=1)
+            tree_f.grid_rowconfigure(0, weight=1)
+            
+            for c in cols:
+                tree.heading(c, text=c.capitalize())
+                tree.column(c, width=150)
+                
+            for _, r in df.head(10).iterrows():
+                tree.insert("", "end", values=[str(r[c])[:50] for c in cols])
+        except Exception as e:
+            ctk.CTkLabel(tab_card, text=f"Erro na tabela: {e}").grid(row=1, column=0)
 
 
 if __name__ == "__main__":
