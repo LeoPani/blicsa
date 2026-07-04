@@ -25,6 +25,9 @@ from ui.styles import get_color, SIDEBAR_BG, CONTENT_BG, CARD_BG, CARD2_BG, ACCE
 from core.matrix_builders import CLUSTER_PALETTE
 
 class HoverTooltip:
+    """
+    A tooltip that displays text when hovering over a widget.
+    """
     def __init__(self, widget, text, delay=400):
         self.widget = widget
         self.text = text
@@ -72,6 +75,9 @@ class HoverTooltip:
 
 # ── Deduplication Dialog ───────────────────────────────────────────────────────
 class DeduplicationDialog(ctk.CTkToplevel):
+    """
+    Dialog for handling duplicate records during data import.
+    """
     """Shows fuzzy-duplicate pairs and lets the user confirm which to remove."""
 
     def __init__(self, parent, df, dupes: list[tuple[int, int, str]], on_apply):
@@ -230,6 +236,9 @@ def insert_markdown(textbox, text: str):
 
 
 class AIInsightsWindow(ctk.CTkToplevel):
+    """
+    A window to display AI generated insights (used in legacy or fallback cases).
+    """
     """Centered popup modal displaying AI-generated insights for the current network."""
 
     def __init__(self, parent, text: str):
@@ -290,6 +299,9 @@ class AIInsightsWindow(ctk.CTkToplevel):
 
 # ── Trend Chart Window ─────────────────────────────────────────────────────────
 class TrendChartWindow(ctk.CTkToplevel):
+    """
+    Window for visualizing temporal trends of keywords/terms.
+    """
     """Line chart of term frequency per year for user-selected terms."""
 
     def __init__(
@@ -467,6 +479,9 @@ class TrendChartWindow(ctk.CTkToplevel):
 
 # ── Verification Dialog ────────────────────────────────────────────────────────
 class VerificationDialog(ctk.CTkToplevel):
+    """
+    Dialog for manual verification of ambiguous records or clusters.
+    """
     """Pre-graph checklist: Term | Occurrences | Relevance — user can uncheck."""
 
     def __init__(
@@ -637,6 +652,9 @@ class VerificationDialog(ctk.CTkToplevel):
 
 # ── Embedded Matplotlib Canvas ─────────────────────────────────────────────────
 class MapCanvas:
+    """
+    Wrapper for drawing and handling interactive network maps using matplotlib.
+    """
     def __init__(self, parent: ctk.CTkFrame, node_click_cb=None):
         self._parent = parent
         self._node_click_cb = node_click_cb
@@ -935,6 +953,9 @@ class MapCanvas:
 
 # ── Burst Detection Window ─────────────────────────────────────────────────────
 class BurstDetectionWindow(ctk.CTkToplevel):
+    """
+    Window for displaying Kleinberg burst detection results.
+    """
     """Displays a list of terms with high citation or occurrence bursts."""
     def __init__(self, parent, bursts_data: list[dict]):
         super().__init__(parent)

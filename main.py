@@ -69,6 +69,13 @@ FIELD_OPTS = [
 
 # ── Main App ───────────────────────────────────────────────────────────────────
 class BlicsaApp(ctk.CTk):
+    """
+    Main application window and controller for the Blicsa UI.
+    
+    This class inherits from customtkinter.CTk and acts as the central hub
+    managing all tabs (home, import, corpus, analyses, export), UI state,
+    and background worker threads for data loading, search, and AI integration.
+    """
     def __init__(self):
         super().__init__()
         self.title("Blicsa — Inteligência Bibliométrica")
@@ -2873,6 +2880,7 @@ class BlicsaApp(ctk.CTk):
         self._set_idle("Nuvem gerada")
         try:
             import matplotlib.pyplot as plt
+            plt.close('all')
             from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
             win = ctk.CTkToplevel(self)
             win.title("Blicsa — Nuvem de Palavras")
@@ -3448,6 +3456,8 @@ class BlicsaApp(ctk.CTk):
         hist_f.grid(row=1, column=0, sticky="nsew", padx=10, pady=(0, 10))
         
         try:
+            import matplotlib.pyplot as plt
+            plt.close('all')
             from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
             from matplotlib.figure import Figure
             fig = Figure(figsize=(6, 3), dpi=100)

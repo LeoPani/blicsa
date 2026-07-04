@@ -12,6 +12,10 @@ BLUE = "#1E4DA0"
 WHITE = "#FFFFFF"
 
 class SkeletonCard(ctk.CTkFrame):
+    """
+    A placeholder skeleton loading card with pulse animation to indicate
+    that data is currently being fetched or processed.
+    """
     def __init__(self, master):
         super().__init__(master, fg_color=WHITE, corner_radius=0, border_width=2, border_color=INK)
         self.grid_columnconfigure(0, weight=1)
@@ -45,6 +49,11 @@ class SkeletonCard(ctk.CTkFrame):
         self._animating = False
 
 class ArticleCard(ctk.CTkFrame):
+    """
+    A UI card representing a single bibliometric record/article.
+    Provides a checkbox for selection and displays title, year,
+    citations, authors, source, and a truncated abstract.
+    """
     def __init__(self, master, record: dict, on_toggle: Callable[[bool, int], None], index: int):
         super().__init__(master, fg_color=WHITE, corner_radius=0, border_width=2, border_color=INK)
         self.record = record
@@ -126,6 +135,11 @@ class ArticleCard(ctk.CTkFrame):
             self.cb.deselect()
 
 class SearchFeedView(ctk.CTkFrame):
+    """
+    A comprehensive UI view for displaying search results from APIs.
+    Features filtering sidebars, pagination, selection logic,
+    and a bottom bar for confirming import to the corpus.
+    """
     def __init__(self, master, on_import_confirm: Callable, on_cancel: Callable):
         super().__init__(master, fg_color=PAPER, corner_radius=0)
         self.on_import_confirm = on_import_confirm
