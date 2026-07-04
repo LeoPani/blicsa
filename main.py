@@ -504,17 +504,12 @@ class BlicsaApp(ctk.CTk):
         from PIL import Image
         frame = self._tab()
         
-        # Slogan & Logo strip
+        # Top Strip for Flags
         top_strip = ctk.CTkFrame(frame, fg_color="transparent")
-        top_strip.grid(row=0, column=0, padx=24, pady=(24, 16), sticky="ew")
-        top_strip.grid_columnconfigure(1, weight=1)
+        top_strip.pack(fill="x", padx=24, pady=(24, 16))
         
-        # Remove logo, keeping only top_strip as a flex container for flags
-        pass
-            
-        # Flags
         flag_f = ctk.CTkFrame(top_strip, fg_color="transparent")
-        flag_f.grid(row=0, column=2, rowspan=2, sticky="e")
+        flag_f.pack(side="right")
         
         def set_l(l):
             from core.i18n import set_lang
@@ -522,110 +517,62 @@ class BlicsaApp(ctk.CTk):
             self._refresh_language()
             
         try:
-            for i, (l, f_name) in enumerate([("pt_BR", "flag-pt-br.png"), ("en", "flag-en.png"), ("fr", "flag-fr.png"), ("de", "flag-de.png")]):
+            for i, (l, f_name) in enumerate([("pt_BR", "flag-pt-br.png"), ("en", "flag-en.png"), ("fr", "flag-fr.png")]):
                 img = ctk.CTkImage(light_image=Image.open(f"assets/branding/{f_name}"), size=(32, 22))
                 btn = ctk.CTkButton(flag_f, image=img, text="", width=32, height=22, fg_color="transparent", corner_radius=0, border_width=2, border_color=INK, hover_color="#e0e0e0", command=lambda x=l: set_l(x))
                 btn.grid(row=0, column=i, padx=4)
         except:
             pass
 
-        # Chat Interface
-        chat_container = ctk.CTkFrame(frame, fg_color="transparent")
-        chat_container.grid(row=1, column=0, padx=24, pady=16, sticky="nsew")
-        frame.grid_rowconfigure(1, weight=1)
-        chat_container.grid_rowconfigure(1, weight=1)
-        chat_container.grid_columnconfigure(0, weight=1)
+        # Hero Input Container
+        hero_container = ctk.CTkFrame(frame, fg_color="transparent")
+        hero_container.pack(fill="both", expand=True, padx=40, pady=40)
         
-        title_f = ctk.CTkFrame(chat_container, fg_color="transparent")
-        title_f.grid(row=0, column=0, pady=(0, 20), sticky="w")
-        ctk.CTkLabel(title_f, text="✨ O que vamos ", font=ctk.CTkFont(size=32, weight="bold"), text_color=INK).pack(side="left")
-        ctk.CTkLabel(title_f, text="pesquisar", font=ctk.CTkFont(size=32, weight="bold"), text_color=RED).pack(side="left")
-        ctk.CTkLabel(title_f, text=" hoje?", font=ctk.CTkFont(size=32, weight="bold"), text_color=INK).pack(side="left")
+        title_f = ctk.CTkFrame(hero_container, fg_color="transparent")
+        title_f.pack(pady=(40, 20), anchor="w")
+        ctk.CTkLabel(title_f, text="O que vamos ", font=ctk.CTkFont(size=40, weight="bold"), text_color=INK).pack(side="left")
+        ctk.CTkLabel(title_f, text="pesquisar", font=ctk.CTkFont(size=40, weight="bold"), text_color=RED).pack(side="left")
+        ctk.CTkLabel(title_f, text=" hoje?", font=ctk.CTkFont(size=40, weight="bold"), text_color=INK).pack(side="left")
         
-        self._research_chat_history = ctk.CTkTextbox(chat_container, wrap="word", font=ctk.CTkFont(size=14), fg_color=CARD_BG, text_color=INK, border_width=3, border_color=INK, corner_radius=0)
-        self._research_chat_history.grid(row=1, column=0, sticky="nsew", pady=(0, 20))
-        self._research_chat_history.insert("end", "Blink Research: Olá! Sou seu assistente de pesquisa do Blicsa. Diga-me o que deseja investigar hoje, e eu te darei insights e direções de onde encontrar essas informações nas abas do Blicsa.\n\n")
-        self._research_chat_history.configure(state="disabled")
+        self._hero_input = ctk.CTkEntry(hero_container, placeholder_text="Digite sua busca (ex: machine learning healthcare)", font=ctk.CTkFont(size=18), height=64, corner_radius=0, border_width=2, border_color=INK)
+        self._hero_input.pack(fill="x", pady=(0, 40))
         
-        input_f = ctk.CTkFrame(chat_container, fg_color="transparent")
-        input_f.grid(row=2, column=0, sticky="ew", pady=(0, 20))
-        input_f.grid_columnconfigure(0, weight=1)
+        def on_hero_enter(e=None):
+            q = self._hero_input.get().strip()
+            if q:
+                self._switch_tab("import")
+                # Pre-fill query in Coletar and run (to be implemented in Phase 3)
+                if hasattr(self, '_search_input'):
+                    self._search_input.delete(0, "end")
+                    self._search_input.insert(0, q)
+                    self._run_search()
+        self._hero_input.bind("<Return>", on_hero_enter)
         
-        self._research_chat_input = ctk.CTkEntry(input_f, placeholder_text="Digite sua pergunta ou tema de pesquisa...", font=ctk.CTkFont(size=14), height=44, corner_radius=0, border_width=2, border_color=INK)
-        self._research_chat_input.grid(row=0, column=0, sticky="ew", padx=(0, 10))
-        self._research_chat_input.bind("<Return>", lambda e: self._send_research_chat())
+        # Tiles
+        tiles_f = ctk.CTkFrame(hero_container, fg_color="transparent")
+        tiles_f.pack(fill="x")
         
-        ctk.CTkButton(input_f, text="Enviar", font=ctk.CTkFont(size=14, weight="bold"), fg_color=RED, text_color="white", hover_color=RED_HOV, corner_radius=0, border_width=2, border_color=INK, height=44, width=100, command=self._send_research_chat).grid(row=0, column=1)
+        t1 = ctk.CTkButton(tiles_f, text="Abrir projeto/arquivo", font=ctk.CTkFont(size=16, weight="bold"), fg_color=PAPER, text_color=INK, width=220, height=120, corner_radius=0, border_width=2, border_color=INK, hover_color="#e0e0e0", command=self._load_project_gui)
+        t1.grid(row=0, column=0, padx=8, pady=8)
         
-        # Suggestions
-        sug_f = ctk.CTkFrame(chat_container, fg_color="transparent")
-        sug_f.grid(row=3, column=0, sticky="ew")
-        
-        sug_f_1 = ctk.CTkFrame(sug_f, fg_color="transparent")
-        sug_f_1.pack(fill="x", pady=5)
-        sug_f_2 = ctk.CTkFrame(sug_f, fg_color="transparent")
-        sug_f_2.pack(fill="x", pady=5)
-        
-        sugs_1 = [
-            "Quais as tendências mais recentes?",
-            "Me ensine a importar do Scopus",
-            "O que é a Lei de Lotka?"
-        ]
-        sugs_2 = [
-            "Como faço análise de rede de citações?",
-            "Detectar picos de publicações",
-            "O que é um cluster bibliométrico?"
-        ]
-        
-        for i, s_txt in enumerate(sugs_1):
-            ctk.CTkButton(sug_f_1, text=s_txt, font=ctk.CTkFont(size=12), fg_color=PAPER, text_color=INK, hover_color="#e0e0e0", corner_radius=0, border_width=1, border_color=INK, command=lambda txt=s_txt: self._research_chat_input.insert(0, txt) or self._send_research_chat()).grid(row=0, column=i, padx=(0, 10))
+        def load_sample():
+            self._set_busy("Carregando exemplo...")
+            # We would load sample dataset here
+            self.after(500, lambda: self._set_idle("Exemplo carregado."))
+            self._switch_tab("corpus")
             
-        for i, s_txt in enumerate(sugs_2):
-            ctk.CTkButton(sug_f_2, text=s_txt, font=ctk.CTkFont(size=12), fg_color=PAPER, text_color=INK, hover_color="#e0e0e0", corner_radius=0, border_width=1, border_color=INK, command=lambda txt=s_txt: self._research_chat_input.insert(0, txt) or self._send_research_chat()).grid(row=0, column=i, padx=(0, 10))
+        t2 = ctk.CTkButton(tiles_f, text="Dataset de exemplo", font=ctk.CTkFont(size=16, weight="bold"), fg_color=YELLOW, text_color=INK, width=220, height=120, corner_radius=0, border_width=2, border_color=INK, hover_color="#d4a017", command=load_sample)
+        t2.grid(row=0, column=1, padx=8, pady=8)
+        
+        t3 = ctk.CTkButton(tiles_f, text="Recentes", font=ctk.CTkFont(size=16, weight="bold"), fg_color=PAPER, text_color=INK, width=220, height=120, corner_radius=0, border_width=2, border_color=INK, hover_color="#e0e0e0")
+        t3.grid(row=0, column=2, padx=8, pady=8)
+        
+        # Staggered animation
+        for idx, t_btn in enumerate([t1, t2, t3]):
+            t_btn.grid_remove()
+            self.after(60 * (idx + 1), t_btn.grid)
             
-        self._research_messages = []
-
         return frame
-
-    def _send_research_chat(self):
-        msg = self._research_chat_input.get().strip()
-        if not msg: return
-        
-        self._research_chat_input.delete(0, "end")
-        self._research_chat_history.configure(state="normal")
-        self._research_chat_history.insert("end", f"Você: {msg}\n\n")
-        self._research_chat_history.see("end")
-        self._research_chat_history.configure(state="disabled")
-        
-        if not self._research_messages:
-            self._research_messages.append({
-                "role": "system",
-                "content": "Você é o 'Blink Research', um assistente de IA focado em pesquisa dentro do software Blicsa. Ajude o usuário com sua pesquisa bibliométrica, sugerindo que abas usar (Importação, Mapa & IA, Rankings, etc), quais métodos de contagem ou parâmetros de rede funcionariam melhor. Seja proativo, direto e use linguagem clara em português. Lembre-o de importar os dados na aba 'Importação' se ele ainda não o fez."
-            })
-            
-        self._research_messages.append({"role": "user", "content": msg})
-        
-        import threading
-        def worker():
-            from ai.client import AIAnalyst
-            analyst = AIAnalyst(
-                api_key=self._api_key_var.get() or None,
-                base_url=self._ai_base_url_var.get(),
-                model=self._ai_model_var.get()
-            )
-            # using our newly added chat_history method
-            resp = analyst.chat_history(self._research_messages, temperature=0.7)
-            self._research_messages.append({"role": "assistant", "content": resp})
-            
-            def update_ui():
-                self._research_chat_history.configure(state="normal")
-                self._research_chat_history.insert("end", f"Blink: {resp}\n\n")
-                self._research_chat_history.see("end")
-                self._research_chat_history.configure(state="disabled")
-                
-            self.after(0, update_ui)
-            
-        threading.Thread(target=worker, daemon=True).start()
 
     def _build_tab_import(self) -> ctk.CTkFrame:
         frame = self._tab()
@@ -3326,7 +3273,13 @@ class BlicsaApp(ctk.CTk):
         self._stats_box.configure(state="disabled")
     def _build_tab_analises(self) -> ctk.CTkFrame:
         f = self._tab()
-        tv = ctk.CTkTabview(f, fg_color=CONTENT_BG, text_color=INK, segmented_button_selected_color=RED, segmented_button_selected_hover_color=RED_HOVER, segmented_button_unselected_color=PAPER, segmented_button_unselected_hover_color="#e0e0e0")
+        f.grid_columnconfigure(0, weight=1)
+        f.grid_rowconfigure(0, weight=1)
+        
+        main_content = ctk.CTkFrame(f, fg_color="transparent")
+        main_content.grid(row=0, column=0, sticky="nsew")
+        
+        tv = ctk.CTkTabview(main_content, fg_color=CONTENT_BG, text_color=INK, segmented_button_selected_color=RED, segmented_button_selected_hover_color=RED_HOVER, segmented_button_unselected_color=PAPER, segmented_button_unselected_hover_color="#e0e0e0")
         tv.pack(fill="both", expand=True, padx=20, pady=20)
         
         tab_mapa = tv.add("Mapa")
@@ -3344,6 +3297,76 @@ class BlicsaApp(ctk.CTk):
         stat_f = self._build_tab_stats()
         stat_f.master = tab_stats
         stat_f.pack(in_=tab_stats, fill="both", expand=True)
+        
+        # AI Drawer
+        drawer = ctk.CTkFrame(f, fg_color=WHITE_CARD, width=300, corner_radius=0, border_width=1, border_color=INK)
+        drawer.grid_propagate(False)
+        
+        drawer.grid_rowconfigure(1, weight=1)
+        drawer.grid_columnconfigure(0, weight=1)
+        
+        header = ctk.CTkFrame(drawer, fg_color="transparent")
+        header.grid(row=0, column=0, sticky="ew", padx=10, pady=10)
+        ctk.CTkLabel(header, text="✨ Blink Research", font=ctk.CTkFont(size=16, weight="bold"), text_color=INK).pack(side="left")
+        
+        self._research_chat_history = ctk.CTkTextbox(drawer, wrap="word", font=ctk.CTkFont(size=13), fg_color=PAPER, text_color=INK, border_width=1, border_color=INK, corner_radius=0)
+        self._research_chat_history.grid(row=1, column=0, sticky="nsew", padx=10, pady=10)
+        self._research_chat_history.insert("end", "Blink: Olá! Como posso ajudar com sua análise?\n\n")
+        self._research_chat_history.configure(state="disabled")
+        
+        input_f = ctk.CTkFrame(drawer, fg_color="transparent")
+        input_f.grid(row=2, column=0, sticky="ew", padx=10, pady=10)
+        input_f.grid_columnconfigure(0, weight=1)
+        
+        self._research_chat_input = ctk.CTkEntry(input_f, placeholder_text="Sua pergunta...", font=ctk.CTkFont(size=13), height=36, corner_radius=0, border_width=1, border_color=INK)
+        self._research_chat_input.grid(row=0, column=0, sticky="ew", padx=(0, 5))
+        
+        def send_chat(e=None):
+            msg = self._research_chat_input.get().strip()
+            if not msg: return
+            self._research_chat_input.delete(0, "end")
+            self._research_chat_history.configure(state="normal")
+            self._research_chat_history.insert("end", f"Você: {msg}\n\n")
+            self._research_chat_history.see("end")
+            self._research_chat_history.configure(state="disabled")
+            
+            if not hasattr(self, '_research_messages'): self._research_messages = []
+            if not self._research_messages:
+                self._research_messages.append({"role": "system", "content": "Você é o 'Blink Research', um assistente focado em pesquisa dentro do Blicsa."})
+            
+            self._research_messages.append({"role": "user", "content": msg})
+            
+            import threading
+            def worker():
+                try:
+                    from ai.client import AIAnalyst
+                    analyst = AIAnalyst(api_key=self._api_key_var.get() or None, base_url=self._ai_base_url_var.get(), model=self._ai_model_var.get())
+                    resp = analyst.chat_history(self._research_messages, temperature=0.7)
+                    self._research_messages.append({"role": "assistant", "content": resp})
+                except Exception as ex:
+                    resp = f"Erro: {ex}"
+                def update_ui():
+                    self._research_chat_history.configure(state="normal")
+                    self._research_chat_history.insert("end", f"Blink: {resp}\n\n")
+                    self._research_chat_history.see("end")
+                    self._research_chat_history.configure(state="disabled")
+                self.after(0, update_ui)
+            threading.Thread(target=worker, daemon=True).start()
+            
+        self._research_chat_input.bind("<Return>", send_chat)
+        ctk.CTkButton(input_f, text="➤", width=36, height=36, fg_color=RED, hover_color=RED_HOVER, corner_radius=0, command=send_chat).grid(row=0, column=1)
+        
+        # Drawer toggle
+        self._drawer_open = False
+        def toggle_drawer():
+            if self._drawer_open:
+                drawer.grid_remove()
+                self._drawer_open = False
+            else:
+                drawer.grid(row=0, column=1, sticky="ns")
+                self._drawer_open = True
+                
+        ctk.CTkButton(f, text="✨", width=40, height=40, fg_color=RED, text_color="white", corner_radius=20, command=toggle_drawer).place(relx=0.98, rely=0.95, anchor="se")
         
         return f
 
