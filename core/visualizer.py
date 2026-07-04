@@ -75,32 +75,37 @@ def build_plotly_map(
     # To do this in Plotly without complex shapes, we can just omit or use scatter convex hulls. We'll skip complex convex hull for Plotly and focus on edges/nodes unless specifically required.
     
     # Edges
-    edge_weights = np.array([G[u][v].get("weight", 1) for u, v in G.edges()], float)
-    if len(edge_weights) > 0:
-        ew_mn, ew_mx = edge_weights.min(), edge_weights.max()
-        ew_span = ew_mx - ew_mn if ew_mx != ew_mn else 1
+    if G.number_of_edges() > 0:
+        edges_data = [(u, v, G[u][v].get("weight", 1)) for u, v in G.edges()]
+        edges_data.sort(key=lambda x: x[2], reverse=True)
+        # top 20%
+        top_k = max(1, int(len(edges_data) * 0.2))
+        top_edges = edges_data[:top_k]
         
         edge_x = []
         edge_y = []
         
-        # Plotly doesn't support per-segment opacity in a single scatter with good performance, but we can group by width/opacity or just use a single line width and opacity if needed.
-        # But for exact spec: opacity 8-22%, width 1-4px
-        for (u, v), w in zip(G.edges(), edge_weights):
-            w_norm = (w - ew_mn) / ew_span
-            opacity = 0.08 + 0.14 * w_norm
-            width = 1 + 3 * w_norm
-            traces.append(go.Scatter(
-                x=[positions[u][0], positions[v][0], None],
-                y=[positions[u][1], positions[v][1], None],
-                mode="lines",
-                line=dict(width=width, color=f"rgba(20,20,20,{opacity})"),
-                hoverinfo="none",
-                showlegend=False,
-            ))
+        for u, v, w in top_edges:
+            edge_x.extend([positions[u][0], positions[v][0], None])
+            edge_y.extend([positions[u][1], positions[v][1], None])
+            
+        traces.append(go.Scatter(
+            x=edge_x,
+            y=edge_y,
+            mode="lines",
+            line=dict(width=1, color="rgba(0,0,0,0.1)"),
+            hoverinfo="none",
+            showlegend=False,
+        ))
 
     # Labels
     texts = [n if n in top_nodes else "" for n in nodes]
     text_sizes = [max(9, int(px/2)) for px in node_px]
+    
+    hover_texts = []
+    for n in nodes:
+        occur = G.nodes[n].get("occurrence", G.nodes[n].get("weight", 0))
+        hover_texts.append(f"{n}<br>Cluster: {partition.get(n,0)}<br>Occurrences: {occur}")
     
     traces.append(go.Scatter(
         x=xs,
@@ -116,7 +121,7 @@ def build_plotly_map(
             opacity=1.0,
         ),
         hoverinfo="text",
-        hovertext=[f"{n}<br>Cluster: {partition.get(n,0)}<br>Weight: {weights[n]:.1f}" for n in nodes],
+        hovertext=hover_texts,
         showlegend=False,
     ))
 

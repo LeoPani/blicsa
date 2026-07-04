@@ -677,14 +677,13 @@ class BlicsaApp(ctk.CTk):
     # ── Tab: Mapa & IA ─────────────────────────────────────────────────
     def _build_tab_viz(self) -> ctk.CTkFrame:
         frame = self._tab()
-        # Col 0 (left config sidebar), Col 1 (middle canvas), Col 2 (right IA details)
-        frame.grid_columnconfigure(0, weight=0)
-        frame.grid_columnconfigure(1, weight=1)
-        frame.grid_columnconfigure(2, weight=0)
+        # Col 0 (left config sidebar, 25%), Col 1 (middle canvas, 75%)
+        frame.grid_columnconfigure(0, weight=1)
+        frame.grid_columnconfigure(1, weight=3)
         frame.grid_rowconfigure(0, weight=1)
         
         # ── Left Config Sidebar ──
-        config_panel = ctk.CTkFrame(frame, width=290, fg_color=CARD_BG, corner_radius=0)
+        config_panel = ctk.CTkFrame(frame, fg_color=CARD_BG, corner_radius=0)
         config_panel.grid(row=0, column=0, padx=(20, 6), pady=16, sticky="nsew")
         config_panel.grid_propagate(False)
         config_panel.grid_columnconfigure(0, weight=1)
@@ -720,10 +719,30 @@ class BlicsaApp(ctk.CTk):
                   self._open_plotly, color="#1a4a7a",
                   hover="#153a60", height=44).grid(
             row=0, column=1, padx=4, sticky="ew")
-        self._btn(br, "🌐  HTML no Navegador",
-                  self._open_map_browser,
-                  color=BLUE, hover=BLUE_HOV, height=44).grid(
+        
+        def save_plot():
+            if not getattr(self, '_graph', None): return
+            import os
+            from core.visualizer import build_plotly_map
+            os.makedirs("reports", exist_ok=True)
+            path = f"reports/mapa_{int(time.time())}.svg"
+            fig = build_plotly_map(self._graph, self._positions, color_mode=self._color_mode_var.get(), df=self._dataframe)
+            # Plotly to SVG requires kaleido or ORCA. We can write HTML instead if kaleido is missing, but prompt asks for SVG.
+            # Using fig.write_image which requires kaleido, if not installed will throw error.
+            try:
+                fig.write_image(path)
+                messagebox.showinfo("Sucesso", f"Salvo em {path}")
+            except Exception as e:
+                # fallback to HTML
+                path = path.replace(".svg", ".html")
+                fig.write_html(path)
+                messagebox.showinfo("Aviso", f"SVG falhou (falta kaleido). Salvo como HTML em {path}")
+
+        self._btn(br, "💾  Salvar Plot",
+                  save_plot,
+                  color=RED, hover=RED_HOV, height=44).grid(
             row=0, column=2, padx=4, sticky="ew")
+            
         self._btn(br, "✨  Insights com IA", self._run_ai,
                   color=YELLOW, hover=YELLOW_HOV, height=44).grid(
             row=0, column=3, padx=4, sticky="ew")
