@@ -134,10 +134,9 @@ class BlicsaApp(ctk.CTk):
         self._tabs: dict[str, ctk.CTkFrame] = {
             "home":    self._build_tab_home(),
             "import":  self._build_tab_import(),
-            "viz":     self._build_tab_viz(),
-            "ranking": self._build_tab_ranking(),
+            "corpus":  self._build_tab_corpus(),
+            "analises": self._build_tab_analises(),
             "export":  self._build_tab_export(),
-            "stats":   self._build_tab_stats(),
         }
         self._switch_tab("home")
 
@@ -159,33 +158,53 @@ class BlicsaApp(ctk.CTk):
                 row=0, column=0, padx=22, pady=(30, 22), sticky="w")
 
         self._nav_btns: dict[str, ctk.CTkButton] = {}
-        for i, (key, icon, label_key) in enumerate([
-            ("home",    "🏠", "menu_home"),
-            ("import",  "📂", "tab_import"),
-            ("viz",     "🗺️", "tab_map_ai"),
-            ("ranking", "📊", "tab_rankings"),
-            ("export",  "💾", "tab_export"),
-            ("stats",   "📈", "tab_stats"),
+        self._nav_icons: dict[str, tuple] = {}
+        
+        from PIL import Image
+        for i, (key, icon_name, label_text) in enumerate([
+            ("home",    "house", "Início"),
+            ("import",  "magnet", "Coletar"),
+            ("corpus",  "stack", "Corpus"),
+            ("analises", "chart", "Análises"),
+            ("export",  "export", "Exportar"),
         ], start=1):
-            label = t(label_key)
-            btn = ctk.CTkButton(sb, text=f"{icon}  {label}", anchor="w", font=ctk.CTkFont(size=13, weight="bold"), fg_color="transparent", hover_color="#e0e0e0", text_color=INK, corner_radius=0, height=44, border_width=0, border_color=RED,
-                command=lambda k=key: self._switch_tab(k),
+            try:
+                img_normal = ctk.CTkImage(light_image=Image.open(f"assets/icons/{icon_name}.png"), size=(20, 20))
+                img_active = ctk.CTkImage(light_image=Image.open(f"assets/icons/{icon_name}_active.png"), size=(20, 20))
+                self._nav_icons[key] = (img_normal, img_active)
+                image_arg = img_normal
+            except Exception:
+                self._nav_icons[key] = (None, None)
+                image_arg = None
+                
+            btn = ctk.CTkButton(
+                sb, text=f" {label_text}", anchor="w", image=image_arg,
+                font=ctk.CTkFont(size=14, weight="normal"),
+                fg_color="transparent", hover_color="#e0e0e0", text_color=INK,
+                corner_radius=0, height=44, border_width=0, border_color=RED,
+                command=lambda k=key: self._switch_tab(k)
             )
             btn.grid(row=i, column=0, padx=10, pady=2, sticky="ew")
+            
+            # Hover micro-interaction (underline)
+            def on_enter(e, b=btn):
+                b.configure(font=ctk.CTkFont(size=14, weight="bold", underline=True))
+            def on_leave(e, b=btn, k=key):
+                active = getattr(self, '_current_tab_key', '') == k
+                b.configure(font=ctk.CTkFont(size=14, weight="bold" if active else "normal", underline=False))
+            btn.bind("<Enter>", on_enter)
+            btn.bind("<Leave>", on_leave)
+            
             self._nav_btns[key] = btn
 
-        # Theme toggle button
-        self._theme_btn = ctk.CTkButton(
-            sb, text="🌓 Alternar Tema",
-            font=ctk.CTkFont(size=11),
-            fg_color="transparent", hover_color=("#d0d0ea", "#1a1a35"),
-            text_color=("gray10", "white"), corner_radius=0, height=32,
-            border_width=1, border_color=ACCENT,
-            command=self._toggle_theme,
-        )
-        self._theme_btn.grid(row=9, column=0, padx=16, pady=(10, 5), sticky="ew")
+        # Corpus Badge at bottom of sidebar
+        self._corpus_badge = ctk.CTkLabel(sb, text="Nenhum corpus", text_color=MUTED, font=ctk.CTkFont(size=11))
+        self._corpus_badge.grid(row=8, column=0, padx=16, pady=(10, 5), sticky="sw")
         
-        self._settings_btn = ctk.CTkButton(sb, text="⚙️ " + t("menu_settings"), font=ctk.CTkFont(size=11), fg_color="transparent", hover_color="#e0e0e0", text_color=INK, corner_radius=0, height=32, border_width=1, border_color=INK, command=self._show_settings)
+        try:
+            gear_img = ctk.CTkImage(light_image=Image.open("assets/icons/gear.png"), size=(16, 16))
+        except: gear_img = None
+        self._settings_btn = ctk.CTkButton(sb, text=" Configurações" if gear_img else "⚙️ Configurações", image=gear_img, anchor="w", font=ctk.CTkFont(size=11), fg_color="transparent", hover_color="#e0e0e0", text_color=INK, corner_radius=0, height=32, border_width=1, border_color=INK, command=self._show_settings)
         self._settings_btn.grid(row=10, column=0, padx=16, pady=(0, 10), sticky="ew")
 
         self._status_square = ctk.CTkFrame(sb, width=10, height=10, fg_color=BLUE, corner_radius=0)
@@ -390,10 +409,18 @@ class BlicsaApp(ctk.CTk):
         self._current_tab_key = tab_key
         for key, frame in self._tabs.items():
             frame.grid_remove()
-        self._tabs[tab_key].grid(row=0, column=0, sticky="nsew")
+        if tab_key in self._tabs:
+            self._tabs[tab_key].grid(row=0, column=0, sticky="nsew")
+        
         for k, btn in self._nav_btns.items():
-            active = k == tab_key
-            btn.configure(border_width=6 if active else 0, font=ctk.CTkFont(size=13, weight="bold" if active else "normal"))
+            active = (k == tab_key)
+            img_normal, img_active = self._nav_icons.get(k, (None, None))
+            btn.configure(
+                border_spacing=6 if active else 2, # spacing adjustment for left bar
+                border_width=6 if active else 0, 
+                font=ctk.CTkFont(size=14, weight="bold" if active else "normal", underline=False),
+                image=img_active if active and img_active else img_normal
+            )
 
     def _toggle_theme(self):
         current = ctk.get_appearance_mode().lower()
@@ -3297,6 +3324,35 @@ class BlicsaApp(ctk.CTk):
         self._stats_box.delete("1.0", "end")
         self._stats_box.insert("end", "\n".join(lines))
         self._stats_box.configure(state="disabled")
+    def _build_tab_analises(self) -> ctk.CTkFrame:
+        f = self._tab()
+        tv = ctk.CTkTabview(f, fg_color=CONTENT_BG, text_color=INK, segmented_button_selected_color=RED, segmented_button_selected_hover_color=RED_HOVER, segmented_button_unselected_color=PAPER, segmented_button_unselected_hover_color="#e0e0e0")
+        tv.pack(fill="both", expand=True, padx=20, pady=20)
+        
+        tab_mapa = tv.add("Mapa")
+        tab_rankings = tv.add("Rankings")
+        tab_stats = tv.add("Estatísticas")
+        
+        viz_f = self._build_tab_viz()
+        viz_f.master = tab_mapa
+        viz_f.pack(in_=tab_mapa, fill="both", expand=True)
+        
+        rank_f = self._build_tab_ranking()
+        rank_f.master = tab_rankings
+        rank_f.pack(in_=tab_rankings, fill="both", expand=True)
+        
+        stat_f = self._build_tab_stats()
+        stat_f.master = tab_stats
+        stat_f.pack(in_=tab_stats, fill="both", expand=True)
+        
+        return f
+
+    def _build_tab_corpus(self) -> ctk.CTkFrame:
+        f = self._tab()
+        # Stub for Phase 1 (will be built in Phase 4)
+        lbl = ctk.CTkLabel(f, text="Corpus (Em desenvolvimento)", font=ctk.CTkFont(size=24, weight="bold"), text_color=MUTED)
+        lbl.pack(expand=True)
+        return f
 
 
 if __name__ == "__main__":
