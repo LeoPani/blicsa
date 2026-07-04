@@ -134,6 +134,7 @@ class BlicsaApp(ctk.CTk):
         self._tabs: dict[str, ctk.CTkFrame] = {
             "home":    self._build_tab_home(),
             "import":  self._build_tab_import(),
+            "review":  self._build_tab_review(),
             "corpus":  self._build_tab_corpus(),
             "analises": self._build_tab_analises(),
             "export":  self._build_tab_export(),
@@ -576,87 +577,26 @@ class BlicsaApp(ctk.CTk):
 
     def _build_tab_import(self) -> ctk.CTkFrame:
         frame = self._tab()
-        frame.grid_rowconfigure(4, weight=1)
-        self._h1(frame, "Importação de Dados", 0)
-
-        card = self._card(frame, 1)
-        card.grid_columnconfigure(1, weight=1)
-
-        # Default format for new files
-        ctk.CTkLabel(card, text="Formato padrão:",
-                     font=ctk.CTkFont(size=13)).grid(
-            row=0, column=0, padx=16, pady=(16, 8), sticky="w")
-        rf = ctk.CTkFrame(card, fg_color="transparent")
-        rf.grid(row=0, column=1, columnspan=2, padx=8, pady=(16, 8), sticky="w")
-        self._origin_var = ctk.StringVar(value="scopus")
-        for lbl, val in [
-            ("Scopus",    "scopus"),
-            ("WoS",       "wos"),
-            ("BibTeX",    "bibtex"),
-            ("PubMed",    "pubmed"),
-            ("OpenAlex",  "openalex"),
-            ("Crossref",  "crossref"),
-            ("RIS",       "ris"),
-        ]:
-            ctk.CTkRadioButton(rf, text=lbl, variable=self._origin_var,
-                               value=val, fg_color=ACCENT,
-                               hover_color=ACCENT_HOV).pack(side="left", padx=8)
-
-        # File list
-        ctk.CTkLabel(card, text="Arquivos:",
-                     font=ctk.CTkFont(size=13)).grid(
-            row=1, column=0, padx=16, pady=(8, 0), sticky="nw")
-        list_frame = ctk.CTkFrame(card, fg_color=CARD2_BG, corner_radius=0)
-        list_frame.grid(row=1, column=1, padx=8, pady=(8, 0), sticky="ew")
-        list_frame.grid_columnconfigure(0, weight=1)
-        self._file_list_frame = ctk.CTkScrollableFrame(
-            list_frame, fg_color=CARD2_BG, height=100)
-        self._file_list_frame.grid(row=0, column=0, padx=4, pady=4, sticky="ew")
-        self._file_list_frame.grid_columnconfigure(0, weight=1)
-        self._file_row_widgets: list[tuple] = []  # (frame, path)
-
-        # File buttons
-        fbf = ctk.CTkFrame(card, fg_color="transparent")
-        fbf.grid(row=1, column=2, padx=12, pady=(8, 0), sticky="n")
-        self._btn(fbf, "➕  Adicionar", self._pick_file,
-                  height=36).pack(pady=(0, 6))
-        self._btn(fbf, "🗑  Limpar Tudo", self._clear_files,
-                  color="#4a1a1a", hover="#6a2a2a",
-                  height=36).pack()
-
-        act_f = ctk.CTkFrame(card, fg_color="transparent")
-        act_f.grid(row=2, column=0, columnspan=3, padx=16, pady=(12, 16), sticky="ew")
-        act_f.grid_columnconfigure((0, 1, 2), weight=1)
-        self._btn(act_f, "⚡  Carregar e Combinar", self._load_data).grid(
-            row=0, column=0, padx=(0, 4), sticky="ew")
-        self._btn(act_f, "🔍  Deduplicar", self._run_dedup,
-                  color=INK, hover=INK_HOV).grid(
-            row=0, column=1, padx=4, sticky="ew")
-        self._btn(act_f, "📂  Abrir Projeto (.blicsa)", self._load_project_gui,
-                  color=BLUE, hover=BLUE_HOV).grid(
-            row=0, column=2, padx=(4, 0), sticky="ew")
-
-        # Search card (Row 2)
-        scard = self._card(frame, 2)
+        
+        # Search Card (Top)
+        scard = self._card(frame, 0)
         scard.grid_columnconfigure(1, weight=1)
         
-        ctk.CTkLabel(scard, text="Busca Online:", font=ctk.CTkFont(size=13, weight="bold")).grid(
-            row=0, column=0, padx=16, pady=8, sticky="w")
+        ctk.CTkLabel(scard, text="Busca Online", font=ctk.CTkFont(size=16, weight="bold")).grid(
+            row=0, column=0, padx=16, pady=(16, 8), sticky="w")
             
         self._search_provider_var = ctk.StringVar(value="openalex")
         sp_f = ctk.CTkFrame(scard, fg_color="transparent")
-        sp_f.grid(row=0, column=1, padx=8, pady=8, sticky="w")
+        sp_f.grid(row=1, column=0, columnspan=2, padx=16, pady=4, sticky="w")
         for lbl, val in [("Todas as Bases", "all"), ("OpenAlex", "openalex"), ("Crossref", "crossref"), ("PubMed", "pubmed")]:
             ctk.CTkRadioButton(sp_f, text=lbl, variable=self._search_provider_var,
                                value=val, fg_color=ACCENT, hover_color=ACCENT_HOV).pack(side="left", padx=8)
                                
-        ctk.CTkLabel(scard, text="Termo / Query:", font=ctk.CTkFont(size=12)).grid(
-            row=1, column=0, padx=16, pady=4, sticky="w")
-        self._search_query_entry = ctk.CTkEntry(scard, placeholder_text="Ex: 'deep learning'")
-        self._search_query_entry.grid(row=1, column=1, padx=8, pady=4, sticky="ew")
+        self._search_query_entry = ctk.CTkEntry(scard, placeholder_text="Termo / Query (ex: 'deep learning')", height=36)
+        self._search_query_entry.grid(row=2, column=0, columnspan=2, padx=16, pady=4, sticky="ew")
         
         act_sf = ctk.CTkFrame(scard, fg_color="transparent")
-        act_sf.grid(row=1, column=2, padx=16, pady=4, sticky="e")
+        act_sf.grid(row=3, column=0, columnspan=2, padx=16, pady=(4, 16), sticky="e")
         
         ctk.CTkLabel(act_sf, text="Qtd:").pack(side="left", padx=4)
         self._search_max_entry = ctk.CTkEntry(act_sf, width=60, placeholder_text="100")
@@ -669,15 +609,8 @@ class BlicsaApp(ctk.CTk):
         self._search_unlimited_chk.pack(side="left", padx=4)
         self._search_max_entry.configure(state="disabled")
         
-        self._btn(act_sf, "⚙ Avançada", self._open_query_builder, height=30).pack(side="left", padx=4)
-        self._btn(act_sf, "🔍 Buscar", self._on_gui_search, height=30).pack(side="left", padx=4)
-        
-        self._search_cancel_btn = self._btn(act_sf, "✕ Cancelar", self._cancel_search, height=30, color="#E63946", hover="#C12B37")
-        self._search_cancel_btn.pack_forget() # Hide initially
-
-        # Filters Row
         filter_f = ctk.CTkFrame(scard, fg_color="transparent")
-        filter_f.grid(row=2, column=1, columnspan=2, padx=8, pady=4, sticky="ew")
+        filter_f.grid(row=4, column=0, columnspan=2, padx=16, pady=4, sticky="ew")
         
         ctk.CTkLabel(filter_f, text="Ano Início:", font=ctk.CTkFont(size=12)).pack(side="left", padx=4)
         self._search_year_start = ctk.CTkEntry(filter_f, width=60, placeholder_text="Ex: 2018")
@@ -693,15 +626,46 @@ class BlicsaApp(ctk.CTk):
                                               values=["Todos", "article", "review", "book-chapter", "dataset"], width=120)
         self._search_type.pack(side="left", padx=4)
 
-        self._h1(frame, "Log", 3)
-        lc = self._card(frame, 4)
-        lc.grid_rowconfigure(0, weight=1)
-        self._log_box = ctk.CTkTextbox(
-            lc, state="disabled",
-            font=ctk.CTkFont(family="Courier", size=11),
-            fg_color=CARD2_BG, text_color=("#145c38", "#88dd88"))
-        self._log_box.grid(row=0, column=0, padx=10, pady=10, sticky="nsew")
         return frame
+
+    def _build_tab_review(self) -> ctk.CTkFrame:
+        f = self._tab()
+        f.grid_columnconfigure(0, weight=1)
+        f.grid_rowconfigure(1, weight=1)
+        
+        self._h1(f, "Revisar Resultados", 0)
+        
+        # Header counts
+        self._review_counts_lbl = ctk.CTkLabel(f, text="", font=ctk.CTkFont(size=12, weight="bold"), text_color=MUTED)
+        self._review_counts_lbl.grid(row=0, column=0, padx=28, pady=4, sticky="e")
+        
+        # Main container with filter sidebar and cards
+        main_c = ctk.CTkFrame(f, fg_color="transparent")
+        main_c.grid(row=1, column=0, sticky="nsew", padx=20, pady=10)
+        main_c.grid_columnconfigure(1, weight=1)
+        main_c.grid_rowconfigure(0, weight=1)
+        
+        # Left Filters
+        flt_sidebar = ctk.CTkFrame(main_c, width=200, fg_color=CARD_BG, corner_radius=0)
+        flt_sidebar.grid(row=0, column=0, sticky="ns", padx=(0, 10))
+        flt_sidebar.grid_propagate(False)
+        ctk.CTkLabel(flt_sidebar, text="Filtros", font=ctk.CTkFont(size=14, weight="bold")).pack(pady=10)
+        
+        # Right Feed
+        self._review_feed = ctk.CTkScrollableFrame(main_c, fg_color=CARD2_BG)
+        self._review_feed.grid(row=0, column=1, sticky="nsew")
+        
+        # Bottom Bar
+        bb = ctk.CTkFrame(f, height=60, fg_color=CARD_BG, corner_radius=0)
+        bb.grid(row=2, column=0, sticky="ew")
+        bb.grid_columnconfigure(0, weight=1)
+        
+        self._review_selected_lbl = ctk.CTkLabel(bb, text="0 selecionados", font=ctk.CTkFont(size=14, weight="bold"))
+        self._review_selected_lbl.grid(row=0, column=0, padx=20, sticky="w")
+        
+        self._btn(bb, "Importar para o Corpus", lambda: self._switch_tab("corpus"), height=40, color=RED).grid(row=0, column=1, padx=20, pady=10, sticky="e")
+        
+        return f
 
     # ── Tab: Configurar Mapa ───────────────────────────────────────────
 
@@ -1252,7 +1216,7 @@ class BlicsaApp(ctk.CTk):
             with open(p, "r", encoding="utf-8", errors="ignore") as f:
                 head = f.read(4096)
         except Exception:
-            return self._origin_var.get() # fallback to dropdown
+            return "ambiguous" # fallback to dropdown
             
         # 1. JSON analysis
         if ext == ".json" or head.strip().startswith("{") or head.strip().startswith("["):
@@ -1280,7 +1244,7 @@ class BlicsaApp(ctk.CTk):
             if "AU" in first_line or "TI" in first_line or "PY" in first_line or "SO" in first_line:
                 return "wos"
                 
-        return self._origin_var.get()
+        return "ambiguous"
 
     def _pick_file(self):
         paths = filedialog.askopenfilenames(
@@ -1289,9 +1253,14 @@ class BlicsaApp(ctk.CTk):
                 ("CSV", "*.csv"), ("TXT / NBIB / RIS", "*.txt *.nbib *.ris"),
                 ("BibTeX", "*.bib"), ("JSON", "*.json"), ("All files", "*.*"),
             ])
+        if paths:
+            self._file_list_frame.grid() # show the list
+            
         for p in paths:
             if p not in self._file_paths:
                 fmt = self._auto_detect_format(p)
+                if fmt == "ambiguous":
+                    fmt = "scopus" # Default if totally unknown but show dropdown?
                 self._file_paths.append(p)
                 self._file_formats.append(fmt)
                 self._add_file_row(p, fmt)
@@ -1301,17 +1270,21 @@ class BlicsaApp(ctk.CTk):
         row_f.pack(fill="x", pady=2)
         row_f.grid_columnconfigure(0, weight=1)
         ctk.CTkLabel(row_f, text=Path(path).name, anchor="w",
-                     font=ctk.CTkFont(size=11)).grid(
+                     font=ctk.CTkFont(size=12, weight="bold")).grid(
             row=0, column=0, padx=8, pady=4, sticky="ew")
-        fmt_var = ctk.StringVar(value=fmt)
-        ctk.CTkComboBox(
-            row_f,
-            values=list(self._FORMAT_LABELS.keys()),
-            variable=fmt_var,
-            width=110, height=24,
-            button_color=ACCENT, border_color=ACCENT,
-            command=lambda v, p=path: self._set_file_format(p, v),
-        ).grid(row=0, column=1, padx=4, pady=4)
+            
+        if fmt == "ambiguous" or True: # Just show a dropdown always for safety, but style it like a badge
+            fmt_var = ctk.StringVar(value=fmt)
+            cb = ctk.CTkComboBox(
+                row_f,
+                values=list(self._FORMAT_LABELS.keys()),
+                variable=fmt_var,
+                width=110, height=24,
+                fg_color=RED, text_color="white", button_color=RED, border_color=RED, dropdown_hover_color=RED_HOV,
+                command=lambda v, p=path: self._set_file_format(p, v),
+            )
+            cb.grid(row=0, column=1, padx=4, pady=4)
+            
         ctk.CTkButton(
             row_f, text="✕", width=28, height=24,
             fg_color="#4a1a1a", hover_color="#6a2a2a",
@@ -1336,6 +1309,8 @@ class BlicsaApp(ctk.CTk):
             pass
         self._file_row_widgets = [(f, p) for f, p in self._file_row_widgets if p != path]
         frame.destroy()
+        if not self._file_paths:
+            self._file_list_frame.grid_remove()
 
     def _clear_files(self):
         self._file_paths.clear()
@@ -1343,6 +1318,7 @@ class BlicsaApp(ctk.CTk):
         for f, _ in self._file_row_widgets:
             f.destroy()
         self._file_row_widgets.clear()
+        self._file_list_frame.grid_remove()
 
     def _load_data(self):
         if not self._file_paths:
@@ -1519,7 +1495,7 @@ class BlicsaApp(ctk.CTk):
             # Show SearchFeedView for import review
             def on_import_confirm(selected_records):
                 if not selected_records:
-                    self.search_feed_view.place_forget()
+                    self._switch_tab("home")
                     return
                 df_selected = pd.DataFrame(selected_records)
                 if self._dataframe is not None and not self._dataframe.empty:
@@ -1542,20 +1518,28 @@ class BlicsaApp(ctk.CTk):
                 self._update_stats_tab()
                 self._set_idle(f"{len(df_selected)} registros adicionados")
                 messagebox.showinfo("Importação", f"{len(df_selected)} registros importados para o corpus com sucesso.")
-                
-                self.search_feed_view.place_forget()
-                self._switch_tab("home") # Land on corpus overview, NOT the map
+                self._switch_tab("corpus")
                 
             def on_cancel():
-                self.search_feed_view.place_forget()
+                self._switch_tab("import")
 
             def show_feed():
                 from ui.search_feed import SearchFeedView
                 self._search_cancel_btn.pack_forget()
-                self.search_feed_view = SearchFeedView(self._content, on_import_confirm, on_cancel)
-                self.search_feed_view.place(x=0, y=0, relwidth=1, relheight=1)
+                
+                # Clear existing review tab contents
+                review_tab = self._tabs["review"]
+                for w in review_tab.winfo_children():
+                    w.destroy()
+                    
+                # Create SearchFeedView inside the review tab
+                self.search_feed_view = SearchFeedView(review_tab, on_import_confirm, on_cancel)
+                self.search_feed_view.pack(fill="both", expand=True)
                 self.search_feed_view.load_results(df.to_dict('records'), trail)
                 self._set_idle("Pronto para revisar")
+                
+                # Navigate to the review tab
+                self._switch_tab("review")
                 
             self.after(0, show_feed)
 
