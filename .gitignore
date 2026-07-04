@@ -1,6 +1,7 @@
 # Generated outputs
 blicsa_*.html
 lib/
+assets/graph.json
 
 # Python
 __pycache__/

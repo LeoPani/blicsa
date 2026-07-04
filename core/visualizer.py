@@ -39,21 +39,103 @@ def build_plotly_map(
     G: nx.Graph,
     positions: dict,
     title: str = "Blicsa — Mapeamento Bibliométrico",
-    color_mode: str = "cluster",   # "cluster" | "degree" | "year"
+    color_mode: str = "cluster",
     df=None,
 ) -> go.Figure:
-    if not positions:
+    PAPER = "#F6F4EE"
+    INK = "#141414"
+    CLUSTER_PALETTE = ["#DF3117", "#1E4DA0", "#F5BE00", "#141414", "#7A9E7E", "#B65CA2", "#5CB0B8", "#C97B2D"]
+    
+    if not positions or G.number_of_nodes() == 0:
         fig = go.Figure()
-        fig.update_layout(
-            paper_bgcolor=PAPER_BG, plot_bgcolor=DARK_BG,
-            font_color=TEXT_COLOR,
-            annotations=[dict(
-                text="Nenhum nó encontrado.",
-                x=0.5, y=0.5, showarrow=False,
-                font=dict(size=16, color=TEXT_COLOR),
-            )],
-        )
+        fig.update_layout(paper_bgcolor=PAPER, plot_bgcolor=PAPER, font_color=INK)
         return fig
+
+    partition = nx.get_node_attributes(G, "group")
+    nodes = list(G.nodes())
+    
+    # Calculate top N nodes for labels (default 25)
+    weights = {n: G.nodes[n].get("weight", G.degree(n)) for n in nodes}
+    top_nodes = set(sorted(nodes, key=lambda n: weights[n], reverse=True)[:25])
+
+    # Nodes
+    xs = [positions[n][0] for n in nodes]
+    ys = [positions[n][1] for n in nodes]
+    node_w = np.array([weights[n] for n in nodes], float)
+    mn, mx = node_w.min(), node_w.max()
+    span = mx - mn if mx != mn else 1
+    # size scaled
+    node_px = 10 + 40 * ((node_w - mn) / span)
+    
+    node_colors = [CLUSTER_PALETTE[partition.get(n, 0) % len(CLUSTER_PALETTE)] for n in nodes]
+
+    traces = []
+    
+    # Flat cluster panels
+    # To do this in Plotly without complex shapes, we can just omit or use scatter convex hulls. We'll skip complex convex hull for Plotly and focus on edges/nodes unless specifically required.
+    
+    # Edges
+    edge_weights = np.array([G[u][v].get("weight", 1) for u, v in G.edges()], float)
+    if len(edge_weights) > 0:
+        ew_mn, ew_mx = edge_weights.min(), edge_weights.max()
+        ew_span = ew_mx - ew_mn if ew_mx != ew_mn else 1
+        
+        edge_x = []
+        edge_y = []
+        
+        # Plotly doesn't support per-segment opacity in a single scatter with good performance, but we can group by width/opacity or just use a single line width and opacity if needed.
+        # But for exact spec: opacity 8-22%, width 1-4px
+        for (u, v), w in zip(G.edges(), edge_weights):
+            w_norm = (w - ew_mn) / ew_span
+            opacity = 0.08 + 0.14 * w_norm
+            width = 1 + 3 * w_norm
+            traces.append(go.Scatter(
+                x=[positions[u][0], positions[v][0], None],
+                y=[positions[u][1], positions[v][1], None],
+                mode="lines",
+                line=dict(width=width, color=f"rgba(20,20,20,{opacity})"),
+                hoverinfo="none",
+                showlegend=False,
+            ))
+
+    # Labels
+    texts = [n if n in top_nodes else "" for n in nodes]
+    text_sizes = [max(9, int(px/2)) for px in node_px]
+    
+    traces.append(go.Scatter(
+        x=xs,
+        y=ys,
+        mode="markers+text",
+        text=texts,
+        textposition="top center",
+        textfont=dict(color=INK, size=text_sizes, family="Inter, sans-serif"),
+        marker=dict(
+            size=node_px,
+            color=node_colors,
+            line=dict(width=3, color=PAPER),
+            opacity=1.0,
+        ),
+        hoverinfo="text",
+        hovertext=[f"{n}<br>Cluster: {partition.get(n,0)}<br>Weight: {weights[n]:.1f}" for n in nodes],
+        showlegend=False,
+    ))
+
+    fig = go.Figure(data=traces)
+    fig.update_layout(
+        paper_bgcolor=PAPER,
+        plot_bgcolor=PAPER,
+        xaxis=dict(showgrid=False, zeroline=False, showticklabels=False, ticks=""),
+        yaxis=dict(showgrid=False, zeroline=False, showticklabels=False, ticks="", scaleanchor="x"),
+        margin=dict(l=3, r=3, t=3, b=3),
+        showlegend=False,
+        coloraxis_showscale=False,
+    )
+    # 3px ink border -> in plot_bgcolor/paper_bgcolor or via CSS? Plotly layout border:
+    fig.update_xaxes(showline=True, linewidth=3, linecolor=INK, mirror=True)
+    fig.update_yaxes(showline=True, linewidth=3, linecolor=INK, mirror=True)
+    
+    return fig
+
 
     partition = nx.get_node_attributes(G, "group")
     raw_sizes = nx.get_node_attributes(G, "size")

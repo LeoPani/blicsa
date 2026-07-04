@@ -1490,6 +1490,8 @@ class BlicsaApp(ctk.CTk):
                 
             records = []
             max_per_provider = max_results // len(providers_to_run) if providers_to_run else max_results
+            total_found_sum = 0
+
             
             for prov in providers_to_run:
                 if cancel_event.is_set(): break
@@ -1498,6 +1500,9 @@ class BlicsaApp(ctk.CTk):
                 self.after(0, self._set_busy, f"Consultando {prov_name}...")
                 
                 def progress(current, total):
+                    nonlocal total_found_sum
+                    if total > total_found_sum: total_found_sum = total
+                    
                     if cancel_event.is_set():
                         self.after(0, self._set_idle, "Busca cancelada.")
                     else:
@@ -1523,41 +1528,63 @@ class BlicsaApp(ctk.CTk):
                 return
                 
             df = pd.DataFrame(records)
+            baixados = len(df)
+
             
             if provider_name.lower() == "all":
                 self.after(0, self._set_busy, "Deduplicando registros (Fuzzy Match)...")
                 from core.harmonization import fuzzy_deduplicate_papers
-                initial_count = len(df)
                 df = fuzzy_deduplicate_papers(df)
-                final_count = len(df)
-                dups_removed = initial_count - final_count
-                print(f"[Search] Encontrados {initial_count} em múltiplas bases. Removidos {dups_removed} duplicados.")
             else:
-                print(f"[Search] Encontrados {len(df)} registros via {provider_name}.")
-            
-            if self._dataframe is not None and not self._dataframe.empty:
-                combined = BibliometricParser.merge(self._dataframe, df)
-            else:
-                combined = df
+                df.drop_duplicates(subset=["doi", "title"], keep="first", inplace=True)
                 
-            self._dataframe = combined
-            self._refresh_candidate_counts()
+            apos_dedup = len(df)
+            trail = f"Encontrados {total_found_sum} · baixados {baixados} (limite {max_results}) · após deduplicação {apos_dedup}"
+            print(f"[Search] {trail}")
             
-            if "year" in combined.columns:
-                valid_years = combined["year"].dropna()
-                valid_years = valid_years[valid_years > 0]
-                if not valid_years.empty:
-                    ymin = int(valid_years.min())
-                    ymax = int(valid_years.max())
-                    self.after(0, lambda y1=ymin, y2=ymax: (
-                        self._year_min_var.set(str(y1)),
-                        self._year_max_var.set(str(y2))
-                    ))
+            # Show SearchFeedView for import review
+            def on_import_confirm(selected_records):
+                if not selected_records:
+                    self.search_feed_view.place_forget()
+                    return
+                df_selected = pd.DataFrame(selected_records)
+                if self._dataframe is not None and not self._dataframe.empty:
+                    combined = BibliometricParser.merge(self._dataframe, df_selected)
+                else:
+                    combined = df_selected
                     
-            self.after(0, self._update_stats_tab)
-            self.after(0, self._set_idle, f"{len(df)} registros adicionados")
-            self.after(0, lambda: messagebox.showinfo("Busca concluída", f"Busca finalizada! {len(df)} registros importados com sucesso."))
-            self.after(0, lambda: self._switch_tab("viz"))
+                self._dataframe = combined
+                self._refresh_candidate_counts()
+                
+                if "year" in combined.columns:
+                    valid_years = combined["year"].dropna()
+                    valid_years = valid_years[valid_years > 0]
+                    if not valid_years.empty:
+                        ymin = int(valid_years.min())
+                        ymax = int(valid_years.max())
+                        self._year_min_var.set(str(ymin))
+                        self._year_max_var.set(str(ymax))
+                        
+                self._update_stats_tab()
+                self._set_idle(f"{len(df_selected)} registros adicionados")
+                messagebox.showinfo("Importação", f"{len(df_selected)} registros importados para o corpus com sucesso.")
+                
+                self.search_feed_view.place_forget()
+                self._switch_tab("home") # Land on corpus overview, NOT the map
+                
+            def on_cancel():
+                self.search_feed_view.place_forget()
+
+            def show_feed():
+                from ui.search_feed import SearchFeedView
+                self._search_cancel_btn.pack_forget()
+                self.search_feed_view = SearchFeedView(self._content, on_import_confirm, on_cancel)
+                self.search_feed_view.place(x=0, y=0, relwidth=1, relheight=1)
+                self.search_feed_view.load_results(df.to_dict('records'), trail)
+                self._set_idle("Pronto para revisar")
+                
+            self.after(0, show_feed)
+
         except Exception as e:
             print(f"[Search Error] {e}")
             self.after(0, self._set_idle, "Erro na busca")

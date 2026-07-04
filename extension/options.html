@@ -1,0 +1,33 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Blicsa Extension Options</title>
+    <style>
+        body { padding: 20px; font-family: sans-serif; }
+        .form-group { margin-bottom: 15px; }
+        label { display: block; margin-bottom: 5px; font-weight: bold; }
+        input[type="text"] { width: 300px; padding: 5px; }
+        .btn { padding: 8px 15px; background-color: #4CAF50; color: white; border: none; cursor: pointer; border-radius: 4px; }
+        .btn:hover { background-color: #45a049; }
+        #status { margin-top: 10px; color: green; }
+    </style>
+</head>
+<body>
+    <h2>Blicsa Extension Settings</h2>
+    
+    <div class="form-group">
+        <label>Bridge Port (default: 8765)</label>
+        <input type="text" id="bridgePort" placeholder="8765" />
+    </div>
+    
+    <div class="form-group">
+        <label>Pairing Token</label>
+        <input type="text" id="bridgeToken" placeholder="Enter token from Blicsa desktop app" />
+    </div>
+
+    <button id="saveBtn" class="btn">Save Options</button>
+    <div id="status"></div>
+
+    <script src="options.js"></script>
+</body>
+</html>

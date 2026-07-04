@@ -745,230 +745,102 @@ class MapCanvas:
         edge_opacity: float,
     ):
         import matplotlib.colors as mc
+        import matplotlib.patheffects as path_effects
+        from scipy.spatial import ConvexHull
+        from matplotlib.patches import Polygon
 
         self._ax.clear()
         
-        # Determine theme state
-        is_light = ctk.get_appearance_mode().lower() == "light"
-        bg_col = "#ffffff" if is_light else get_color(CARD2_BG)
-        self._ax.set_facecolor(bg_col)
-        self._ax.axis("off")
+        PAPER = "#F6F4EE"
+        INK = "#141414"
+        CLUSTER_PALETTE = ["#DF3117", "#1E4DA0", "#F5BE00", "#141414", "#7A9E7E", "#B65CA2", "#5CB0B8", "#C97B2D"]
+        
+        self._fig.patch.set_facecolor(PAPER)
+        self._ax.set_facecolor(PAPER)
+        
+        # 3px border
+        for spine in self._ax.spines.values():
+            spine.set_visible(True)
+            spine.set_color(INK)
+            spine.set_linewidth(3)
+            
+        self._ax.set_xticks([])
+        self._ax.set_yticks([])
         self._ax.set_aspect("equal", adjustable="datalim")
+        
         self._nodes = list(G.nodes())
-
         if G.number_of_nodes() == 0:
-            self._ax.text(0.5, 0.5, "Nenhum nó.\nReduz a frequência mínima.",
-                          ha="center", va="center",
-                          color=get_color(TEXT_MUTED), fontsize=13,
-                          transform=self._ax.transAxes)
+            self._ax.text(0.5, 0.5, "Nenhum nó.", ha="center", va="center", color=INK, transform=self._ax.transAxes)
             self._canvas.draw()
             return
 
-        partition  = nx.get_node_attributes(G, "group")
-        raw_sizes  = nx.get_node_attributes(G, "size")
-        year_means = nx.get_node_attributes(G, "year_mean")
-
-        # Filter hidden clusters
-        if self._hidden_clusters:
-            self._nodes = [n for n in self._nodes
-                           if partition.get(n, 0) not in self._hidden_clusters]
-
+        partition = nx.get_node_attributes(G, "group")
+        weights = {n: G.nodes[n].get("weight", G.degree(n)) for n in self._nodes}
+        
         xs = np.array([pos[n][0] for n in self._nodes])
         ys = np.array([pos[n][1] for n in self._nodes])
 
-        raw  = np.array([raw_sizes.get(n, 20) for n in self._nodes], float)
-        mn, mx = raw.min(), raw.max()
+        node_w = np.array([weights[n] for n in self._nodes], float)
+        mn, mx = node_w.min(), node_w.max()
         span = mx - mn if mx != mn else 1
-        sizes = (45 + 380 * (raw - mn) / span) * node_scale
+        
+        # sizes for scatter (points^2)
+        sizes = (20 + 400 * (node_w - mn) / span) * node_scale
+        
+        colors = [CLUSTER_PALETTE[partition.get(n, 0) % len(CLUSTER_PALETTE)] for n in self._nodes]
 
-        # ── Color determination ────────────────────────────────────────
-        if mode == "Clusters":
-            colors = [CLUSTER_PALETTE[partition.get(n, 0) % len(CLUSTER_PALETTE)]
-                      for n in self._nodes]
-        elif mode == "Grau (Degree)":
-            degs   = np.array([G.degree(n, weight="weight") for n in self._nodes], float)
-            normed = (degs - degs.min()) / (degs.max() - degs.min() + 1e-9)
-            colors = [plt.cm.plasma(v) for v in normed]
-        elif mode == "Ano Médio":
-            yrs = np.array([year_means.get(n, 0) for n in self._nodes], float)
-            valid = yrs[yrs > 0]
-            if len(valid) > 1:
-                mn_y, mx_y = valid.min(), valid.max()
-                normed = np.where(yrs > 0, (yrs - mn_y) / (mx_y - mn_y + 1e-9), 0.5)
-                colors = [plt.cm.coolwarm(v) for v in normed]
-            else:
-                colors = [CLUSTER_PALETTE[0]] * len(self._nodes)
-        elif mode == "Betweenness":
-            bc = nx.betweenness_centrality(G, weight="weight")
-            vals = np.array([bc.get(n, 0) for n in self._nodes], float)
-            normed = (vals - vals.min()) / (vals.max() - vals.min() + 1e-9)
-            colors = [plt.cm.YlOrRd(v) for v in normed]
-        elif mode == "PageRank":
-            pr = nx.pagerank(G, weight="weight")
-            vals = np.array([pr.get(n, 0) for n in self._nodes], float)
-            normed = (vals - vals.min()) / (vals.max() - vals.min() + 1e-9)
-            colors = [plt.cm.cool(v) for v in normed]
-        else:  # Densidade
-            if len(xs) > 2:
-                kde    = gaussian_kde(np.vstack([xs, ys]))
-                dens   = kde(np.vstack([xs, ys]))
-                normed = (dens - dens.min()) / (dens.max() - dens.min() + 1e-9)
-                colors = [plt.cm.inferno(v) for v in normed]
-            else:
-                colors = [CLUSTER_PALETTE[0]] * len(self._nodes)
-
-        # Neighborhood highlight: fade non-neighbors
-        hl = self._highlighted_node
-        nbrs: set[str] = set()
-        if hl and hl in G.nodes():
-            nbrs = set(G.neighbors(hl)) | {hl}
-            fade_color = "#f0f2f5" if is_light else get_color(CARD_BG)
-            colors = [c if n in nbrs else fade_color for c, n in zip(colors, self._nodes)]
-
-        # Pre-compute per-node RGBA for edge blending
-        rgba_map = {n: mc.to_rgba(c) for n, c in zip(self._nodes, colors)}
-
-        # ── Edges with blended endpoint colors ────────────────────────
-        weights = np.array([G[u][v].get("weight", 1) for u, v in G.edges()], float)
-        max_w   = weights.max() if len(weights) else 1.0
-        thresh  = self._edge_threshold * max_w
-
-        visible_set = set(self._nodes)
-        from matplotlib.collections import LineCollection
-        lines = []
-        colors_list = []
-        linewidths = []
-
-        for (u, v), w in zip(G.edges(), weights):
-            if w < thresh:
-                continue
-            if u not in visible_set or v not in visible_set:
-                continue
-            in_nbr = (not hl) or (u in nbrs and v in nbrs)
-            ratio  = w / max_w
+        # Flat cluster panels
+        cluster_points = {}
+        for n, x, y in zip(self._nodes, xs, ys):
+            c = partition.get(n, 0)
+            cluster_points.setdefault(c, []).append((x, y))
             
-            if is_light:
-                alpha = (0.05 + 0.35 * ratio**1.5) * edge_opacity * (1.0 if in_nbr else 0.05)
-                lw = (0.4 + 2.2 * ratio) * (1.0 if in_nbr else 0.35)
-                edge_c = (0.50, 0.54, 0.62, alpha)
-            else:
-                alpha  = (0.05 + 0.33 * ratio**1.5) * edge_opacity * (1.0 if in_nbr else 0.04)
-                lw     = (0.35 + 2.0 * ratio) * (1.0 if in_nbr else 0.3)
-                cu = rgba_map.get(u, (0.4, 0.4, 0.8, 1))
-                cv = rgba_map.get(v, (0.4, 0.4, 0.8, 1))
-                edge_c = ((cu[0]+cv[0])/2, (cu[1]+cv[1])/2, (cu[2]+cv[2])/2, max(alpha, 0.003))
-                
-            xu, yu = pos[u]
-            xv, yv = pos[v]
-            lines.append([(xu, yu), (xv, yv)])
-            colors_list.append(edge_c)
-            linewidths.append(lw)
+        for c, pts in cluster_points.items():
+            if len(pts) >= 3:
+                try:
+                    pts_arr = np.array(pts)
+                    hull = ConvexHull(pts_arr)
+                    poly = Polygon(pts_arr[hull.vertices], closed=True, 
+                                 facecolor=CLUSTER_PALETTE[c % len(CLUSTER_PALETTE)], 
+                                 alpha=0.08, zorder=0, edgecolor='none')
+                    self._ax.add_patch(poly)
+                except Exception:
+                    pass
 
-        if lines:
-            lc_edges = LineCollection(lines, colors=colors_list, linewidths=linewidths, zorder=1, capstyle="round")
-            self._ax.add_collection(lc_edges)
-
-        # ── Drop shadow or Glow layers (per-node color) ───────────────
-        fade = 0.55 if hl else 1.0
-        if is_light:
-            x_span = xs.max() - xs.min() + 1e-9
-            y_span = ys.max() - ys.min() + 1e-9
-            # Draw a subtle slate-grey drop-shadow shifted down-right
-            self._ax.scatter(xs + 0.0035 * x_span, ys - 0.0035 * y_span, s=sizes * 1.15,
-                             c="#2a3040", alpha=0.08 * fade, linewidths=0, zorder=2)
-            # Add a soft blurred outer halo ring
-            self._ax.scatter(xs, ys, s=sizes * 1.8, c=colors,
-                             alpha=0.07 * fade, linewidths=0, zorder=3)
-        else:
-            # Multi-layer neon glow in dark mode
-            for size_mul, alpha_mul in [(9.0, 0.018), (5.5, 0.032), (3.2, 0.055),
-                                         (2.0, 0.095), (1.55, 0.15)]:
-                self._ax.scatter(xs, ys, s=sizes * size_mul, c=colors,
-                                 alpha=alpha_mul * fade, linewidths=0, zorder=2)
-
-        # ── Node bodies with color-matched rim ────────────────────────
-        rim_colors = []
-        for c in colors:
-            r, g, b, _ = mc.to_rgba(c)
-            if is_light:
-                # Darker border for contrast on white
-                rim_colors.append((r*0.75, g*0.75, b*0.75, 0.95))
-            else:
-                rim_colors.append((min(1, r*0.55 + 0.55), min(1, g*0.55 + 0.55),
-                                    min(1, b*0.55 + 0.55), 0.9))
-
-        self._scatter = self._ax.scatter(
-            xs, ys, s=sizes, c=colors,
-            linewidths=1.2, edgecolors=rim_colors, zorder=6,
-            alpha=0.88,
-        )
-
-        # ── Labels with tinted backdrop ──────────────────────────
-        if G.number_of_nodes() <= 170:
-            y_span = ys.max() - ys.min() + 1e-9
-            fs_base = 7.5 * node_scale
-            for n, x, y, c in zip(self._nodes, xs, ys, colors):
-                if n == hl:
-                    continue
-                label = n if len(n) <= 24 else n[:22] + "…"
-                r, g, b, _ = mc.to_rgba(c)
-                
-                if is_light:
-                    box_bg = "white"
-                    box_ec = (r*0.7, g*0.7, b*0.7, 0.45)
-                    lbl_c = "#1e293b"
-                    bbox_dict = dict(fc=box_bg, ec=box_ec, boxstyle="round,pad=0.3", lw=0.8, alpha=0.92)
-                else:
-                    box_bg = (r * 0.08, g * 0.08, b * 0.08, 0.85)
-                    box_ec = (r, g, b, 0.35)
-                    lbl_c = "white"
-                    bbox_dict = dict(fc=box_bg, ec=box_ec, boxstyle="round,pad=0.3", lw=0.8)
-                    
-                self._ax.text(
-                    x, y + 0.017 * y_span, label,
-                    ha="center", va="bottom",
-                    fontsize=fs_base, color=lbl_c, fontweight="bold", zorder=7,
-                    bbox=bbox_dict,
-                )
-
-        # ── Cluster legend ─────────────────────────────────────────────
-        if mode == "Clusters":
-            cluster_tops: dict[int, list[str]] = {}
-            for n in self._nodes:
-                grp = partition.get(n, 0)
-                cluster_tops.setdefault(grp, []).append(n)
-            clusters = sorted(set(partition.values()))[:14]
-            patches  = []
-            for c in clusters:
-                members = cluster_tops.get(c, [])
-                lbl     = self._cluster_labels.get(c, f"Cluster {c}")
-                if len(members) > 0:
-                    lbl = f"{lbl} ({len(members)})"
-                patches.append(mpatches.Patch(
-                    color=CLUSTER_PALETTE[c % len(CLUSTER_PALETTE)], label=lbl))
+        # Edges
+        edge_weights = np.array([G[u][v].get("weight", 1) for u, v in G.edges()], float)
+        if len(edge_weights) > 0:
+            ew_mn, ew_mx = edge_weights.min(), edge_weights.max()
+            ew_span = ew_mx - ew_mn if ew_mx != ew_mn else 1
             
-            lbl_color = "black" if is_light else "white"
-            legend_face = "#ffffff" if is_light else get_color(CARD2_BG)
-            self._ax.legend(
-                handles=patches, loc="upper left",
-                fontsize=7.5, framealpha=0.85,
-                facecolor=legend_face, edgecolor=ACCENT,
-                labelcolor=lbl_color,
-            )
+            from matplotlib.collections import LineCollection
+            lines = []
+            line_colors = []
+            line_widths = []
+            for (u, v), w in zip(G.edges(), edge_weights):
+                w_norm = (w - ew_mn) / ew_span
+                opacity = 0.08 + 0.14 * w_norm
+                width = 1 + 3 * w_norm
+                lines.append([pos[u], pos[v]])
+                line_colors.append(mc.to_rgba(INK, alpha=opacity))
+                line_widths.append(width)
+                
+            lc = LineCollection(lines, colors=line_colors, linewidths=line_widths, zorder=1)
+            self._ax.add_collection(lc)
 
-        # ── Highlight ring ─────────────────────────────────────────────
-        if hl and hl in G.nodes():
-            hx, hy = pos[hl]
-            hi = self._nodes.index(hl)
-            self._ax.scatter([hx], [hy], s=sizes[hi] * 4.0,
-                             c="none", linewidths=2.8,
-                             edgecolors=ACCENT, zorder=9, alpha=0.97)
+        # Nodes
+        self._ax.scatter(xs, ys, s=sizes, c=colors, edgecolor=PAPER, linewidth=3, zorder=2)
 
-        self._ax.margins(0.05)
-        self._fig.subplots_adjust(left=0.01, right=0.99, top=0.98, bottom=0.01)
+        # Labels (Top 25)
+        top_nodes = set(sorted(self._nodes, key=lambda n: weights[n], reverse=True)[:25])
+        for n, x, y, s in zip(self._nodes, xs, ys, sizes):
+            if n in top_nodes:
+                font_size = max(8, int(np.sqrt(s) * 0.4))
+                txt = self._ax.text(x, y, str(n), color=INK, fontsize=font_size, 
+                                  ha='center', va='center', zorder=3, fontweight='bold')
+                txt.set_path_effects([path_effects.withStroke(linewidth=3, foreground=PAPER)])
+
         self._canvas.draw()
-        if not hl:
-            print(f"[Mapa] {G.number_of_nodes()} nós · {G.number_of_edges()} arestas · modo {mode}\n")
 
     def highlight_node(self, name: str) -> bool:
         """Flash-highlight a node by name. Returns True if found."""
