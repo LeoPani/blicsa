@@ -2072,42 +2072,17 @@ class BlicsaApp(ctk.CTk):
     # ── AI ─────────────────────────────────────────────────────────────
     def _run_ai(self):
         if self._generator is None:
-            messagebox.showwarning("Sem mapa", "Gere o mapa primeiro.")
+            messagebox.showwarning("Sem mapa", "Gere o mapa primeiro para obter insights.")
             return
-        self._show_ai_modal = True
-        threading.Thread(target=self._ai_worker, daemon=True).start()
-
-    def _ai_worker(self):
-        self.after(0, self._set_busy, "IA gerando insights…")
+            
         try:
-            print("[IA] Enviando dados para Groq...")
-            analyst = self._get_ai_analyst()
-            cluster_report = self._generator.get_cluster_report()
-            year_dist: dict | None = None
-            if self._dataframe is not None and "year" in self._dataframe.columns:
-                yr = self._dataframe["year"].replace(0, None).dropna().astype(int)
-                year_dist = dict(Counter(yr))
-            result = analyst.generate_insights(
-                top_keywords=self._generator.get_top_keywords(20),
-                summary_stats=self._generator.get_summary_stats(),
-                cluster_report=cluster_report,
-                year_distribution=year_dist,
-            )
-            self.after(0, self._show_insights, result)
-            self.after(0, self._set_idle, "Insights prontos")
-            print("[IA] Insights gerados.\n")
-        except Exception as exc:
-            self.after(0, self._set_idle, "Erro IA")
-            print(f"[ERRO IA] {exc}\n")
-            self.after(0, lambda e=exc: messagebox.showerror("Erro IA", f"Erro ao gerar insights com IA:\n{e}"))
-
-    def _show_insights(self, text: str):
-        from ui.components import insert_markdown
-        insert_markdown(self._insights_box, text)
-        if getattr(self, "_show_ai_modal", False):
-            self._show_ai_modal = False
-            from ui.components import AIInsightsWindow
-            AIInsightsWindow(self, text)
+            report = self._generator.get_cluster_report()
+            if hasattr(self, '_inject_ai_context'):
+                self._inject_ai_context(report)
+            if hasattr(self, '_toggle_ai_drawer'):
+                self._toggle_ai_drawer(force_open=True)
+        except Exception as e:
+            messagebox.showerror("Erro IA", f"Falha ao iniciar assistente: {e}")
 
     def _ai_sankey_worker(self):
         try:
@@ -3363,13 +3338,33 @@ class BlicsaApp(ctk.CTk):
         
         # Drawer toggle
         self._drawer_open = False
-        def toggle_drawer():
-            if self._drawer_open:
+        def toggle_drawer(force_open=False):
+            if self._drawer_open and not force_open:
                 drawer.grid_remove()
                 self._drawer_open = False
             else:
                 drawer.grid(row=0, column=1, sticky="ns")
                 self._drawer_open = True
+                
+        self._toggle_ai_drawer = toggle_drawer
+                
+        def inject_context(context_text):
+            if not hasattr(self, '_research_messages'): self._research_messages = []
+            if not self._research_messages:
+                self._research_messages.append({"role": "system", "content": "Você é o 'Blink Research', um assistente focado em pesquisa dentro do Blicsa."})
+            
+            # Check if this context is already injected to avoid duplicates
+            if len(self._research_messages) > 1 and self._research_messages[1]["content"].startswith(context_text[:50]):
+                return
+                
+            self._research_messages.insert(1, {"role": "system", "content": f"Contexto atual da análise:\n{context_text}"})
+            
+            self._research_chat_history.configure(state="normal")
+            self._research_chat_history.insert("end", "[Sistema: Contexto de análise injetado com sucesso]\n\n")
+            self._research_chat_history.see("end")
+            self._research_chat_history.configure(state="disabled")
+            
+        self._inject_ai_context = inject_context
                 
         ctk.CTkButton(f, text="✨", width=40, height=40, fg_color=RED, text_color="white", corner_radius=20, command=toggle_drawer).place(relx=0.98, rely=0.95, anchor="se")
         
