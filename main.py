@@ -1617,15 +1617,31 @@ class BlicsaApp(ctk.CTk):
             
             baixados = len(df)
 
+            baixados = len(df)
+
+            df["is_duplicate"] = False
+            df["dup_reason"] = ""
+
+            # Identify duplicates
+            # First by DOI
+            if 'doi' in df.columns:
+                doi_mask = df.duplicated(subset=['doi'], keep='first') & (df['doi'] != '') & df['doi'].notna()
+                df.loc[doi_mask, 'is_duplicate'] = True
+                df.loc[doi_mask, 'dup_reason'] = "DOI duplicado"
             
-            if provider_name.lower() == "all":
-                self.after(0, self._set_busy, "Deduplicando registros (Fuzzy Match)...")
-                from core.harmonization import fuzzy_deduplicate_papers
-                df = fuzzy_deduplicate_papers(df)
-            else:
-                df.drop_duplicates(subset=["doi", "title"], keep="first", inplace=True)
+            # Then by title normalized
+            if 'title' in df.columns:
+                import re
+                def norm_title(t):
+                    return re.sub(r'[^a-z0-9]', '', str(t).lower())
                 
-            apos_dedup = len(df)
+                df['norm_title'] = df['title'].apply(norm_title)
+                title_mask = df.duplicated(subset=['norm_title'], keep='first') & ~df['is_duplicate'] & (df['norm_title'] != '')
+                df.loc[title_mask, 'is_duplicate'] = True
+                df.loc[title_mask, 'dup_reason'] = "Título duplicado"
+                df.drop(columns=['norm_title'], inplace=True)
+                
+            apos_dedup = len(df[~df["is_duplicate"]])
             trail = f"Encontrados {total_found_sum} · baixados {baixados} (limite {max_results}) · após deduplicação {apos_dedup}"
             print(f"[Search] {trail}")
             

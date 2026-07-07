@@ -96,8 +96,11 @@ class ArticleCard(ctk.CTkFrame):
         if lang:
             ctk.CTkLabel(title_frame, text=lang, fg_color="#E0E0E0", text_color=INK, font=ctk.CTkFont(size=11, weight="bold"), corner_radius=0).pack(side="left", padx=(0, 6))
         
+        if record.get("is_duplicate"):
+            ctk.CTkLabel(title_frame, text=str(record.get("dup_reason", "Duplicado")).upper(), fg_color=RED, text_color=WHITE, font=ctk.CTkFont(size=11, weight="bold"), corner_radius=0).pack(side="left", padx=(0, 6))
+
         title = str(record.get("title", "Sem título"))
-        ctk.CTkLabel(self, text=title, text_color=BLUE, font=ctk.CTkFont(size=14, weight="bold"), anchor="w", justify="left", wraplength=700).grid(row=1, column=2, padx=(4, 12), pady=0, sticky="w")
+        ctk.CTkLabel(self, text=title, text_color=BLUE if not record.get("is_duplicate") else "#999999", font=ctk.CTkFont(size=14, weight="bold"), anchor="w", justify="left", wraplength=700).grid(row=1, column=2, padx=(4, 12), pady=0, sticky="w")
         
         # Meta: Authors - Journal
         authors = str(record.get("authors", ""))
@@ -194,7 +197,7 @@ class SearchFeedView(ctk.CTkFrame):
     def load_results(self, records: List[dict], count_trail: str):
         self.records = records
         self.filtered_indices = list(range(len(records)))
-        self.selected_indices = set(self.filtered_indices)
+        self.selected_indices = {i for i, r in enumerate(records) if not r.get("is_duplicate")}
         
         langs = Counter([r.get('language') for r in records if r.get('language')]).most_common(3)
         lang_str = " · ".join(f"{l.upper()}: {c}" for l, c in langs) if langs else "Sem idioma detectado"
@@ -243,6 +246,13 @@ class SearchFeedView(ctk.CTkFrame):
             cb = ctk.CTkCheckBox(self.sidebar, text=f"{j[:20]} ({c})", variable=var, command=self._apply_filters, corner_radius=0)
             cb.pack(anchor="w", pady=2)
             
+        # Type
+        ctk.CTkLabel(self.sidebar, text="Tipo", font=ctk.CTkFont(weight="bold")).pack(anchor="w", pady=(16, 0))
+        types = [r.get("type", "unknown") for r in self.records if r.get("type")]
+        self.type_var = ctk.StringVar(value="Todos")
+        type_options = ["Todos"] + [t for t, _ in Counter(types).most_common()]
+        ctk.CTkOptionMenu(self.sidebar, variable=self.type_var, values=type_options, command=self._apply_filters, corner_radius=0).pack(fill="x", pady=4)
+
         # Language
         ctk.CTkLabel(self.sidebar, text="Idioma", font=ctk.CTkFont(weight="bold")).pack(anchor="w", pady=(16, 0))
         languages = [r.get("language") for r in self.records if r.get("language")]
@@ -265,6 +275,7 @@ class SearchFeedView(ctk.CTkFrame):
         oa_only = self.oa_var.get() if hasattr(self, "oa_var") else False
         allowed_journals = {j for j, v in self.journal_vars.items() if v.get()} if hasattr(self, "journal_vars") else set()
         sel_lang = self.lang_var.get() if hasattr(self, "lang_var") else "Todos"
+        sel_type = self.type_var.get() if hasattr(self, "type_var") else "Todos"
         
         new_filtered = []
         for i, r in enumerate(self.records):
@@ -275,6 +286,8 @@ class SearchFeedView(ctk.CTkFrame):
             if hasattr(self, "journal_vars") and r.get("source") in self.journal_vars and r.get("source") not in allowed_journals:
                 continue
             if sel_lang != "Todos" and r.get("language") != sel_lang:
+                continue
+            if sel_type != "Todos" and r.get("type", "unknown") != sel_type:
                 continue
             new_filtered.append(i)
             
