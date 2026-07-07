@@ -647,6 +647,17 @@ class BlicsaApp(ctk.CTk):
             
         return frame
 
+    def _build_tab_projects(self) -> ctk.CTkFrame:
+        from ui.projects_view import ProjectsView
+        frame = ctk.CTkFrame(self._main_content, fg_color="transparent")
+        
+        def on_open_project(path):
+            self.after(0, lambda: self._load_project_file(path))
+            
+        self._projects_view = ProjectsView(frame, on_open_project)
+        self._projects_view.pack(fill="both", expand=True)
+        return frame
+        
     def _build_tab_import(self) -> ctk.CTkFrame:
         frame = self._tab()
         
@@ -2765,7 +2776,11 @@ class BlicsaApp(ctk.CTk):
         messagebox.showinfo("Exportação Concluída", f"Arquivos do VOSviewer exportados com sucesso!\n\nMapa: {map_path}\nRede: {net_path}")
 
     def _save_project_gui(self):
+        import os
+        proj_dir = getattr(self, "_projects_dir_var", ctk.StringVar(value=os.path.expanduser("~/Blicsa/projects"))).get()
+        os.makedirs(proj_dir, exist_ok=True)
         path = filedialog.asksaveasfilename(
+            initialdir=proj_dir,
             defaultextension=".blicsa",
             filetypes=[("Projeto Blicsa", "*.blicsa")],
             title="Salvar Projeto Blicsa",
@@ -2793,16 +2808,34 @@ class BlicsaApp(ctk.CTk):
                 "cluster_algorithm": self._cluster_alg_var.get(),
                 "cluster_resolution": self._cluster_res_var.get(),
             }
+            
+            thumbnail_path = None
+            if hasattr(self, '_map_canvas') and getattr(self._map_canvas, 'figure', None) is not None:
+                import tempfile
+                tmp_png = tempfile.mktemp(suffix=".png")
+                self._map_canvas.figure.savefig(tmp_png, dpi=72, bbox_inches='tight')
+                thumbnail_path = tmp_png
+
             save_blicsa_project(
                 path,
                 df=self._dataframe,
                 config=config,
                 positions=self._positions,
                 G=self._generator.G if self._generator else None,
-                cluster_labels=self._cluster_labels
+                cluster_labels=self._cluster_labels,
+                searches=getattr(self, "_searches", []),
+                thumbnail_path=thumbnail_path
             )
+            
+            if thumbnail_path and os.path.exists(thumbnail_path):
+                os.remove(thumbnail_path)
+                
             self._set_idle(f"Projeto salvo: {Path(path).name}")
             messagebox.showinfo("Sucesso", "Projeto salvo com sucesso!")
+            
+            if hasattr(self, "_projects_view"):
+                self._projects_view.refresh()
+                
         except Exception as e:
             self._set_idle("Erro ao salvar projeto")
             messagebox.showerror("Erro ao salvar", str(e))

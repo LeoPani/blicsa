@@ -14,7 +14,9 @@ def save_blicsa_project(
     config: dict,
     positions: dict | None,
     G: nx.Graph | None,
-    cluster_labels: dict | None
+    cluster_labels: dict | None,
+    searches: list | None = None,
+    thumbnail_path: str | None = None
 ):
     """Save full Blicsa project to a .blicsa ZIP archive."""
     manifest = {
@@ -27,6 +29,14 @@ def save_blicsa_project(
     with zipfile.ZipFile(path, "w", zipfile.ZIP_DEFLATED) as zf:
         # 1. Manifest
         zf.writestr("manifest.json", json.dumps(manifest, indent=2))
+        
+        # Searches
+        if searches is not None:
+            zf.writestr("searches.json", json.dumps(searches, indent=2, ensure_ascii=False))
+            
+        # Thumbnail
+        if thumbnail_path and os.path.exists(thumbnail_path):
+            zf.write(thumbnail_path, "thumbnail.png")
 
         # 2. Config
         zf.writestr("config.json", json.dumps(config, indent=2, ensure_ascii=False))
@@ -102,6 +112,12 @@ def load_blicsa_project(path: str) -> dict:
             for edge in network_data.get("edges", []):
                 G.add_edge(edge["source"], edge["target"], **edge.get("attributes", {}))
             result["G"] = G
+            
+        # Read Searches
+        if "searches.json" in zf.namelist():
+            result["searches"] = json.loads(zf.read("searches.json").decode("utf-8"))
+        else:
+            result["searches"] = []
 
         # Read Clusters (Labels)
         if "clusters.json" in zf.namelist():
