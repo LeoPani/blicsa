@@ -3575,6 +3575,82 @@ class BlicsaApp(ctk.CTk):
 
         return f
 
+    
+    def _download_oa_pdfs(self):
+        if self._dataframe is None or self._dataframe.empty:
+            return
+            
+        oa_records = self._dataframe[self._dataframe.get("is_oa", False) == True].to_dict('records')
+        if not oa_records:
+            messagebox.showinfo("PDFs", "Nenhum documento Open Access encontrado no corpus.")
+            return
+            
+        import threading
+        import urllib.request
+        import urllib.error
+        import os
+        import re
+        
+        # Determine project name for folder
+        proj_name = "Projeto_Sem_Nome"
+        if getattr(self, "_current_tab_key", "") == "projects":
+            # Can't reliably get current from tab, fallback to a timestamp or default
+            pass
+            
+        import time
+        proj_name = f"projeto_{int(time.time())}"
+        out_dir = os.path.expanduser(f"~/Blicsa/pdfs/{proj_name}")
+        os.makedirs(out_dir, exist_ok=True)
+        
+        self._pdf_cancel_event = threading.Event()
+        
+        def slugify(value):
+            value = str(value).lower().strip()
+            value = re.sub(r'[^\w\s-]', '', value)
+            value = re.sub(r'[-\s]+', '-', value)
+            return value[:50]
+            
+        def worker():
+            downloaded = 0
+            failed = 0
+            
+            for i, r in enumerate(oa_records):
+                if self._pdf_cancel_event.is_set():
+                    break
+                    
+                self.after(0, self._set_busy, f"Baixando PDF {i+1}/{len(oa_records)}...")
+                
+                url = r.get("oa_url")
+                if not url:
+                    failed += 1
+                    continue
+                    
+                authors = str(r.get("authors", "Autor"))
+                first_author = authors.split(";")[0].split(",")[0].strip()
+                first_author = slugify(first_author)
+                
+                year = str(r.get("year", "0000"))
+                title = slugify(r.get("title", "Sem titulo"))
+                
+                filename = f"{first_author}_{year}_{title}.pdf"
+                filepath = os.path.join(out_dir, filename)
+                
+                try:
+                    req = urllib.request.Request(url, headers={'User-Agent': 'Mozilla/5.0'})
+                    with urllib.request.urlopen(req, timeout=10) as response, open(filepath, 'wb') as out_file:
+                        out_file.write(response.read())
+                    downloaded += 1
+                except Exception:
+                    failed += 1
+                    
+            self.after(0, self._set_idle, f"PDFs baixados. {downloaded} sucessos, {failed} falhas.")
+            self.after(0, lambda: messagebox.showinfo("Download Concluído", f"{downloaded} baixados, {failed} falhas.
+
+Salvos em:
+{out_dir}"))
+            
+        threading.Thread(target=worker, daemon=True).start()
+
     def _build_tab_corpus(self) -> ctk.CTkFrame:
         self._corpus_tab_frame = self._tab()
         self._corpus_tab_frame.grid_columnconfigure(0, weight=1)
@@ -3611,7 +3687,10 @@ class BlicsaApp(ctk.CTk):
         ctk.CTkLabel(hdr, text="Seu Corpus", font=ctk.CTkFont(size=28, weight="bold")).grid(row=0, column=0, sticky="w")
         ctk.CTkLabel(hdr, text=f"{total_docs} documentos • {total_cites} citações totais", font=ctk.CTkFont(size=14), text_color=MUTED).grid(row=1, column=0, sticky="w")
         
-        self._btn(hdr, "Ir para Análises", lambda: self._switch_tab("analises"), height=40, color=RED).grid(row=0, column=2, rowspan=2, sticky="e")
+        btns_f = ctk.CTkFrame(hdr, fg_color="transparent")
+        btns_f.grid(row=0, column=2, rowspan=2, sticky="e")
+        self._btn(btns_f, "Baixar PDFs abertos", self._download_oa_pdfs, height=40, color="#1E4DA0").pack(side="left", padx=(0, 10))
+        self._btn(btns_f, "Ir para Análises", lambda: self._switch_tab("analises"), height=40, color=RED).pack(side="left")
         
         # Main content
         main = ctk.CTkFrame(self._corpus_tab_frame, fg_color="transparent")
