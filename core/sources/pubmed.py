@@ -138,10 +138,13 @@ class PubMedProvider(SearchProvider):
                     "source":     r.get("JT", r.get("TA", "")),
                     "keywords":   kw,
                     "abstract":   r.get("AB", ""),
-                    "citations":  0,
+                    "citations":  0, # PubMed doesn't return citation counts in medline format by default
                     "doi":        doi,
                     "references": "",
                     "origin":     "PubMed",
+                    "language":   r.get("LA", ""),
+                    "is_oa":      False,
+                    "oa_url":     ""
                 }
                 yield record
                 count_fetched += 1

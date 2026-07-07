@@ -13,9 +13,13 @@ class ExtensionBridgeHandler(BaseHTTPRequestHandler):
     on_expand: Optional[Callable[[Dict[str, Any]], Dict[str, Any]]] = None
     
     def _send_cors_headers(self):
-        self.send_header('Access-Control-Allow-Origin', '*')
-        self.send_header('Access-Control-Allow-Methods', 'GET, POST, OPTIONS')
-        self.send_header('Access-Control-Allow-Headers', 'Authorization, Content-Type')
+        origin = self.headers.get("Origin", "")
+        if origin.startswith("chrome-extension://") or origin.startswith("moz-extension://"):
+            self.send_header("Access-Control-Allow-Origin", origin)
+        else:
+            self.send_header("Access-Control-Allow-Origin", "null")
+        self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
+        self.send_header("Access-Control-Allow-Headers", "Authorization, Content-Type")
 
     def do_OPTIONS(self):
         self.send_response(200, "ok")

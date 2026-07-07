@@ -8,7 +8,7 @@ from typing import Iterator, Callable, Dict, Any, Optional
 logger = logging.getLogger("SearchProvider")
 
 class SearchProvider:
-    def __init__(self, mailto: str = "pybibliomics@example.com", cache: Optional[Dict[str, Any]] = None):
+    def __init__(self, mailto: str = "leopaniago2@gmail.com", cache: Optional[Dict[str, Any]] = None):
         self.mailto = mailto
         self.cache = cache if cache is not None else {}
         self.last_request_time = 0.0

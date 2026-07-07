@@ -14,13 +14,27 @@ async function init() {
   const container = document.getElementById("container");
   
   // Load graph data
-  const response = await fetch("graph.json");
-  const data = await response.json();
+  let data;
+  try {
+    const response = await fetch("graph.json");
+    if (!response.ok) throw new Error("Failed to fetch graph.json");
+    data = await response.json();
+  } catch (err) {
+    container.innerHTML = '<div style="display: flex; height: 100%; width: 100%; align-items: center; justify-content: center; font-size: 24px; color: #555;">Nenhum dado para exibir</div>';
+    document.getElementById("ui").style.display = 'none';
+    return;
+  }
   
   graph = new Graph();
   graph.import(data);
   
   // Setup Sigma
+  if (!data.nodes || data.nodes.length === 0) {
+    container.innerHTML = '<div style="display: flex; height: 100%; width: 100%; align-items: center; justify-content: center; font-size: 24px; color: #555;">Nenhum dado para exibir</div>';
+    document.getElementById("ui").style.display = 'none';
+    return;
+  }
+
   sigmaInstance = new Sigma(graph, container, {
     minCameraRatio: 0.1,
     maxCameraRatio: 10,

@@ -79,16 +79,16 @@ class CrossrefProvider(SearchProvider):
                 if count_fetched >= max_results:
                     break
 
+                has_cc_license = False
+                licenses = w.get("license", [])
+                for lic in licenses:
+                    url_lic = lic.get("URL", "")
+                    if "creative-commons" in url_lic.lower() or "creativecommons" in url_lic.lower():
+                        has_cc_license = True
+                        break
+
                 # Post-filter Open Access in Python for Crossref if requested
                 if filters and filters.get("is_oa") is not None:
-                    # Check if there is licensing info containing "creative-commons"
-                    has_cc_license = False
-                    licenses = w.get("license", [])
-                    for lic in licenses:
-                        url_lic = lic.get("URL", "")
-                        if "creative-commons" in url_lic.lower() or "creativecommons" in url_lic.lower():
-                            has_cc_license = True
-                            break
                     if filters["is_oa"] and not has_cc_license:
                         continue
                     if not filters["is_oa"] and has_cc_license:
@@ -121,6 +121,9 @@ class CrossrefProvider(SearchProvider):
                     "doi":        (w.get("DOI", "") or "").strip(),
                     "references": refs,
                     "origin":     "Crossref",
+                    "language":   str(w.get("language") or ""),
+                    "is_oa":      has_cc_license,
+                    "oa_url":     "" # Not provided as a direct download link by crossref usually
                 }
                 yield record
                 count_fetched += 1

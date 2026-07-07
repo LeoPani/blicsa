@@ -15,58 +15,18 @@ def call_openai_chat(
     timeout: int = 30
 ) -> str:
     """Make direct HTTP POST to any OpenAI-compatible endpoint with retries and key redaction."""
-    payload = {
-        "model": model,
-        "messages": [
-            {"role": "system", "content": system_prompt},
-            {"role": "user", "content": user_prompt}
-        ],
-        "temperature": temperature
-    }
-    
-    redacted_key = api_key[:6] + "..." + api_key[-4:] if len(api_key) > 10 else "***"
-    print(f"[AI Client] Requisitando {base_url}/chat/completions (Model: {model}, Key: {redacted_key})")
-    
-    url = base_url.rstrip("/") + "/chat/completions"
-    headers = {
-        "Content-Type": "application/json",
-        "User-Agent": "Blicsa/1.0 (Python)"
-    }
-    if api_key:
-        headers["Authorization"] = f"Bearer {api_key}"
-        
-    data = json.dumps(payload).encode("utf-8")
-    req = urllib.request.Request(url, data=data, headers=headers, method="POST")
-    
-    retries = 3
-    delay = 1.0
-    while retries > 0:
-        try:
-            with urllib.request.urlopen(req, timeout=timeout) as resp:
-                resp_data = json.loads(resp.read().decode("utf-8"))
-                return resp_data["choices"][0]["message"]["content"]
-        except urllib.error.HTTPError as e:
-            if e.code == 429:
-                print(f"[AI Client] Limite de requisições (429). Retentando em {delay}s...")
-                time.sleep(delay)
-                delay *= 2
-                retries -= 1
-            else:
-                # Read response details for better errors if available
-                try:
-                    err_msg = e.read().decode("utf-8")
-                    print(f"[AI Client] HTTP Error {e.code}: {err_msg}")
-                except Exception:
-                    pass
-                raise e
-        except Exception as e:
-            print(f"[AI Client] Erro na requisição: {e}")
-            retries -= 1
-            if retries == 0:
-                raise e
-            time.sleep(delay)
-            delay *= 2
-    return "Erro ao obter resposta da IA."
+    messages = [
+        {"role": "system", "content": system_prompt},
+        {"role": "user", "content": user_prompt}
+    ]
+    return call_openai_chat_history(
+        base_url=base_url,
+        api_key=api_key,
+        model=model,
+        messages=messages,
+        temperature=temperature,
+        timeout=timeout
+    )
 
 
 def call_openai_chat_history(
@@ -94,7 +54,6 @@ def call_openai_chat_history(
     if api_key:
         headers["Authorization"] = f"Bearer {api_key}"
         
-    import json, urllib.request, time
     data = json.dumps(payload).encode("utf-8")
     req = urllib.request.Request(url, data=data, headers=headers, method="POST")
     
@@ -113,16 +72,6 @@ def call_openai_chat_history(
             delay *= 2
     return "Erro ao obter resposta da IA."
 
-    def chat_history(self, messages: list[dict], temperature: float = 0.7) -> str:
-        if not self.api_key:
-            return "Erro: API Key não configurada nos Ajustes."
-        return call_openai_chat_history(
-            base_url=self.base_url,
-            api_key=self.api_key,
-            model=self.model,
-            messages=messages,
-            temperature=temperature
-        )
 
 class AIAnalyst:
 

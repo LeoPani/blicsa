@@ -134,6 +134,11 @@ class OpenAlexProvider(SearchProvider):
                 if w.get("primary_location") and w["primary_location"].get("source"):
                     src = w["primary_location"]["source"].get("display_name", "") or ""
 
+                oa_info = w.get("open_access", {})
+                is_oa = bool(oa_info.get("is_oa", False))
+                oa_url = str(oa_info.get("oa_url") or "")
+                lang = str(w.get("language") or "")
+
                 record = {
                     "authors":    authors,
                     "title":      w.get("title", "") or "",
@@ -141,10 +146,13 @@ class OpenAlexProvider(SearchProvider):
                     "source":     src,
                     "keywords":   kws,
                     "abstract":   abstract,
-                    "citations":  int(w.get("cited_by_count") or 0),
+                    "citations":  int(w.get("cited_by_count", 0)),
                     "doi":        w.get("doi", "") or "",
-                    "references": "",
+                    "references": "; ".join(w.get("referenced_works", [])),
                     "origin":     "OpenAlex",
+                    "language":   lang,
+                    "is_oa":      is_oa,
+                    "oa_url":     oa_url,
                 }
                 yield record
                 count_fetched += 1

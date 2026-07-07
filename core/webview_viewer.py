@@ -11,7 +11,7 @@ def main():
     
     # Open native window
     webview.create_window(title, url, width=1200, height=800)
-    webview.start()
+    webview.start(http_server=True)
 
 if __name__ == '__main__':
     main()
