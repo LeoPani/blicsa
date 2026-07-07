@@ -29,7 +29,8 @@ def call_openai_chat(
     
     url = base_url.rstrip("/") + "/chat/completions"
     headers = {
-        "Content-Type": "application/json"
+        "Content-Type": "application/json",
+        "User-Agent": "Blicsa/1.0 (Python)"
     }
     if api_key:
         headers["Authorization"] = f"Bearer {api_key}"
@@ -87,7 +88,8 @@ def call_openai_chat_history(
     
     url = base_url.rstrip("/") + "/chat/completions"
     headers = {
-        "Content-Type": "application/json"
+        "Content-Type": "application/json",
+        "User-Agent": "Blicsa/1.0 (Python)"
     }
     if api_key:
         headers["Authorization"] = f"Bearer {api_key}"

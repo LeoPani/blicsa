@@ -42,7 +42,7 @@ class CrossrefProvider(SearchProvider):
             "cursor": "*"
         }
         if query.strip():
-            params["query"] = query.strip()
+            params["query.bibliographic"] = query.strip()
         if filter_parts:
             params["filter"] = ",".join(filter_parts)
 

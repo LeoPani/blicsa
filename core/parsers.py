@@ -343,6 +343,38 @@ class BibliometricParser:
         m = re.search(r"\b(19|20)\d{2}\b", text)
         return int(m.group()) if m else 0
 
+    
+    # ------------------------------------------------------------------ #
+    #  PDF Full-Text                                                       #
+    # ------------------------------------------------------------------ #
+    def load_pdf(self) -> pd.DataFrame:
+        try:
+            import pdfplumber
+        except ImportError:
+            raise RuntimeError("pdfplumber is not installed. Please install it.")
+        full_text = ""
+        try:
+            with pdfplumber.open(self.file_path) as pdf:
+                for page in pdf.pages:
+                    t = page.extract_text()
+                    if t: full_text += t + "\n"
+        except Exception as e:
+            print(f"Error reading PDF: {e}")
+        import pandas as pd
+        df = pd.DataFrame()
+        df["authors"]    = pd.Series([""], dtype=str)
+        df["title"]      = pd.Series([self.file_path.name], dtype=str)
+        df["year"]       = pd.Series([2024], dtype=int)
+        df["source"]     = pd.Series(["PDF File"], dtype=str)
+        df["keywords"]   = pd.Series([""], dtype=str)
+        df["abstract"]   = pd.Series([full_text], dtype=str)
+        df["citations"]  = pd.Series([0], dtype=int)
+        df["doi"]        = pd.Series([""], dtype=str)
+        df["references"] = pd.Series([""], dtype=str)
+        df["origin"]     = "PDF Full-Text"
+        self.df = df
+        return self.df
+
     def load_ris(self) -> pd.DataFrame:
         text = self.file_path.read_text(encoding="utf-8", errors="replace")
         records = []

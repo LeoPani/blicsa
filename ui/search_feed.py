@@ -236,6 +236,11 @@ class SearchFeedView(ctk.CTkFrame):
             cb = ctk.CTkCheckBox(self.sidebar, text=f"{j[:20]} ({c})", variable=var, command=self._apply_filters, corner_radius=0)
             cb.pack(anchor="w", pady=2)
             
+        # Opções de Importação
+        ctk.CTkLabel(self.sidebar, text="Importação", font=ctk.CTkFont(weight="bold")).pack(anchor="w", pady=(16, 0))
+        self.dedup_var = ctk.BooleanVar(value=True)
+        ctk.CTkCheckBox(self.sidebar, text="Fuzzy Deduplicate", variable=self.dedup_var, corner_radius=0).pack(anchor="w", pady=4)
+        
     def _apply_filters(self, *args):
         if hasattr(self, "year_slider"):
             y = int(self.year_slider.get())
@@ -326,7 +331,8 @@ class SearchFeedView(ctk.CTkFrame):
         
         def on_confirm():
             dlg.destroy()
-            self.on_import_confirm(selected_records)
+            do_dedup = getattr(self, "dedup_var", ctk.BooleanVar(value=False)).get()
+            self.on_import_confirm(selected_records, do_dedup)
             
         btns = ctk.CTkFrame(dlg, fg_color="transparent")
         btns.pack(fill="x", pady=16, padx=24)

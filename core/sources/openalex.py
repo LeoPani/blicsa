@@ -77,7 +77,7 @@ class OpenAlexProvider(SearchProvider):
             q_str = ""
 
         if q_str.strip():
-            params["q"] = q_str.strip()
+            filter_parts.append(f"title_and_abstract.search:{q_str.strip()}")
         if filter_parts:
             params["filter"] = ",".join(filter_parts)
 

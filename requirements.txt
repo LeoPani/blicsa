@@ -14,3 +14,7 @@ numpy
 wordcloud
 openpyxl
 tkinterdnd2
+
+pdfplumber
+sentence-transformers
+scikit-learn
