@@ -3644,10 +3644,7 @@ class BlicsaApp(ctk.CTk):
                     failed += 1
                     
             self.after(0, self._set_idle, f"PDFs baixados. {downloaded} sucessos, {failed} falhas.")
-            self.after(0, lambda: messagebox.showinfo("Download Concluído", f"{downloaded} baixados, {failed} falhas.
-
-Salvos em:
-{out_dir}"))
+            self.after(0, lambda: messagebox.showinfo("Download Concluído", f"{downloaded} baixados, {failed} falhas.\n\nSalvos em:\n{out_dir}"))
             
         threading.Thread(target=worker, daemon=True).start()
 
