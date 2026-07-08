@@ -17,4 +17,5 @@ tkinterdnd2
 
 pdfplumber
 sentence-transformers
-scikit-learnlangdetect>=1.0.9
+scikit-learn
+langdetect>=1.0.9
