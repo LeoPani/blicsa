@@ -17,13 +17,13 @@ def configure_markdown_tags(textbox: ctk.CTkTextbox):
     font_h3 = ctk.CTkFont(family=base_font.cget("family"), size=base_font.cget("size") + 2, weight="bold")
     font_code = ctk.CTkFont(family="Courier", size=base_font.cget("size"))
     
-    textbox.tag_config("bold", font=font_bold)
-    textbox.tag_config("italic", font=font_italic)
-    textbox.tag_config("bold_italic", font=font_bold_italic)
-    textbox.tag_config("h1", font=font_h1)
-    textbox.tag_config("h2", font=font_h2)
-    textbox.tag_config("h3", font=font_h3)
-    textbox.tag_config("code", font=font_code, background="#e0e0e0")
+    textbox._textbox.tag_config("bold", font=font_bold)
+    textbox._textbox.tag_config("italic", font=font_italic)
+    textbox._textbox.tag_config("bold_italic", font=font_bold_italic)
+    textbox._textbox.tag_config("h1", font=font_h1)
+    textbox._textbox.tag_config("h2", font=font_h2)
+    textbox._textbox.tag_config("h3", font=font_h3)
+    textbox._textbox.tag_config("code", font=font_code, background="#e0e0e0")
 
 def insert_markdown(textbox: ctk.CTkTextbox, text: str):
     """Parses basic markdown and inserts it into a CTkTextbox."""
