@@ -1,60 +1,15 @@
 name: Release
 
 on:
+  workflow_dispatch:
   push:
-    tags:
-      - 'v*'
+    tags: ['v*']
 
 permissions:
   contents: write
 
-# ─────────────────────────────────────────────────────────────────────────────
 jobs:
-
-  # ── 0. Validate that the git tag matches __version__ in main.py ────────────
-  validate-version:
-    name: Validate version
-    runs-on: ubuntu-latest
-    outputs:
-      version: ${{ steps.ver.outputs.version }}
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Extract and validate version
-        id: ver
-        run: |
-          TAG="${GITHUB_REF_NAME}"
-          VERSION="${TAG#v}"
-          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
-
-          CODE_VERSION=$(python3 - <<'PY'
-          import ast, sys
-          with open("main.py") as f:
-              tree = ast.parse(f.read())
-          for node in ast.walk(tree):
-              if isinstance(node, ast.Assign):
-                  for t in node.targets:
-                      if isinstance(t, ast.Name) and t.id == "__version__":
-                          print(ast.literal_eval(node.value))
-                          sys.exit(0)
-          print("NOT_FOUND")
-          PY
-          )
-
-          if [ "$CODE_VERSION" = "NOT_FOUND" ]; then
-            echo "WARNING: __version__ not found in main.py — skipping version check"
-          elif [ "$CODE_VERSION" != "$VERSION" ]; then
-            echo "ERROR: tag is $TAG but main.py __version__ = '$CODE_VERSION'"
-            echo "Update __version__ in main.py to match the tag before releasing."
-            exit 1
-          else
-            echo "Version OK: $VERSION"
-          fi
-
-  # ── 1. Windows build ────────────────────────────────────────────────────────
   build-windows:
-    name: Build (Windows)
-    needs: validate-version
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
@@ -69,256 +24,24 @@ jobs:
           pip install --upgrade pip
           pip install -r requirements.txt pyinstaller
 
-      - name: Warn if icon missing
-        shell: bash
-        run: |
-          [ -f "assets/branding/blicsa-icon.ico" ] \
-            || echo "::warning::blicsa-icon.ico not found — PyInstaller will use its default icon"
-
       - name: Build with PyInstaller
-        run: pyinstaller blicsa.spec --noconfirm
+        run: pyinstaller Blicsa.spec --noconfirm
 
-      - name: Create portable ZIP
+      - name: Rename exe
         shell: pwsh
-        run: |
-          Compress-Archive -Path dist\Blicsa-onefile.exe -DestinationPath dist\Blicsa-windows-portable.zip
+        run: Copy-Item dist\Blicsa-onefile.exe dist\Blicsa.exe
 
-      - name: Build Inno Setup installer (optional)
-        shell: pwsh
-        run: |
-          $iscc = "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe"
-          if ((Test-Path "installer.iss") -and (Test-Path $iscc)) {
-            & $iscc installer.iss
-            Write-Host "Installer built: dist\Blicsa_Setup.exe"
-          } else {
-            Write-Warning "Inno Setup or installer.iss not found — skipping installer"
-          }
-
-      - name: Collect artifacts
-        shell: pwsh
-        run: |
-          New-Item -ItemType Directory -Force -Path release-win | Out-Null
-          Copy-Item dist\Blicsa-windows-portable.zip release-win\
-          Copy-Item dist\Blicsa-onefile.exe            release-win\Blicsa.exe
-          if (Test-Path "dist\Blicsa_Setup.exe") {
-            Copy-Item dist\Blicsa_Setup.exe release-win\
-          }
-
-      - uses: actions/upload-artifact@v4
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
         with:
-          name: windows-build
-          path: release-win/
+          name: Blicsa-windows
+          path: dist/Blicsa.exe
           if-no-files-found: error
 
-  # ── 2. macOS build ──────────────────────────────────────────────────────────
-  build-macos:
-    name: Build (macOS)
-    needs: validate-version
-    runs-on: macos-latest
-    steps:
-      - uses: actions/checkout@v4
-
-      - uses: actions/setup-python@v5
-        with:
-          python-version: '3.11'
-          cache: pip
-
-      - name: Install dependencies
-        run: |
-          pip install --upgrade pip
-          pip install -r requirements.txt pyinstaller
-
-      - name: Warn if icon missing
-        run: |
-          [ -f "assets/branding/blicsa-icon.icns" ] \
-            || echo "::warning::blicsa-icon.icns not found — PyInstaller will use its default icon"
-
-      - name: Build with PyInstaller
-        run: pyinstaller blicsa.spec --noconfirm
-
-      - name: Create DMG with hdiutil
-        run: |
-          hdiutil create \
-            -volname "Blicsa" \
-            -srcfolder "dist/Blicsa.app" \
-            -ov \
-            -format UDZO \
-            Blicsa.dmg
-
-      - uses: actions/upload-artifact@v4
-        with:
-          name: macos-build
-          path: Blicsa.dmg
-          if-no-files-found: error
-
-  # ── 3. Linux build ──────────────────────────────────────────────────────────
-  build-linux:
-    name: Build (Linux)
-    needs: validate-version
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Install system dependencies
-        run: |
-          sudo apt-get update -q
-          sudo apt-get install -y python3-tk python3-dev libgl1 libglib2.0-0 fuse libfuse2
-
-      - uses: actions/setup-python@v5
-        with:
-          python-version: '3.11'
-          cache: pip
-
-      - name: Install Python dependencies
-        run: |
-          pip install --upgrade pip
-          pip install -r requirements.txt pyinstaller
-
-      - name: Warn if icon missing
-        run: |
-          [ -f "assets/branding/blicsa-icon-256.png" ] \
-            || echo "::warning::blicsa-icon-256.png not found — AppImage will have no icon"
-
-      - name: Build with PyInstaller
-        run: pyinstaller blicsa.spec --noconfirm
-
-      - name: Build AppImage
-        id: appimage
-        continue-on-error: true
-        run: |
-          curl -fsSL -o appimagetool \
-            "https://github.com/AppImage/AppImageKit/releases/download/13/appimagetool-x86_64.AppImage"
-          chmod +x appimagetool
-
-          # Build AppDir from the onedir output
-          mkdir -p AppDir
-          cp -r dist/Blicsa-dir/. AppDir/
-
-          # Add icon
-          if [ -f "assets/branding/blicsa-icon-256.png" ]; then
-            cp assets/branding/blicsa-icon-256.png AppDir/blicsa.png
-          else
-            touch AppDir/blicsa.png
-          fi
-
-          # AppRun launcher
-          cat > AppDir/AppRun << 'APPRUN'
-          #!/bin/sh
-          SELF=$(readlink -f "$0")
-          APPDIR=$(dirname "$SELF")
-          exec "$APPDIR/Blicsa" "$@"
-          APPRUN
-          chmod +x AppDir/AppRun
-
-          # Desktop entry
-          cat > AppDir/blicsa.desktop << 'DESKTOP'
-          [Desktop Entry]
-          Type=Application
-          Name=Blicsa
-          Exec=Blicsa
-          Icon=blicsa
-          Categories=Science;Education;
-          Comment=Bibliometric network analysis and visualization
-          DESKTOP
-
-          ARCH=x86_64 ./appimagetool AppDir Blicsa-x86_64.AppImage
-          echo "built=true" >> "$GITHUB_OUTPUT"
-
-      - name: Package tar.gz fallback
-        if: steps.appimage.outputs.built != 'true'
-        run: |
-          echo "::warning::AppImage build failed — falling back to tar.gz"
-          tar -czf Blicsa-linux-x86_64.tar.gz -C dist Blicsa-dir
-
-      - name: Collect artifacts
-        run: |
-          mkdir -p release-linux
-          [ -f "Blicsa-x86_64.AppImage" ]       && cp Blicsa-x86_64.AppImage       release-linux/
-          [ -f "Blicsa-linux-x86_64.tar.gz" ]   && cp Blicsa-linux-x86_64.tar.gz   release-linux/
-          ls -lh release-linux/
-
-      - uses: actions/upload-artifact@v4
-        with:
-          name: linux-build
-          path: release-linux/
-          if-no-files-found: error
-
-  # ── 4. Create GitHub Release ────────────────────────────────────────────────
-  create-release:
-    name: Create Release
-    needs: [build-windows, build-macos, build-linux]
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Download all build artifacts
-        uses: actions/download-artifact@v4
-        with:
-          path: artifacts
-
-      - name: List downloaded files
-        run: find artifacts -type f | sort
-
-      - name: Calculate SHA256 checksums
-        run: |
-          (
-            cd artifacts
-            find . -type f | sort | while read f; do
-              sha256sum "$f" | sed 's|\./[^/]*/||'
-            done
-          ) > CHECKSUMS.txt
-          cat CHECKSUMS.txt
-
-      - name: Build release body
-        id: body
-        run: |
-          VERSION="${GITHUB_REF_NAME}"
-          cat > release-body.md << BODY
-          ## Blicsa ${VERSION}
-
-          Desktop application for bibliometric network analysis and visualization.
-          No Python installation required — executables are self-contained.
-
-          ---
-
-          ### Download
-
-          | Platform | File | Notes |
-          |----------|------|-------|
-          | **Windows** | \`Blicsa_Setup.exe\` | Recommended installer |
-          | **Windows** | \`Blicsa-windows-portable.zip\` | Portable, extract and run |
-          | **macOS** | \`Blicsa.dmg\` | Open and drag to Applications |
-          | **Linux** | \`Blicsa-x86_64.AppImage\` | \`chmod +x\` then run |
-          | **Linux** | \`Blicsa-linux-x86_64.tar.gz\` | Fallback — extract and run \`Blicsa-dir/Blicsa\` |
-
-          > **macOS Gatekeeper**: App is unsigned. First launch: right-click → **Open** → **Open**.
-
-          ---
-
-          ### Verify integrity
-
-          Download \`CHECKSUMS.txt\` alongside your file, then:
-
-          \`\`\`bash
-          sha256sum -c CHECKSUMS.txt
-          \`\`\`
-
-          ---
-
-          See [CHANGELOG.md](https://github.com/LeoPani/PyBibliomics/blob/main/CHANGELOG.md) for what changed.
-          BODY
-
-      - name: Create GitHub Release
+      - name: Attach to release (only on tag)
+        if: startsWith(github.ref, 'refs/tags/')
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: ${{ github.ref_name }}
-          name: Release ${{ github.ref_name }}
-          body_path: release-body.md
-          files: |
-            artifacts/windows-build/*
-            artifacts/macos-build/*
-            artifacts/linux-build/*
-            CHECKSUMS.txt
-          fail_on_unmatched_files: false
+          files: dist/Blicsa.exe
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
