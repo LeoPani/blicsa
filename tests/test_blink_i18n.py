@@ -31,7 +31,7 @@ def blink_system_prompt() -> str:
     ("fr", "French"),
 ])
 def test_blink_directive_language(lang, expected):
-    i18n.set_lang(lang)
+    i18n.load_locales(lang)  # não persiste (evita clobber do .blicsa_settings.json)
     prompt = blink_system_prompt()
     assert f"respond to the user in {expected}" in prompt
     # não deve conter a diretiva de outro idioma
@@ -41,7 +41,7 @@ def test_blink_directive_language(lang, expected):
 
 def test_get_lang_reflects_set_lang():
     for lang in ("pt_BR", "en", "fr"):
-        i18n.set_lang(lang)
+        i18n.load_locales(lang)  # não persiste (evita clobber do .blicsa_settings.json)
         assert i18n.get_lang() == lang
 
 

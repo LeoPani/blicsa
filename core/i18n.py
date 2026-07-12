@@ -42,15 +42,8 @@ def load_locales(lang_code: str = None):
             lang_code = s.get("lang")
             
         if not lang_code:
-            sys_lang = get_system_language().lower()
-            if sys_lang.startswith("pt"):
-                lang_code = "pt_BR"
-            elif sys_lang.startswith("fr"):
-                lang_code = "fr"
-            elif sys_lang.startswith("de"):
-                lang_code = "de"
-            else:
-                lang_code = "en"
+            # Português (pt_BR) é o idioma padrão do Blicsa.
+            lang_code = "pt_BR"
                 
     _current_lang = lang_code
     

@@ -95,7 +95,5 @@
   "projects.copy_suffix": "(Cópia)",
   "projects.copy_suffix_n": "(Cópia {n})",
   "projects.delete_title": "Confirmar Exclusão",
-  "projects.delete_confirm": "Tem certeza que deseja excluir o projeto '{name}'?",
-  "search.limit_title": "Limite de download",
-  "search.limit_exceeded": "O limite máximo é {max} registros. Ajustado para {max}."
+  "projects.delete_confirm": "Tem certeza que deseja excluir o projeto '{name}'?"
 }

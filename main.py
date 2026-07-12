@@ -811,14 +811,15 @@ class BlicsaApp(ctk.CTk):
         
         ctk.CTkLabel(act_sf, text="Qtd:").pack(side="left", padx=4)
         self._search_max_entry = ctk.CTkEntry(act_sf, width=60, placeholder_text="1000", placeholder_text_color=MUTED, fg_color=WHITE_CARD, text_color=INK)
-        self._search_max_entry.insert(0, "1000")  # BUG-A: padrão honesto 1000 (máx 10000)
+        self._search_max_entry.insert(0, "1000")
         self._search_max_entry.pack(side="left", padx=4)
 
-        # "Máx" ⇒ 10000 (teto do projeto). Desligado por padrão: default é 1000.
-        self._search_unlimited_var = ctk.BooleanVar(value=False)
-        self._search_unlimited_chk = ctk.CTkCheckBox(act_sf, text="Máx (10000)", variable=self._search_unlimited_var, width=50,
+        # Ilimitado: sem teto (baixa tudo o que a API entregar). Ligado por padrão.
+        self._search_unlimited_var = ctk.BooleanVar(value=True)
+        self._search_unlimited_chk = ctk.CTkCheckBox(act_sf, text="Ilimitado", variable=self._search_unlimited_var, width=50,
                                                      command=lambda: self._search_max_entry.configure(state="disabled" if self._search_unlimited_var.get() else "normal"))
         self._search_unlimited_chk.pack(side="left", padx=4)
+        self._search_max_entry.configure(state="disabled")
         
         self._btn(act_sf, "⚙ Avançada", self._open_query_builder, height=30).pack(side="left", padx=4)
         self._btn(act_sf, "🔍 Buscar", self._on_gui_search, height=30, color=RED, hover=RED_HOV).pack(side="left", padx=4)
@@ -1658,21 +1659,16 @@ class BlicsaApp(ctk.CTk):
             return
         provider = self._search_provider_var.get()
         
-        # BUG-A: limite honesto — padrão 1000, teto 10000; acima é rejeitado.
-        MAX_LIMIT, DEFAULT_LIMIT = 10000, 1000
+        # Ilimitado = sem teto (sentinela grande). Sem esse teto de 10000.
+        UNLIMITED, DEFAULT_LIMIT = 10_000_000, 1000
         if self._search_unlimited_var.get():
-            max_results = MAX_LIMIT
+            max_results = UNLIMITED
         else:
             try:
                 max_results = int(self._search_max_entry.get().strip() or str(DEFAULT_LIMIT))
             except ValueError:
                 max_results = DEFAULT_LIMIT
-            if max_results > MAX_LIMIT:
-                messagebox.showwarning(t("search.limit_title"), t("search.limit_exceeded", max=MAX_LIMIT))
-                max_results = MAX_LIMIT
-                self._search_max_entry.delete(0, "end")
-                self._search_max_entry.insert(0, str(MAX_LIMIT))
-            elif max_results < 1:
+            if max_results < 1:
                 max_results = DEFAULT_LIMIT
             
         filters = {}
@@ -1881,8 +1877,9 @@ class BlicsaApp(ctk.CTk):
                 df.drop(columns=['norm_title'], inplace=True)
                 
             apos_dedup = len(df[~df["is_duplicate"]])
-            # BUG-A: trilha honesta — deixa explícito quando há mais do que o limite baixou.
-            if total_found_sum > baixados:
+            # Trilha honesta: só mostra "de {limite}" quando há um limite FINITO definido
+            # pelo usuário (ilimitado usa uma sentinela grande e não exibe teto).
+            if total_found_sum > baixados and max_results < 10_000_000:
                 trail = f"Encontrados {total_found_sum} · baixados {baixados} de {max_results} (limite) · após deduplicação {apos_dedup}"
             else:
                 trail = f"Encontrados {total_found_sum} · baixados {baixados} · após deduplicação {apos_dedup}"
