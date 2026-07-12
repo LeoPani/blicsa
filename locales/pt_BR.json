@@ -60,5 +60,19 @@
   "menu_settings": "Configurações",
   "menu_help": "Ajuda",
   "menu_about": "Sobre",
-  "menu_home": "Blink"
+  "menu_home": "Blink",
+  "settings.ok": "OK",
+  "blink.titulo_1": "O que vamos ",
+  "blink.titulo_destaque": "pesquisar",
+  "blink.titulo_2": " hoje?",
+  "blink.voltar": "⬅ Voltar",
+  "blink.system_prompt": "Você é o 'Blink', um assistente de IA focado em pesquisa dentro do software Blicsa. Ajude o usuário com sua pesquisa bibliométrica. Use markdown para formatar a resposta.",
+  "blink.saudacao": "**Blink:** fala mano, bora pesquisar?",
+  "blink.placeholder": "Digite sua pergunta...",
+  "blink.rag_contexto": "Contexto relevante do corpus:",
+  "blink.erro": "Erro:",
+  "blink.enviar": "Enviar",
+  "blink.sugestao_1": "Quais as tendências mais recentes?",
+  "blink.sugestao_2": "Como faço análise de rede de citações?",
+  "blink.sugestao_3": "O que é um cluster bibliométrico?"
 }

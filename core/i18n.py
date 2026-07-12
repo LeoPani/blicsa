@@ -72,6 +72,10 @@ def t(key: str, **kwargs) -> str:
             pass
     return val
 
+def get_lang() -> str:
+    """Código de idioma atualmente carregado (ex.: 'pt_BR', 'en', 'fr')."""
+    return _current_lang
+
 def set_lang(lang_code: str):
     load_locales(lang_code)
     # Save to settings

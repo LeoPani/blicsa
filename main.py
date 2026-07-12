@@ -386,8 +386,18 @@ class BlicsaApp(ctk.CTk):
         except:
             pass
             
-        close = tk.Button(content, text="OK", command=dlg.destroy, bg="#DF3117", fg="white", relief="flat", highlightbackground="#141414", bd=2)
+        close = tk.Button(content, text=t("settings.ok"), command=dlg.destroy, bg="#DF3117", fg="white", relief="flat", highlightbackground="#141414", bd=2)
         close.pack(side="bottom", pady=20)
+
+    def _blink_system_prompt(self) -> str:
+        """System prompt do Blink + diretiva dinâmica de idioma (via get_lang())."""
+        from core.i18n import get_lang
+        base = t("blink.system_prompt")
+        lang_names = {"pt_BR": "Brazilian Portuguese", "en": "English", "fr": "French"}
+        target = lang_names.get(get_lang(), "English")
+        directive = (f"IMPORTANT: Always respond to the user in {target}, "
+                     f"regardless of the language of this prompt.")
+        return f"{base}\n\n{directive}"
 
     def _refresh_language(self):
         curr_tab = getattr(self, '_current_tab_key', "home")
@@ -624,29 +634,29 @@ class BlicsaApp(ctk.CTk):
         
         lbl_f = ctk.CTkFrame(title_f, fg_color="transparent")
         lbl_f.pack(side="left")
-        ctk.CTkLabel(lbl_f, text=t("O que vamos "), font=ctk.CTkFont(size=32, weight="bold"), text_color=INK).pack(side="left")
-        ctk.CTkLabel(lbl_f, text=t("pesquisar"), font=ctk.CTkFont(size=32, weight="bold"), text_color=RED).pack(side="left")
-        ctk.CTkLabel(lbl_f, text=t(" hoje?"), font=ctk.CTkFont(size=32, weight="bold"), text_color=INK).pack(side="left")
+        ctk.CTkLabel(lbl_f, text=t("blink.titulo_1"), font=ctk.CTkFont(size=32, weight="bold"), text_color=INK).pack(side="left")
+        ctk.CTkLabel(lbl_f, text=t("blink.titulo_destaque"), font=ctk.CTkFont(size=32, weight="bold"), text_color=RED).pack(side="left")
+        ctk.CTkLabel(lbl_f, text=t("blink.titulo_2"), font=ctk.CTkFont(size=32, weight="bold"), text_color=INK).pack(side="left")
         
         def _go_back():
             if hasattr(self, '_previous_tab_key') and self._previous_tab_key:
                 self._switch_tab(self._previous_tab_key)
                 
-        self._blink_back_btn = ctk.CTkButton(title_f, text="⬅ Voltar", width=80, height=30, fg_color="#E0E0E0", text_color=INK, hover_color="#C0C0C0", command=_go_back)
+        self._blink_back_btn = ctk.CTkButton(title_f, text=t("blink.voltar"), width=80, height=30, fg_color="#E0E0E0", text_color=INK, hover_color="#C0C0C0", command=_go_back)
         
         self._research_chat_history_main = ctk.CTkScrollableFrame(chat_container, fg_color="transparent")
         self._research_chat_history_main.pack(fill="both", expand=True, pady=(0, 20))
         from core.markdown_parser import configure_markdown_tags, insert_markdown
         
-        self._research_messages = [{"role": "system", "content": t("Você é o 'Blink', um assistente de IA focado em pesquisa dentro do software Blicsa. Ajude o usuário com sua pesquisa bibliométrica. Use markdown para formatar a resposta.")}]
+        self._research_messages = [{"role": "system", "content": self._blink_system_prompt()}]
 
 
-        self._add_blink_message("assistant", t("**Blink:** fala mano, bora pesquisar?"))
-        
+        self._add_blink_message("assistant", t("blink.saudacao"))
+
         input_f = ctk.CTkFrame(chat_container, fg_color="transparent")
         input_f.pack(fill="x", pady=(0, 20))
-        
-        self._research_chat_input_main = ctk.CTkEntry(input_f, placeholder_text=t("Digite sua pergunta..."), placeholder_text_color=MUTED, font=ctk.CTkFont(size=14), fg_color=WHITE_CARD, text_color=INK, height=44, corner_radius=0, border_width=2, border_color=INK)
+
+        self._research_chat_input_main = ctk.CTkEntry(input_f, placeholder_text=t("blink.placeholder"), placeholder_text_color=MUTED, font=ctk.CTkFont(size=14), fg_color=WHITE_CARD, text_color=INK, height=44, corner_radius=0, border_width=2, border_color=INK)
         self._research_chat_input_main.pack(side="left", fill="x", expand=True, padx=(0, 10))
         
         def send_main_chat(e=None):
@@ -656,7 +666,7 @@ class BlicsaApp(ctk.CTk):
             
             self._add_blink_message("user", msg)
             
-            system_prompt = t("Você é o 'Blink', um assistente de IA focado em pesquisa dentro do software Blicsa. Ajude o usuário com sua pesquisa bibliométrica. Use markdown para formatar a resposta.")
+            system_prompt = self._blink_system_prompt()
             if self._dataframe is not None and not self._dataframe.empty:
                 try:
                     from sklearn.feature_extraction.text import TfidfVectorizer
@@ -680,7 +690,7 @@ class BlicsaApp(ctk.CTk):
                         
                         if abstracts:
                             ctx = "\\n\\n---\\n".join(abstracts)
-                            system_prompt += f"\\n\\n{t('Contexto relevante do corpus:')}\\n{ctx}"
+                            system_prompt += f"\\n\\n{t('blink.rag_contexto')}\\n{ctx}"
                 except Exception as ex:
                     print(f"[Blink RAG] Error: {ex}")
             
@@ -734,21 +744,21 @@ class BlicsaApp(ctk.CTk):
                 except Exception as ex:
                     if indicator_row.winfo_exists(): indicator_row.destroy()
                     def err_ui():
-                        self._add_blink_message("assistant", f"{t('Erro:')} {ex}")
+                        self._add_blink_message("assistant", f"{t('blink.erro')} {ex}")
                     self.after(0, err_ui)
             threading.Thread(target=worker, daemon=True).start()
             
         self._research_chat_input_main.bind("<Return>", send_main_chat)
-        ctk.CTkButton(input_f, text=t("Enviar"), font=ctk.CTkFont(size=14, weight="bold"), fg_color=RED, text_color="white", hover_color=RED_HOV, corner_radius=0, border_width=2, border_color=INK, height=44, width=100, command=send_main_chat).pack(side="right")
+        ctk.CTkButton(input_f, text=t("blink.enviar"), font=ctk.CTkFont(size=14, weight="bold"), fg_color=RED, text_color="white", hover_color=RED_HOV, corner_radius=0, border_width=2, border_color=INK, height=44, width=100, command=send_main_chat).pack(side="right")
         
         # Suggestions
         sug_f = ctk.CTkFrame(chat_container, fg_color="transparent")
         sug_f.pack(fill="x")
         
         sugs = [
-            "Quais as tendências mais recentes?",
-            "Como faço análise de rede de citações?",
-            "O que é um cluster bibliométrico?"
+            t("blink.sugestao_1"),
+            t("blink.sugestao_2"),
+            t("blink.sugestao_3"),
         ]
         
         for i, s_txt in enumerate(sugs):
