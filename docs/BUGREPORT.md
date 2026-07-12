@@ -27,3 +27,16 @@
 - **Sintoma:** O assistente de IA mostrava respostas sem formatação (Markdown cru em caixa de texto padrão) e não tinha contexto profundo do corpus.
 - **Causa Raiz:** O componente `CTkTextbox` nativo do `customtkinter` não suporta Markdown. O prompt do chat original não injetava dados dos resumos, enviando apenas o prompt base.
 - **Solução Implementada:** Desenvolvido parser `core/markdown_parser.py` para converter Markdown básico (bold, italic, código, headers) em tags ricas de Tkinter (`font_bold`, etc) no `CTkTextbox`. Adicionada lógica de RAG simples que extrai e injeta os resumos (abstracts) dos 100 artigos mais citados no system prompt, fornecendo contexto bibliográfico direto à LLM.
+
+## BUG-A: Paginação morre em silêncio (revisão de busca) — 2026-07-12
+- **Sintoma (relato + screenshot):** "Encontrados 319300 · baixados 2904 (limite 9999999)"; buscas idênticas dão `baixados` diferentes; parte dos resultados some sem explicação.
+- **Diagnóstico (instrumentação `stop_reason`/`stop_error` + reprodução 2x):** com a busca ampla "empreendedorismo" (limite 600), ambas as runs pararam em `stop_reason='erro de rede na página N'`, `stop_error=True`. Log:
+  `HTTP 429 received. Retrying in 1.0s/2.0s/4.0s...` → `Failed to fetch ... after retries`.
+- **Causa Raiz (duas somadas):**
+  1. Em `core/sources/openalex.py` (e crossref/pubmed), um erro de fetch no meio da paginação fazia `logger.error` + `break` **silencioso** → a busca terminava parcial sem nenhum sinal ao usuário. `baixados` varia porque depende de EM QUE página o rate-limit/timeout ocorre (não-determinístico).
+  2. A UI usa "Ilimitado" **ligado por padrão** → `max_results = 9999999` (`main.py:1662`), que dispara buscas enormes e satura a API (HTTP 429), aumentando muito a chance da parada por erro.
+- **Correção:**
+  1. `fetch_url` já faz 3 tentativas com backoff 1s/2s/4s (confirmado no log). Mantido.
+  2. Providers passam a expor `stop_reason`/`stop_error`/`pages_fetched`; o worker lê e a trilha mostra `"⚠ interrompido na página N por erro de rede — resultados parciais"` quando `stop_error` — nunca mais silencioso.
+  3. Limite honesto: padrão 1000, máximo 10000; "Ilimitado" passa a significar 10000; entradas acima são rejeitadas na UI. Trilha: `"Encontrados N · baixados M de LIMITE (limite)"` quando `N > M`.
+- **Reprodutibilidade:** ver `docs/RELATORIO-FIX-REVISAO.md` (mesma busca 2x, limite 2000, trilhas comparadas).

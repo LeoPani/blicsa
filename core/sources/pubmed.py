@@ -62,7 +62,12 @@ class PubMedProvider(SearchProvider):
                     )
 
         term = " AND ".join(term_parts) if term_parts else "all[Filter]"
-        
+
+        # BUG-A: rastreio de parada.
+        self.stop_reason = None
+        self.stop_error = False
+        self.pages_fetched = 0
+
         # 2. Run ESearch to get PMIDs
         esearch_url = "https://eutils.ncbi.nlm.nih.gov/entrez/eutils/esearch.fcgi"
         esearch_params = {
@@ -80,13 +85,16 @@ class PubMedProvider(SearchProvider):
             raw_data = self.fetch_url(url, cancel_event=cancel_event, rate_limit_delay=rate_limit_delay)
             esearch_data = json.loads(raw_data)
         except Exception as e:
-            logger.error(f"Error calling ESearch: {e}")
+            self.stop_reason = f"erro de rede na ESearch: {e}"
+            self.stop_error = True
+            logger.error(f"[PubMed] parou: {self.stop_reason}")
             return
-            
+
         id_list = esearch_data.get("esearchresult", {}).get("idlist", [])
         total_results = int(esearch_data.get("esearchresult", {}).get("count", len(id_list)))
-        
+
         if not id_list:
+            self.stop_reason = "exauriu (sem resultados)"
             return
 
         # Limit to max_results
@@ -112,10 +120,13 @@ class PubMedProvider(SearchProvider):
             efetch_query_str = urllib.parse.urlencode(efetch_params)
             url = f"{efetch_url}?{efetch_query_str}"
             
+            self.pages_fetched += 1
             try:
                 medline_text = self.fetch_url(url, cancel_event=cancel_event, rate_limit_delay=rate_limit_delay)
             except Exception as e:
-                logger.error(f"Error calling EFetch: {e}")
+                self.stop_reason = f"erro de rede na EFetch (lote {self.pages_fetched}): {e}"
+                self.stop_error = True
+                logger.error(f"[PubMed] parou: {self.stop_reason}")
                 break
                 
             # Parse MEDLINE format
@@ -173,6 +184,10 @@ class PubMedProvider(SearchProvider):
                 }
                 yield record
                 count_fetched += 1
-                
+
             if progress_cb:
                 progress_cb(count_fetched, len(id_list))
+
+        if self.stop_reason is None:
+            self.stop_reason = "atingiu limite" if count_fetched >= max_results else "exauriu (todos os PMIDs)"
+        logger.info(f"[PubMed] parou: {self.stop_reason} · lotes={self.pages_fetched} · registros={count_fetched}")

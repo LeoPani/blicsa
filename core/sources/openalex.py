@@ -84,19 +84,28 @@ class OpenAlexProvider(SearchProvider):
 
         count_fetched = 0
         total_results = None
+        # BUG-A: rastreio explícito do motivo de parada (nada de parada silenciosa).
+        self.stop_reason = None
+        self.stop_error = False
+        self.pages_fetched = 0
 
         while count_fetched < max_results:
             if cancel_event and cancel_event.is_set():
+                self.stop_reason = "cancelado"
                 raise InterruptedError("Search cancelled by user")
 
             query_str = urllib.parse.urlencode(params)
             url = f"{base_url}?{query_str}"
-            
+
+            self.pages_fetched += 1
             try:
+                # fetch_url já faz 3 tentativas com backoff 1s/2s/4s antes de levantar.
                 raw_data = self.fetch_url(url, cancel_event=cancel_event)
                 data = json.loads(raw_data)
             except Exception as e:
-                logger.error(f"Error fetching from OpenAlex: {e}")
+                self.stop_reason = f"erro de rede na página {self.pages_fetched}: {e}"
+                self.stop_error = True
+                logger.error(f"[OpenAlex] parou: {self.stop_reason}")
                 break
 
             results = data.get("results", [])
@@ -106,6 +115,7 @@ class OpenAlexProvider(SearchProvider):
                 total_results = meta.get("count", len(results))
 
             if not results:
+                self.stop_reason = "exauriu (sem resultados)"
                 break
 
             for w in results:
@@ -163,5 +173,10 @@ class OpenAlexProvider(SearchProvider):
 
             next_cursor = meta.get("next_cursor")
             if not next_cursor or next_cursor == params.get("cursor"):
+                self.stop_reason = "cursor encerrado (fim dos resultados)"
                 break
             params["cursor"] = next_cursor
+
+        if self.stop_reason is None:
+            self.stop_reason = "atingiu limite"
+        logger.info(f"[OpenAlex] parou: {self.stop_reason} · páginas={self.pages_fetched} · registros={count_fetched}")

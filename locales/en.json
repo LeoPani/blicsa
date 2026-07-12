@@ -95,5 +95,7 @@
   "projects.copy_suffix": "(Copy)",
   "projects.copy_suffix_n": "(Copy {n})",
   "projects.delete_title": "Confirm Deletion",
-  "projects.delete_confirm": "Are you sure you want to delete the project '{name}'?"
+  "projects.delete_confirm": "Are you sure you want to delete the project '{name}'?",
+  "search.limit_title": "Download limit",
+  "search.limit_exceeded": "The maximum limit is {max} records. Adjusted to {max}."
 }
