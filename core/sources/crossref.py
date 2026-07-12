@@ -41,6 +41,28 @@ def _record_matches_language(record: Dict[str, Any], wanted: str) -> bool:
 
 
 class CrossrefProvider(SearchProvider):
+    def count(self, query: str, filters: Optional[Dict[str, Any]] = None, cancel_event=None) -> int:
+        """Total de resultados (message.total-results) numa request barata (rows=0)."""
+        import re
+        params: Dict[str, Any] = {"rows": 0, "mailto": self.mailto}
+        f = filters or {}
+        fp = []
+        if f.get("year_start"):
+            fp.append(f"from-pub-date:{f['year_start']}-01-01")
+        if f.get("year_end"):
+            fp.append(f"until-pub-date:{f['year_end']}-12-31")
+        if f.get("type"):
+            fp.append(f"type:{f['type']}")
+        if fp:
+            params["filter"] = ",".join(fp)
+        if query.strip():
+            q = re.sub(r'\b(AND|OR|NOT)\b', ' ', query, flags=re.IGNORECASE)
+            q = re.sub(r'[\(\)]', ' ', q)
+            params["query.bibliographic"] = re.sub(r'\s+', ' ', q).strip()
+        url = "https://api.crossref.org/works?" + urllib.parse.urlencode(params)
+        data = json.loads(self.fetch_url(url, cancel_event=cancel_event))
+        return int(data.get("message", {}).get("total-results", 0))
+
     def search(
         self,
         query: str,

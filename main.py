@@ -1699,20 +1699,31 @@ class BlicsaApp(ctk.CTk):
             getattr(self, "_search_sort_var", ctk.StringVar(value="Relevância")).get(), "relevance")
         filters["sort"] = sort_key
 
-        # Aviso de contagem antes de colher sets grandes (OpenAlex tem count barato).
-        if provider.lower() == "openalex":
-            self._set_busy("Contando resultados…")
-            import threading
-            def _count_worker():
-                try:
-                    from core.sources import OpenAlexProvider
-                    n = OpenAlexProvider().count(query, filters)
-                except Exception:
-                    n = None
-                self.after(0, lambda: self._search_after_count(n, query, provider, max_results, filters))
-            threading.Thread(target=_count_worker, daemon=True).start()
-        else:
-            self.search_to_dataset(query, provider, max_results, filters)
+        # Aviso de contagem antes de colher sets grandes — para TODAS as bases.
+        self._set_busy("Contando resultados…")
+        import threading
+        def _count_worker():
+            n = self._count_for_provider(provider, query, filters)
+            self.after(0, lambda: self._search_after_count(n, query, provider, max_results, filters))
+        threading.Thread(target=_count_worker, daemon=True).start()
+
+    def _count_for_provider(self, provider, query, filters):
+        """Contagem barata da(s) base(s). 'all' = soma das três. None se falhar."""
+        from core.sources import OpenAlexProvider, CrossrefProvider, PubMedProvider
+        provs = {"openalex": [OpenAlexProvider], "crossref": [CrossrefProvider],
+                 "pubmed": [PubMedProvider],
+                 "all": [OpenAlexProvider, CrossrefProvider, PubMedProvider]}.get(provider.lower())
+        if not provs:  # zotero e outros: sem count → não avisa
+            return None
+        total = 0
+        got = False
+        for cls in provs:
+            try:
+                total += cls().count(query, filters)
+                got = True
+            except Exception:
+                pass
+        return total if got else None
 
     def _search_after_count(self, n, query, provider, max_results, filters):
         self._set_idle("")

@@ -26,6 +26,24 @@ def _pubmed_lang_code(code: str) -> Optional[str]:
 
 
 class PubMedProvider(SearchProvider):
+    def count(self, query: str, filters: Optional[Dict[str, Any]] = None, cancel_event=None) -> int:
+        """Total de resultados (esearchresult.count) com retmax=0 — request barata."""
+        term_parts = [query.strip()] if query.strip() else []
+        f = filters or {}
+        if f.get("year_start") and f.get("year_end"):
+            term_parts.append(f"({f['year_start']}:{f['year_end']}[DP])")
+        if f.get("type"):
+            term_parts.append(f"({f['type']}[PT])")
+        if f.get("language"):
+            la = _pubmed_lang_code(f["language"])
+            if la:
+                term_parts.append(f"{la}[LA]")
+        term = " AND ".join(term_parts) if term_parts else "all[Filter]"
+        params = {"db": "pubmed", "term": term, "retmode": "json", "retmax": 0}
+        url = "https://eutils.ncbi.nlm.nih.gov/entrez/eutils/esearch.fcgi?" + urllib.parse.urlencode(params)
+        data = json.loads(self.fetch_url(url, cancel_event=cancel_event, rate_limit_delay=0.35))
+        return int(data.get("esearchresult", {}).get("count", 0))
+
     def search(
         self,
         query: str,

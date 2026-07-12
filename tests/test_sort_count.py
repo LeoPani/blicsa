@@ -63,3 +63,20 @@ def test_sort_key_not_leaked_into_filter():
         list(OpenAlexProvider().search("x", filters={"sort": "citations"}, max_results=1))
     url = mock.call_args_list[0][0][0].full_url
     assert "sort%3A" not in url and "filter=sort" not in url
+
+
+def test_crossref_count_rows_zero():
+    body = json.dumps({"message": {"total-results": 3450869}})
+    with patch("urllib.request.urlopen", return_value=_resp(body)) as mock:
+        n = CrossrefProvider().count("saude", {"year_start": 2020})
+    assert n == 3450869
+    url = mock.call_args[0][0].full_url
+    assert "rows=0" in url and "from-pub-date" in url
+
+
+def test_pubmed_count_retmax_zero():
+    body = json.dumps({"esearchresult": {"count": "45231"}})
+    with patch("urllib.request.urlopen", return_value=_resp(body)) as mock:
+        n = PubMedProvider().count("saude")
+    assert n == 45231
+    assert "retmax=0" in mock.call_args[0][0].full_url
