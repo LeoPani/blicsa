@@ -7,6 +7,24 @@ from core.sources.base import SearchProvider
 
 logger = logging.getLogger("PubMedProvider")
 
+# PubMed usa códigos ISO 639-2 ([LA]); o app envia ISO 639-1 (pt, en...).
+_ISO639_1_TO_2 = {
+    "pt": "por", "en": "eng", "fr": "fre", "es": "spa", "de": "ger",
+    "it": "ita", "ru": "rus", "zh": "chi", "ja": "jpn", "ko": "kor",
+}
+
+
+def _pubmed_lang_code(code: str) -> Optional[str]:
+    """Converte ISO 639-1 -> 639-2 para o filtro [LA] do PubMed.
+    Aceita também um 639-2 já válido. Desconhecido -> None (não aplicar filtro)."""
+    c = str(code).strip().lower()
+    if c in _ISO639_1_TO_2:
+        return _ISO639_1_TO_2[c]
+    if c in _ISO639_1_TO_2.values():
+        return c
+    return None
+
+
 class PubMedProvider(SearchProvider):
     def search(
         self,
@@ -34,7 +52,14 @@ class PubMedProvider(SearchProvider):
             if filters.get("is_oa"):
                 term_parts.append("free full text[SB]")
             if filters.get("language"):
-                term_parts.append(f"{filters['language']}[LA]")
+                la = _pubmed_lang_code(filters["language"])
+                if la:
+                    term_parts.append(f"{la}[LA]")
+                else:
+                    logger.warning(
+                        f"Idioma '{filters['language']}' sem mapeamento ISO 639-2; "
+                        f"filtro de idioma NÃO aplicado no PubMed (evita zero silencioso)."
+                    )
 
         term = " AND ".join(term_parts) if term_parts else "all[Filter]"
         

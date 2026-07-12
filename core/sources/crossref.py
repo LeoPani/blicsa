@@ -7,6 +7,39 @@ from core.sources.base import SearchProvider
 
 logger = logging.getLogger("CrossrefProvider")
 
+_LD_SEED_SET = False
+
+
+def _detect_lang(text: str) -> Optional[str]:
+    """Detecta idioma (ISO 639-1) via langdetect. None se falhar/indisponível."""
+    global _LD_SEED_SET
+    try:
+        import langdetect
+        if not _LD_SEED_SET:
+            langdetect.DetectorFactory.seed = 0  # determinismo
+            _LD_SEED_SET = True
+        return langdetect.detect(text)
+    except Exception:
+        return None
+
+
+def _record_matches_language(record: Dict[str, Any], wanted: str) -> bool:
+    """A API do Crossref não filtra idioma de forma confiável; filtramos localmente.
+    Usa o campo 'language' da API quando presente; senão detecta no título+abstract.
+    Texto ausente ou detecção falha -> mantém (não descarta silenciosamente)."""
+    wanted = str(wanted).strip().lower()[:2]
+    api_lang = str(record.get("language") or "").strip().lower()[:2]
+    if api_lang:
+        return api_lang == wanted
+    text = f"{record.get('title', '')} {record.get('abstract', '')}".strip()
+    if not text:
+        return True
+    det = _detect_lang(text)
+    if det is None:
+        return True
+    return det.lower()[:2] == wanted
+
+
 class CrossrefProvider(SearchProvider):
     def search(
         self,
@@ -17,7 +50,11 @@ class CrossrefProvider(SearchProvider):
         cancel_event = None
     ) -> Iterator[Dict[str, Any]]:
         base_url = "https://api.crossref.org/works"
-        
+
+        # BUG-02: Crossref não filtra idioma de forma confiável -> filtro client-side.
+        wanted_lang = (filters or {}).get("language")
+        self.language_filtered_count = 0
+
         # Build filters
         filter_parts = []
         if filters:
@@ -128,6 +165,12 @@ class CrossrefProvider(SearchProvider):
                     "is_oa":      has_cc_license,
                     "oa_url":     "" # Not provided as a direct download link by crossref usually
                 }
+
+                # Filtro de idioma client-side (BUG-02): descartados são CONTADOS.
+                if wanted_lang and not _record_matches_language(record, wanted_lang):
+                    self.language_filtered_count += 1
+                    continue
+
                 yield record
                 count_fetched += 1
 

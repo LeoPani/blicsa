@@ -10,6 +10,10 @@
 
 ## BUG-01 — PubMed: filtro de idioma usa o sistema de códigos errado (retorna ZERO)
 
+- **STATUS: ✅ CORRIGIDO** (2026-07-12, commit `fix: bugs de busca BUG-01/02/03`).
+  Adicionado mapa ISO 639-1→639-2 (`_ISO639_1_TO_2`) em `core/sources/pubmed.py`; código
+  desconhecido loga aviso e NÃO aplica o filtro. Live: PubMed pt "saúde pública" = 10
+  resultados (era 0). Teste `test_pubmed_language_filter_offline` (ex-xfail) passa.
 - **Sintoma:** filtrar por idioma no PubMed (`filters={"language": "pt"}` ou `"en"`)
   retorna **nenhum** resultado, silenciosamente.
 - **Causa provável:** `core/sources/pubmed.py:37` monta o termo como
@@ -27,6 +31,12 @@
 
 ## BUG-02 — Crossref: filtro de idioma é ignorado por completo
 
+- **STATUS: ✅ CORRIGIDO** (2026-07-12, commit `fix: bugs de busca BUG-01/02/03`).
+  Filtro client-side em `core/sources/crossref.py` (`_record_matches_language`): usa o campo
+  `language` da API quando presente, senão `langdetect` no título+abstract; descartados são
+  contados em `prov.language_filtered_count` e surgem na trilha ("filtrados por idioma: X",
+  `main.py`). Rótulo "ⓘ Crossref: local" adicionado ao filtro. Live: pt devolveu 25, filtrou
+  10, todos pt. Teste `test_crossref_language_filter_offline` (ex-xfail) passa.
 - **Sintoma:** `filters={"language": "pt"}` no Crossref não restringe nada; voltam
   artigos em qualquer idioma (e a maioria vem com `language` ausente).
 - **Causa provável:** `core/sources/crossref.py` monta `filter_parts` apenas para
@@ -43,6 +53,11 @@
 
 ## BUG-03 — Deduplicação fuzzy é sensível a caixa e pontuação
 
+- **STATUS: ✅ CORRIGIDO** (2026-07-12, commit `fix: bugs de busca BUG-01/02/03`).
+  `fuzzy_deduplicate_papers` passou a comparar por chave normalizada (`_dedup_key`:
+  casefold + remoção de pontuação + colapso de espaços) em `core/harmonization.py`; os dados
+  exibidos não mudam, só a chave de comparação. Teste
+  `test_dedup_case_and_punctuation_insensitive` (ex-xfail) passa; falso-positivo preservado.
 - **Sintoma:** o mesmo artigo, com o título em caixa/pontuação diferentes
   ("Bibliometric Analysis of Innovation" vs "bibliometric analysis of innovation."),
   **sobrevive como duplicata** ao passar por `fuzzy_deduplicate_papers`.

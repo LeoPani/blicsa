@@ -104,32 +104,33 @@ def test_openalex_language_filter_offline():
     assert frac_pt >= 0.9, f"apenas {frac_pt:.0%} em pt"
 
 
-@pytest.mark.xfail(
-    reason="BUG-02: CrossrefProvider ignora o filtro 'language' (não emite parâmetro "
-           "de query nem filtra em Python) — o usuário pede pt e recebe idiomas "
-           "variados/ausentes. Ver docs/BUGS-ENCONTRADOS-BUSCA.md",
-    strict=True,
-)
-def test_crossref_language_filter_offline_xfail():
-    recs, rec = run(CrossrefProvider(), [load_fixture("crossref_lang_pt_ignored.json")],
-                    query="bibliometria", filters={"language": "pt"})
-    # O provider deveria ter pedido língua pt à API:
-    assert "pt" in rec.calls[0].lower().split("language")[-1][:6]
-    frac_pt = sum(1 for r in recs if r["language"] == "pt") / len(recs)
-    assert frac_pt >= 0.9
-
-
-@pytest.mark.xfail(
-    reason="BUG-01: PubMed recebe códigos ISO-639-1 ('pt','en') do app, mas espera "
-           "ISO-639-2 ('por','eng'). 'pt[LA]' retorna ZERO resultados "
-           "(phrasesnotfound). Ver docs/BUGS-ENCONTRADOS-BUSCA.md",
-    strict=True,
-)
-def test_pubmed_language_filter_offline_xfail():
-    # A esearch com 'pt[LA]' devolve count 0 → provider retorna vazio.
-    recs, _ = run(PubMedProvider(), [load_fixture("pubmed_lang_pt_BUG_esearch.json")],
+def test_crossref_language_filter_offline():
+    """BUG-02 CORRIGIDO: filtro de idioma client-side. Todos os records devolvidos são
+    pt (campo da API ou detectado); os não-correspondentes são CONTADOS, não somem."""
+    from core.sources.crossref import _record_matches_language
+    prov = CrossrefProvider()
+    recs, _ = run(prov, [load_fixture("crossref_lang_pt_ignored.json")],
                   query="bibliometria", filters={"language": "pt"})
-    assert len(recs) >= 1, "PubMed retornou 0 resultados para language=pt"
+    assert recs, "filtro removeu tudo"
+    # Nenhum record devolvido é de idioma != pt (efetivo)
+    assert all(_record_matches_language(r, "pt") for r in recs)
+    # Nenhum record com idioma de API explicitamente não-pt escapou
+    assert not any((r["language"] or "").lower()[:2] not in ("", "pt") for r in recs)
+    # Descartados foram contados (o fixture tem idiomas variados)
+    assert prov.language_filtered_count > 0
+
+
+def test_pubmed_language_filter_offline():
+    """BUG-01 CORRIGIDO: 'pt' é mapeado para ISO 639-2 'por' no filtro [LA]; a esearch
+    passa a retornar resultados. Fixtures sintéticas (por[LA]) servidas offline."""
+    esearch = '{"esearchresult": {"count": "1", "idlist": ["1"]}}'
+    efetch = ("PMID- 1\nTI  - Estudo bibliométrico\nAU  - Silva J\nDP  - 2020\n"
+              "JT  - Revista\nLA  - por\nAB  - Resumo em português.\n\n")
+    prov = PubMedProvider()
+    recs, rec = run(prov, [esearch, efetch], query="bibliometria", filters={"language": "pt"})
+    # A URL da esearch usa 'por[LA]' (mapeado), não 'pt[LA]'
+    assert "por" in rec.calls[0] and "pt%5BLA%5D" not in rec.calls[0]
+    assert len(recs) >= 1
 
 
 # ============================================ 3. sintaxe do query builder -----
@@ -217,13 +218,9 @@ def test_dedup_same_doi_prefix_variants_identical_title():
     assert len(fuzzy_deduplicate_papers(df)) == 1
 
 
-@pytest.mark.xfail(
-    reason="BUG-03: fuzzy_deduplicate_papers usa difflib case/pontuação-SENSÍVEL; "
-           "o mesmo artigo com título em caixa/pontuação diferentes sobrevive como "
-           "duplicata. Ver docs/BUGS-ENCONTRADOS-BUSCA.md",
-    strict=True,
-)
-def test_dedup_case_and_punctuation_insensitive_xfail():
+def test_dedup_case_and_punctuation_insensitive():
+    """BUG-03 CORRIGIDO: a chave de comparação é normalizada (casefold, sem pontuação),
+    então o mesmo artigo em caixa/pontuação diferentes é deduplicado."""
     df = pd.DataFrame([
         {"title": "Bibliometric Analysis of Innovation", "doi": "10.1/a"},
         {"title": "bibliometric analysis of innovation.", "doi": "10.2/b"},

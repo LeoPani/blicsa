@@ -841,6 +841,8 @@ class BlicsaApp(ctk.CTk):
         self._search_lang = ctk.CTkOptionMenu(filter_f, variable=self._search_lang_var, fg_color=WHITE_CARD, text_color=INK, button_color=WHITE_CARD, button_hover_color=CARD2_BG,
                                               values=["Todos", "en", "pt", "es", "fr", "de"], width=70)
         self._search_lang.pack(side="left", padx=4)
+        # BUG-02: no Crossref o filtro de idioma é aplicado localmente (a API não é confiável nisso).
+        ctk.CTkLabel(filter_f, text="ⓘ Crossref: local", font=ctk.CTkFont(size=10), text_color=MUTED).pack(side="left", padx=(2,4))
         
         self._search_oa_var = ctk.BooleanVar(value=False)
         self._search_oa_chk = ctk.CTkCheckBox(filter_f, text="Apenas Open Access", variable=self._search_oa_var, font=ctk.CTkFont(size=12), width=20)
@@ -1712,18 +1714,19 @@ class BlicsaApp(ctk.CTk):
             records = []
             max_per_provider = max_results
             total_found_sum = 0
+            lang_filtered_total = 0  # BUG-02: records descartados por idioma (Crossref client-side)
 
-            
+
             for prov in providers_to_run:
                 if cancel_event.is_set(): break
-                
+
                 prov_name = prov.__class__.__name__.replace("Provider", "")
                 self.after(0, self._set_busy, f"Consultando {prov_name}...")
-                
+
                 def progress(current, total):
                     nonlocal total_found_sum
                     if total > total_found_sum: total_found_sum = total
-                    
+
                     if cancel_event.is_set():
                         self.after(0, self._set_idle, "Busca cancelada.")
                     else:
@@ -1740,7 +1743,9 @@ class BlicsaApp(ctk.CTk):
                     for r in prov.search(query=query, max_results=max_per_provider, progress_cb=progress):
                         if cancel_event.is_set(): break
                         records.append(r)
-                
+
+                lang_filtered_total += getattr(prov, "language_filtered_count", 0)
+
             if not records:
                 self.after(0, self._set_idle, "Busca vazia ou cancelada")
                 if not cancel_event.is_set():
@@ -1804,6 +1809,8 @@ class BlicsaApp(ctk.CTk):
                 
             apos_dedup = len(df[~df["is_duplicate"]])
             trail = f"Encontrados {total_found_sum} · baixados {baixados} (limite {max_results}) · após deduplicação {apos_dedup}"
+            if lang_filtered_total:
+                trail += f" · filtrados por idioma: {lang_filtered_total}"
             print(f"[Search] {trail}")
             
             # Show SearchFeedView for import review
