@@ -37,13 +37,14 @@ class SkeletonCard(ctk.CTkFrame):
 
     def _animate(self):
         if not self._animating: return
-        colors = ["#E0E0E0", "#EEEEEE", "#F5F5F5", "#EEEEEE"]
+        # Dois tons chapados alternados em passo discreto (sem shimmer/gradiente).
+        colors = ["#E0E0E0", "#EDEDED"]
         color = colors[self._pulse_state % len(colors)]
         self.title_skel.configure(fg_color=color)
         self.meta_skel.configure(fg_color=color)
         self.abs_skel.configure(fg_color=color)
         self._pulse_state += 1
-        self.after(250, self._animate)
+        self.after(500, self._animate)
 
     def stop(self):
         self._animating = False
@@ -176,8 +177,19 @@ class SearchFeedView(ctk.CTkFrame):
         
         self.trail_lbl = ctk.CTkLabel(hdr, text="", font=ctk.CTkFont(size=12), text_color="#555555")
         self.trail_lbl.pack(side="left", padx=16)
-        
+
         ctk.CTkButton(hdr, text="Cancelar", fg_color=WHITE, text_color=INK, hover_color="#EEEEEE", border_width=2, border_color=INK, corner_radius=0, command=self.on_cancel).pack(side="right", padx=16)
+
+        # Barra de progresso neoplasticista: bloco sólido chapado, canto zero, sem gradiente.
+        self.progress = ctk.CTkProgressBar(hdr, progress_color=RED, fg_color="#E0E0E0",
+                                           corner_radius=0, height=12, width=180, mode="determinate")
+        self.progress.set(0)
+        # criada oculta; exibida em begin_stream()
+
+        # Estado de streaming
+        self._skeletons = []
+        self._stream_rendered = 0
+        self._stream_limit = 1
         
         # Sidebar
         self.sidebar = ctk.CTkScrollableFrame(self, width=250, fg_color=WHITE, corner_radius=0, border_width=2, border_color=INK)
@@ -224,6 +236,62 @@ class SearchFeedView(ctk.CTkFrame):
         self.page = 0
         self._render_page()
         self._update_bottom_bar()
+
+    # ---------------- Streaming (carregamento vivo) ----------------
+    def begin_stream(self, limit: int):
+        """Estado inicial: skeletons + barra de progresso + contador vivo."""
+        self._stream_limit = max(1, int(limit))
+        self._stream_rendered = 0
+        self.records = []
+        self.selected_indices = set()
+        self.title_lbl.configure(text="Buscando…")
+        self.trail_lbl.configure(text="Encontrados … · carregando 0…")
+        self.progress.set(0)
+        self.progress.pack(side="right", padx=16)  # exibe
+        self._clear_feed()
+        self._skeletons = []
+        for _ in range(4):
+            sk = SkeletonCard(self.feed)
+            sk.pack(fill="x", pady=4)
+            self._skeletons.append(sk)
+
+    def _drop_skeletons(self):
+        for sk in self._skeletons:
+            try:
+                sk.stop(); sk.destroy()
+            except Exception:
+                pass
+        self._skeletons = []
+
+    def stream_update(self, records: List[dict], loaded: int, total: int):
+        """Novo lote chegou (ordem estável da API). Renderiza a 1ª página de cards
+        conforme chegam e atualiza contador vivo + barra. Não reordena."""
+        if self._skeletons:
+            self._drop_skeletons()
+        self.records = records
+        # Renderiza até page_size cards (uma vez); o resto fica no 'Carregar mais'.
+        while self._stream_rendered < len(records) and self._stream_rendered < self.page_size:
+            i = self._stream_rendered
+            card = ArticleCard(self.feed, records[i], self._on_card_toggle, i)
+            card.pack(fill="x", pady=4)
+            card.set_selected(True)
+            self.selected_indices.add(i)
+            self.cards.append(card)
+            self._stream_rendered += 1
+        tot = total or loaded
+        self.trail_lbl.configure(text=f"Encontrados {tot} · carregando {loaded}…")
+        self.progress.set(min(1.0, loaded / self._stream_limit))
+        self._update_bottom_bar()
+
+    def finish_stream(self, records: List[dict], count_trail: str):
+        """Fim do carregamento: esconde a barra e faz o render final (sidebar,
+        deduplicação, paginação). Sort/filtros só passam a valer agora."""
+        self._drop_skeletons()
+        self.progress.pack_forget()
+        self.title_lbl.configure(text="Resultados da Busca")
+        # load_results -> _clear_feed() destrói os cards de streaming (self.cards) e
+        # re-renderiza a página 1 já com deduplicação/enriquecimento.
+        self.load_results(records, count_trail)
 
     def _build_sidebar(self):
         for widget in self.sidebar.winfo_children():

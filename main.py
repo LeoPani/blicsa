@@ -1716,6 +1716,40 @@ class BlicsaApp(ctk.CTk):
             total_found_sum = 0
             lang_filtered_total = 0  # BUG-02: records descartados por idioma (Crossref client-side)
 
+            # --- Streaming: cria o feed em modo "carregamento vivo" imediatamente ---
+            import time as _time
+            _t_start = _time.perf_counter()
+            _first_batch = [False]
+            self._feed_cbs = {}
+
+            def begin_feed():
+                from ui.search_feed import SearchFeedView
+                self._search_cancel_btn.pack(side="left", padx=4)
+                review_tab = self._tabs["review"]
+                for w in review_tab.winfo_children():
+                    w.destroy()
+                self.search_feed_view = SearchFeedView(
+                    review_tab,
+                    lambda recs, dd=False: self._feed_cbs.get("import", lambda *a: None)(recs, dd),
+                    lambda: self._feed_cbs.get("cancel", lambda: None)(),
+                    lambda recs, sel: self._feed_cbs.get("ai", lambda *a: None)(recs, sel),
+                )
+                self.search_feed_view.pack(fill="both", expand=True)
+                self.search_feed_view.begin_stream(max_results)
+                self._switch_tab("review")
+            self.after(0, begin_feed)
+
+            def push_batch():
+                snap = records[:]  # snapshot thread-safe
+                loaded = len(snap)
+                total = total_found_sum
+                def _upd():
+                    fv = getattr(self, "search_feed_view", None)
+                    if fv is not None:
+                        fv.stream_update(snap, loaded, total)
+                self.after(0, _upd)
+
+            BATCH = 25
 
             for prov in providers_to_run:
                 if cancel_event.is_set(): break
@@ -1735,6 +1769,12 @@ class BlicsaApp(ctk.CTk):
                 try:
                     for r in prov.search(query=query, filters=filters, max_results=max_per_provider, progress_cb=progress, cancel_event=cancel_event):
                         records.append(r)
+                        n = len(records)
+                        if n == 1 or n % BATCH == 0:
+                            if not _first_batch[0]:
+                                print(f"[feed] primeiro lote em {_time.perf_counter() - _t_start:.1f}s")
+                                _first_batch[0] = True
+                            push_batch()
                 except InterruptedError:
                     print(f"Busca em {prov_name} abortada pelo usuário.")
                     break
@@ -1743,10 +1783,23 @@ class BlicsaApp(ctk.CTk):
                     for r in prov.search(query=query, max_results=max_per_provider, progress_cb=progress):
                         if cancel_event.is_set(): break
                         records.append(r)
+                        n = len(records)
+                        if n == 1 or n % BATCH == 0:
+                            if not _first_batch[0]:
+                                print(f"[feed] primeiro lote em {_time.perf_counter() - _t_start:.1f}s")
+                                _first_batch[0] = True
+                            push_batch()
 
                 lang_filtered_total += getattr(prov, "language_filtered_count", 0)
 
+            push_batch()  # descarrega o lote parcial final no contador vivo
+
             if not records:
+                def _empty_feed():
+                    fv = getattr(self, "search_feed_view", None)
+                    if fv is not None:
+                        fv.finish_stream([], "Encontrados 0 · baixados 0")
+                self.after(0, _empty_feed)
                 self.after(0, self._set_idle, "Busca vazia ou cancelada")
                 if not cancel_event.is_set():
                     self.after(0, lambda: messagebox.showinfo("Busca concluída", "Nenhum registro encontrado para essa busca."))
@@ -1917,25 +1970,26 @@ class BlicsaApp(ctk.CTk):
                         self.after(0, lambda e=ex: self._add_blink_message("assistant", f"Erro: {e}"))
                 threading.Thread(target=_stream_worker_ai, daemon=True).start()
                 
-            def show_feed():
-                from ui.search_feed import SearchFeedView
+            # Liga os callbacks reais aos lambdas do feed (criado em begin_feed).
+            self._feed_cbs = {"import": on_import_confirm, "cancel": on_cancel, "ai": on_ai_assistant}
+
+            def finalize():
                 self._search_cancel_btn.pack_forget()
-                
-                # Clear existing review tab contents
-                review_tab = self._tabs["review"]
-                for w in review_tab.winfo_children():
-                    w.destroy()
-                    
-                # Create SearchFeedView inside the review tab
-                self.search_feed_view = SearchFeedView(review_tab, on_import_confirm, on_cancel, on_ai_assistant)
-                self.search_feed_view.pack(fill="both", expand=True)
-                self.search_feed_view.load_results(df.to_dict('records'), trail)
+                fv = getattr(self, "search_feed_view", None)
+                if fv is not None:
+                    fv.finish_stream(df.to_dict('records'), trail)
+                else:
+                    from ui.search_feed import SearchFeedView
+                    review_tab = self._tabs["review"]
+                    for w in review_tab.winfo_children():
+                        w.destroy()
+                    self.search_feed_view = SearchFeedView(review_tab, on_import_confirm, on_cancel, on_ai_assistant)
+                    self.search_feed_view.pack(fill="both", expand=True)
+                    self.search_feed_view.load_results(df.to_dict('records'), trail)
                 self._set_idle("Pronto para revisar")
-                
-                # Navigate to the review tab
                 self._switch_tab("review")
-                
-            self.after(0, show_feed)
+
+            self.after(0, finalize)
 
         except Exception as e:
             print(f"[Search Error] {e}")
