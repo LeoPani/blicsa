@@ -6,6 +6,7 @@ from pathlib import Path
 from tkinter import messagebox, filedialog
 import shutil
 from PIL import Image
+from core.i18n import t
 
 PAPER = "#F6F4EE"
 INK = "#141414"
@@ -62,21 +63,21 @@ class ProjectCard(ctk.CTkFrame):
                     ctk_img = ctk.CTkImage(light_image=img, size=(116, 116))
                     ctk.CTkLabel(self.thumb_frame, text="", image=ctk_img).pack(expand=True, fill="both")
             except Exception:
-                ctk.CTkLabel(self.thumb_frame, text="MAPA", text_color=INK, font=ctk.CTkFont(weight="bold")).pack(expand=True)
+                ctk.CTkLabel(self.thumb_frame, text=t("projects.card_map"), text_color=INK, font=ctk.CTkFont(weight="bold")).pack(expand=True)
         else:
-            ctk.CTkLabel(self.thumb_frame, text="SEM MAPA", text_color="#999999", font=ctk.CTkFont(weight="bold")).pack(expand=True)
-            
+            ctk.CTkLabel(self.thumb_frame, text=t("projects.card_no_map"), text_color="#999999", font=ctk.CTkFont(weight="bold")).pack(expand=True)
+
         # Info
         name = Path(proj_path).stem
-        date = manifest.get("saved_at", "Desconhecido")
-        
+        date = manifest.get("saved_at", t("projects.date_unknown"))
+
         ctk.CTkLabel(self, text=name, text_color=BLUE, font=ctk.CTkFont(size=16, weight="bold")).grid(row=0, column=1, sticky="w", padx=12, pady=(12, 4))
-        ctk.CTkLabel(self, text=f"Atualizado em {date}", text_color=INK, font=ctk.CTkFont(size=12)).grid(row=1, column=1, sticky="w", padx=12, pady=0)
-        
-        details = f"{df_count} documentos"
+        ctk.CTkLabel(self, text=t("projects.card_updated", date=date), text_color=INK, font=ctk.CTkFont(size=12)).grid(row=1, column=1, sticky="w", padx=12, pady=0)
+
+        details = t("projects.card_documents", count=df_count)
         if searches:
             sources = list(set([s.get("provider", "") for s in searches]))
-            details += f" | Fontes: {', '.join(sources)}"
+            details += t("projects.card_sources", sources=', '.join(sources))
             
         ctk.CTkLabel(self, text=details, text_color="#555555", font=ctk.CTkFont(size=12)).grid(row=2, column=1, sticky="nw", padx=12, pady=(4, 12))
         
@@ -84,10 +85,10 @@ class ProjectCard(ctk.CTkFrame):
         actions_frame = ctk.CTkFrame(self, fg_color="transparent")
         actions_frame.grid(row=3, column=1, sticky="w", padx=12, pady=(0, 12))
         
-        ctk.CTkButton(actions_frame, text="Abrir", width=60, fg_color=BLUE, corner_radius=0, command=lambda: self.on_open(self.proj_path)).pack(side="left", padx=(0, 8))
-        ctk.CTkButton(actions_frame, text="Renomear", width=60, fg_color=WHITE, text_color=INK, border_width=1, border_color=INK, hover_color="#EEEEEE", corner_radius=0, command=lambda: self.on_rename(self.proj_path)).pack(side="left", padx=8)
-        ctk.CTkButton(actions_frame, text="Duplicar", width=60, fg_color=WHITE, text_color=INK, border_width=1, border_color=INK, hover_color="#EEEEEE", corner_radius=0, command=lambda: self.on_duplicate(self.proj_path)).pack(side="left", padx=8)
-        ctk.CTkButton(actions_frame, text="Excluir", width=60, fg_color=RED, text_color=WHITE, hover_color="#b82611", corner_radius=0, command=lambda: self.on_delete(self.proj_path)).pack(side="left", padx=8)
+        ctk.CTkButton(actions_frame, text=t("projects.action_open"), width=60, fg_color=BLUE, corner_radius=0, command=lambda: self.on_open(self.proj_path)).pack(side="left", padx=(0, 8))
+        ctk.CTkButton(actions_frame, text=t("projects.action_rename"), width=60, fg_color=WHITE, text_color=INK, border_width=1, border_color=INK, hover_color="#EEEEEE", corner_radius=0, command=lambda: self.on_rename(self.proj_path)).pack(side="left", padx=8)
+        ctk.CTkButton(actions_frame, text=t("projects.action_duplicate"), width=60, fg_color=WHITE, text_color=INK, border_width=1, border_color=INK, hover_color="#EEEEEE", corner_radius=0, command=lambda: self.on_duplicate(self.proj_path)).pack(side="left", padx=8)
+        ctk.CTkButton(actions_frame, text=t("projects.action_delete"), width=60, fg_color=RED, text_color=WHITE, hover_color="#b82611", corner_radius=0, command=lambda: self.on_delete(self.proj_path)).pack(side="left", padx=8)
 
 class ProjectsView(ctk.CTkFrame):
     def __init__(self, master, on_open_project):
@@ -103,8 +104,8 @@ class ProjectsView(ctk.CTkFrame):
         hdr = ctk.CTkFrame(self, fg_color=WHITE, corner_radius=0, border_width=2, border_color=INK, height=60)
         hdr.grid(row=0, column=0, sticky="ew", padx=16, pady=16)
         hdr.pack_propagate(False)
-        ctk.CTkLabel(hdr, text="Meus Projetos", font=ctk.CTkFont(size=20, weight="bold"), text_color=INK).pack(side="left", padx=16)
-        ctk.CTkButton(hdr, text="Atualizar", fg_color=WHITE, text_color=INK, border_width=2, border_color=INK, corner_radius=0, hover_color="#EEEEEE", command=self.refresh).pack(side="right", padx=16)
+        ctk.CTkLabel(hdr, text=t("projects.title"), font=ctk.CTkFont(size=20, weight="bold"), text_color=INK).pack(side="left", padx=16)
+        ctk.CTkButton(hdr, text=t("projects.refresh"), fg_color=WHITE, text_color=INK, border_width=2, border_color=INK, corner_radius=0, hover_color="#EEEEEE", command=self.refresh).pack(side="right", padx=16)
         
         # Scrollable container
         self.scroll = ctk.CTkScrollableFrame(self, fg_color="transparent")
@@ -127,7 +128,7 @@ class ProjectsView(ctk.CTkFrame):
         projects.sort(key=lambda x: os.path.getmtime(x), reverse=True)
         
         if not projects:
-            ctk.CTkLabel(self.scroll, text="Nenhum projeto encontrado. Realize uma busca e salve um projeto para começar.", text_color="#555555", font=ctk.CTkFont(size=14)).pack(pady=40)
+            ctk.CTkLabel(self.scroll, text=t("projects.empty"), text_color="#555555", font=ctk.CTkFont(size=14)).pack(pady=40)
             return
             
         for p in projects:
@@ -136,23 +137,23 @@ class ProjectsView(ctk.CTkFrame):
 
     def _rename(self, proj_path):
         current_name = Path(proj_path).stem
-        dlg = ctk.CTkInputDialog(text="Novo nome do projeto:", title="Renomear Projeto")
+        dlg = ctk.CTkInputDialog(text=t("projects.rename_prompt"), title=t("projects.rename_title"))
         new_name = dlg.get_input()
         if new_name and new_name.strip():
             new_path = os.path.join(self.projects_dir, f"{new_name.strip()}.blicsa")
             if os.path.exists(new_path):
-                messagebox.showerror("Erro", "Já existe um projeto com este nome.")
+                messagebox.showerror(t("projects.error_title"), t("projects.rename_exists"))
                 return
             os.rename(proj_path, new_path)
             self.refresh()
             
     def _duplicate(self, proj_path):
         current_name = Path(proj_path).stem
-        new_name = f"{current_name} (Cópia)"
+        new_name = f"{current_name} {t('projects.copy_suffix')}"
         new_path = os.path.join(self.projects_dir, f"{new_name}.blicsa")
         counter = 1
         while os.path.exists(new_path):
-            new_name = f"{current_name} (Cópia {counter})"
+            new_name = f"{current_name} {t('projects.copy_suffix_n', n=counter)}"
             new_path = os.path.join(self.projects_dir, f"{new_name}.blicsa")
             counter += 1
         shutil.copy2(proj_path, new_path)
@@ -160,6 +161,6 @@ class ProjectsView(ctk.CTkFrame):
         
     def _delete(self, proj_path):
         name = Path(proj_path).stem
-        if messagebox.askyesno("Confirmar Exclusão", f"Tem certeza que deseja excluir o projeto '{name}'?"):
+        if messagebox.askyesno(t("projects.delete_title"), t("projects.delete_confirm", name=name)):
             os.remove(proj_path)
             self.refresh()
