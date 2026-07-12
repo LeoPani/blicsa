@@ -97,6 +97,37 @@ def test_article_card_no_fixed_whitespace():
         root.destroy()
 
 
+def test_refilter_maps_sidebar_to_server_filters():
+    """Mudança 3: os filtros da sidebar (ano/OA/idioma/tipo) viram filtros server-side
+    e disparam on_refilter (re-consulta na fonte, não só client-side)."""
+    ctk = pytest.importorskip("customtkinter")
+    try:
+        root = ctk.CTk()
+    except Exception:
+        pytest.skip("sem display")
+    root.withdraw()
+    from ui.search_feed import SearchFeedView
+    captured = {}
+    fv = SearchFeedView(root, lambda *a, **k: None, lambda: None, lambda *a, **k: None,
+                        on_refilter=lambda sf: captured.update(sf=sf))
+    fv.pack()
+    try:
+        recs = [_rec(i, 2015 + (i % 6)) for i in range(20)]
+        fv.load_results(recs, "Encontrados 20")
+        root.update()
+        btns = [w for w in fv.sidebar.winfo_children()
+                if isinstance(w, ctk.CTkButton) and "Rebuscar" in (w.cget("text") or "")]
+        assert len(btns) == 1, "botão 'Rebuscar na fonte' deveria existir"
+        fv.year_slider.set(2018)
+        fv.oa_var.set(True)
+        fv.lang_var.set("pt")
+        btns[0].invoke()
+        root.update()
+        assert captured["sf"] == {"year_start": 2018, "is_oa": True, "language": "pt"}
+    finally:
+        root.destroy()
+
+
 def test_multi_year_builds_slider():
     root, fv = _make_view()
     try:

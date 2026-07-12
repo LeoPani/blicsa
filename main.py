@@ -1773,6 +1773,9 @@ class BlicsaApp(ctk.CTk):
 
     def _search_worker(self, query: str, provider_name: str, max_results: int, filters: dict, cancel_event):
         self.after(0, self._set_busy, f"Buscando em {provider_name.upper()}...")
+        # Guarda a última busca para a re-consulta server-side (botão "Rebuscar na fonte").
+        self._last_search = {"query": query, "provider": provider_name,
+                             "max_results": max_results, "filters": dict(filters or {})}
         try:
             from core.sources import OpenAlexProvider, CrossrefProvider, PubMedProvider
             from core.sources.zotero import ZoteroProvider
@@ -1812,6 +1815,7 @@ class BlicsaApp(ctk.CTk):
                     lambda recs, dd=False: self._feed_cbs.get("import", lambda *a: None)(recs, dd),
                     lambda: self._feed_cbs.get("cancel", lambda: None)(),
                     lambda recs, sel: self._feed_cbs.get("ai", lambda *a: None)(recs, sel),
+                    on_refilter=lambda sf: self._feed_cbs.get("refilter", lambda *a: None)(sf),
                 )
                 self.search_feed_view.pack(fill="both", expand=True)
                 self.search_feed_view.begin_stream(max_results)
@@ -2051,7 +2055,18 @@ class BlicsaApp(ctk.CTk):
                 threading.Thread(target=_stream_worker_ai, daemon=True).start()
                 
             # Liga os callbacks reais aos lambdas do feed (criado em begin_feed).
-            self._feed_cbs = {"import": on_import_confirm, "cancel": on_cancel, "ai": on_ai_assistant}
+            def on_refilter(server_filters):
+                # Re-consulta na fonte: mescla os filtros da sidebar sobre a última busca
+                # e roda um novo harvest (encolhe a query de verdade, não só client-side).
+                ls = getattr(self, "_last_search", None)
+                if not ls:
+                    return
+                merged = dict(ls["filters"])
+                merged.update(server_filters or {})
+                self.search_to_dataset(ls["query"], ls["provider"], ls["max_results"], merged)
+
+            self._feed_cbs = {"import": on_import_confirm, "cancel": on_cancel,
+                              "ai": on_ai_assistant, "refilter": on_refilter}
 
             def finalize():
                 self._search_cancel_btn.pack_forget()

@@ -158,11 +158,13 @@ class SearchFeedView(ctk.CTkFrame):
     Features filtering sidebars, pagination, selection logic,
     and a bottom bar for confirming import to the corpus.
     """
-    def __init__(self, master, on_import_confirm: Callable, on_cancel: Callable, on_ai_assistant: Callable = None):
+    def __init__(self, master, on_import_confirm: Callable, on_cancel: Callable,
+                 on_ai_assistant: Callable = None, on_refilter: Callable = None):
         super().__init__(master, fg_color="transparent")
         self.on_import_confirm = on_import_confirm
         self.on_cancel = on_cancel
         self.on_ai_assistant = on_ai_assistant
+        self.on_refilter = on_refilter  # re-consulta server-side com os filtros da sidebar
         self.records = []
         self.filtered_indices = []
         self.selected_indices = set()
@@ -329,13 +331,34 @@ class SearchFeedView(ctk.CTkFrame):
         # o toplevel estar mapeado — funciona headless).
         return d is not None and d.winfo_exists() and d.winfo_manager() == "grid"
 
+    def _server_filters(self) -> dict:
+        """Filtros da sidebar que mapeiam para a API (ano/OA/tipo/idioma)."""
+        sf = {}
+        if hasattr(self, "year_slider"):
+            sf["year_start"] = int(self.year_slider.get())
+        if hasattr(self, "oa_var") and self.oa_var.get():
+            sf["is_oa"] = True
+        if hasattr(self, "type_var") and self.type_var.get() != "Todos":
+            sf["type"] = self.type_var.get()
+        if hasattr(self, "lang_var") and self.lang_var.get() != "Todos":
+            sf["language"] = self.lang_var.get()
+        return sf
+
     def _build_sidebar(self):
         for widget in self.sidebar.winfo_children():
             widget.destroy()
-            
+
         if not self.records:
             return
-            
+
+        # Re-consulta server-side com os filtros abaixo (encolhe a query de verdade,
+        # não só esconde o que já foi baixado). Ano/OA/tipo/idioma vão para a API.
+        if self.on_refilter is not None:
+            ctk.CTkButton(self.sidebar, text="🔁 Rebuscar na fonte", corner_radius=0,
+                          fg_color=INK, text_color=WHITE, hover_color="#333333",
+                          command=lambda: self.on_refilter(self._server_filters())
+                          ).pack(fill="x", pady=(0, 8))
+
         # Filters logic
         self.filter_vars = {}
         
