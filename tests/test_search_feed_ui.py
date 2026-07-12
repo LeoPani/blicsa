@@ -68,6 +68,35 @@ def test_blink_drawer_preserves_feed_state():
         root.destroy()
 
 
+def test_article_card_no_fixed_whitespace():
+    """BUG-C: card não pode ter altura fixa gigante (era 236px por left_bar height=200
+    default). Card mínimo deve ser compacto e cards devem crescer com o conteúdo."""
+    ctk = pytest.importorskip("customtkinter")
+    try:
+        root = ctk.CTk()
+    except Exception:
+        pytest.skip("sem display")
+    root.withdraw()
+    from ui.search_feed import ArticleCard
+    frame = ctk.CTkFrame(root); frame.pack(fill="both", expand=True); frame.grid_columnconfigure(0, weight=1)
+
+    def height(rec):
+        c = ArticleCard(frame, rec, lambda *a, **k: None, 0)
+        c.grid(row=0, column=0, sticky="ew"); root.update_idletasks()
+        h = c.winfo_reqheight(); c.destroy(); return h
+
+    base = {"title": "T", "year": 2024, "authors": "", "source": "",
+            "citations": 0, "abstract": "", "doi": "10/1", "language": "en"}
+    h_min = height(base)
+    h_abs = height({**base, "authors": "Autor", "source": "Rev",
+                    "abstract": "Resumo " * 40})
+    try:
+        assert h_min < 160, f"card mínimo alto demais ({h_min}px) — vão branco fixo?"
+        assert h_abs > h_min, "card com abstract deveria ser mais alto (altura segue conteúdo)"
+    finally:
+        root.destroy()
+
+
 def test_multi_year_builds_slider():
     root, fv = _make_view()
     try:

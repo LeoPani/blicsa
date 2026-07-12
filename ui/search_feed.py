@@ -64,9 +64,10 @@ class ArticleCard(ctk.CTkFrame):
         
         self.grid_columnconfigure(1, weight=1)
         
-        # Left edge bar
-        self.left_bar = ctk.CTkFrame(self, width=6, fg_color=WHITE, corner_radius=0)
-        self.left_bar.grid(row=0, column=0, rowspan=4, sticky="ns")
+        # Left edge bar — height=1 evita a altura default 200px do CTkFrame (que reservava
+        # um vão branco gigante); com sticky="ns" a barra estica ao conteúdo real do card.
+        self.left_bar = ctk.CTkFrame(self, width=6, height=1, fg_color=WHITE, corner_radius=0)
+        self.left_bar.grid(row=0, column=0, rowspan=5, sticky="ns")
         
         # Checkbox
         self.cb = ctk.CTkCheckBox(
@@ -111,7 +112,8 @@ class ArticleCard(ctk.CTkFrame):
         meta_text = ""
         if authors: meta_text += authors
         if journal: meta_text += f" — {journal}"
-        ctk.CTkLabel(self, text=meta_text, text_color=INK, font=ctk.CTkFont(size=12, slant="italic"), anchor="w", justify="left").grid(row=2, column=2, padx=(4, 12), pady=(2, 4), sticky="w")
+        if meta_text:  # sem autor/fonte: não reserva linha vazia
+            ctk.CTkLabel(self, text=meta_text, text_color=INK, font=ctk.CTkFont(size=12, slant="italic"), anchor="w", justify="left").grid(row=2, column=2, padx=(4, 12), pady=(2, 4), sticky="w")
         
         # Abstract
         abs_text = str(record.get("abstract", ""))
@@ -370,7 +372,9 @@ class SearchFeedView(ctk.CTkFrame):
         for j, c in top_journals:
             var = ctk.BooleanVar(value=True)
             self.journal_vars[j] = var
-            cb = ctk.CTkCheckBox(self.sidebar, text=f"{j[:20]} ({c})", variable=var, command=self._apply_filters, corner_radius=0)
+            # Trunca com reticências (nunca corta o parêntese da contagem no meio).
+            name = j if len(j) <= 22 else j[:21].rstrip() + "…"
+            cb = ctk.CTkCheckBox(self.sidebar, text=f"{name} ({c})", variable=var, command=self._apply_filters, corner_radius=0)
             cb.pack(anchor="w", pady=2)
             
         # Type

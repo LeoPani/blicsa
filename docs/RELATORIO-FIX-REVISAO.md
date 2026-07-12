@@ -64,5 +64,37 @@ revisão (posição, foco) era perdido.
 ---
 
 ## BUG-C — Card com área em branco gigante
-<!-- preenchido no commit do BUG-C -->
+
+### Diagnóstico (medição programática de altura)
+Medindo `ArticleCard.winfo_reqheight()`, o card mínimo (só título) dava **236px** — constante,
+independente do conteúdo. Inspecionando os filhos: `CTkFrame ... reqh=200 children=0` — o
+**`left_bar`** (barra decorativa de 6px na borda esquerda) foi criado **sem `height`**, então
+o CTkFrame assumiu a **altura default 200px**; com `rowspan=4 sticky="ns"` isso forçava o card
+a ≥200px de altura → o vão branco gigante abaixo do conteúdo.
+
+### Correção
+- `left_bar` criado com `height=1` (com `sticky="ns"` a barra estica ao conteúdo real);
+  `rowspan` estendido a 5 para cobrir o card todo. Fim do piso de 200px.
+- Label de meta (autores — fonte) só é criado quando há texto (não reserva linha vazia).
+- **Sidebar — nomes de fonte truncados:** `f"{j[:20]} ({c})"` cortava no meio e depois colava
+  a contagem ("LA Referencia (Red F (305)"). Agora trunca com **reticências** antes da
+  contagem: `"LA Referencia (Red Fe… (305)"` — o parêntese da contagem nunca é cortado.
+
+### Evidência (medição após o fix)
+| card | antes | depois |
+|---|---|---|
+| mínimo (só título) | 236px | **106px** |
+| + autor/fonte | 236px | 140px |
+| + abstract curto | 236px | 172px |
+| + abstract longo + badges | 412px | 365px |
+
+Altura agora **segue o conteúdo** (sem vão fixo); card mínimo bem abaixo de 1.5× o conteúdo.
+Teste `tests/test_search_feed_ui.py::test_article_card_no_fixed_whitespace` guarda a regressão
+(card mínimo < 160px e altura cresce com abstract).
+
+**Captura de tela:** `screencapture` segue bloqueado (permissão de Gravação de Tela) — evidência
+visual pendente; validação feita por **medição programática** (aceita pelo prompt).
+
+Suíte final: **77 passed, 1 xfailed** (OBS-03).
+
 
