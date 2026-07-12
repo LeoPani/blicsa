@@ -100,71 +100,54 @@ class OpenAlexProvider(SearchProvider):
         cancel_event = None
     ) -> Iterator[Dict[str, Any]]:
         base_url = "https://api.openalex.org/works"
-        
-        # Build filters
-        filter_parts = []
-        if filters:
-            if filters.get("year_start") and filters.get("year_end"):
-                filter_parts.append(f"publication_year:{filters['year_start']}-{filters['year_end']}")
-            elif filters.get("year_start"):
-                filter_parts.append(f"publication_year:>{int(filters['year_start']) - 1}")
-            elif filters.get("year_end"):
-                filter_parts.append(f"publication_year:<{int(filters['year_end']) + 1}")
-                
-            if filters.get("type"):
-                filter_parts.append(f"type:{filters['type']}")
-            if filters.get("is_oa") is not None:
-                filter_parts.append(f"is_oa:{str(filters['is_oa']).lower()}")
-            if filters.get("language"):
-                filter_parts.append(f"language:{filters['language']}")
-
         params: Dict[str, Any] = {
             "per_page": min(100, max_results),
             "cursor": "*",
             "mailto": "blicsa.app@gmail.com"
         }
-        
-        import re
-        q_str = query.strip()
-        
-        # Parse Scopus-like Query Builder syntax
-        if re.search(r'(TITLE|AUTHOR|YEAR|TITLE-ABS-KEY)\(', q_str):
-            oa_filters = []
-            for match in re.finditer(r'(TITLE-ABS-KEY|TITLE|AUTHOR|YEAR)\("?([^")]+)"?\)', q_str):
-                field, val = match.groups()
-                val = val.strip()
-                if field == "TITLE":
-                    oa_filters.append(f"title.search:{val}")
-                elif field == "AUTHOR":
-                    oa_filters.append(f"author.id:{val}") # we'll use raw search below for names
-                elif field == "YEAR":
-                    oa_filters.append(f"publication_year:{val}")
-                elif field == "TITLE-ABS-KEY":
-                    oa_filters.append(f"default.search:{val}")
-            
-            # For Authors OpenAlex prefers author.search but it's not a standard filter for /works,
-            # works filter uses authorships.author.display_name.search or raw search.
-            # Actually, `default.search` handles everything nicely in a single query.
-            # Let's rebuild it cleanly:
-            for match in re.finditer(r'(TITLE-ABS-KEY|TITLE|AUTHOR|YEAR)\("?([^")]+)"?\)', q_str):
-                field, val = match.groups()
-                val = val.strip()
-                if field == "TITLE":
-                    filter_parts.append(f"title.search:{val}")
-                elif field == "YEAR":
-                    filter_parts.append(f"publication_year:{val}")
-                elif field == "AUTHOR":
-                    filter_parts.append(f"authorships.author.display_name.search:{val}")
-                elif field == "TITLE-ABS-KEY":
-                    filter_parts.append(f"default.search:{val}")
-            
-            # Clear q_str so we rely entirely on filters
-            q_str = ""
 
-        if q_str.strip():
-            filter_parts.append(f"default.search:{q_str.strip()}")
-        if filter_parts:
-            params["filter"] = ",".join(filter_parts)
+        if filters and filters.get("fields"):
+            # Busca avançada por campo (Coletar estilo Scopus) — construtor unificado.
+            flt = self._oa_filter(query, filters)
+            if flt:
+                params["filter"] = flt
+        else:
+            # Caminho legado: filtros simples + sintaxe TITLE()/AUTHOR() na query.
+            import re
+            filter_parts = []
+            if filters:
+                if filters.get("year_start") and filters.get("year_end"):
+                    filter_parts.append(f"publication_year:{filters['year_start']}-{filters['year_end']}")
+                elif filters.get("year_start"):
+                    filter_parts.append(f"publication_year:>{int(filters['year_start']) - 1}")
+                elif filters.get("year_end"):
+                    filter_parts.append(f"publication_year:<{int(filters['year_end']) + 1}")
+                if filters.get("type"):
+                    filter_parts.append(f"type:{filters['type']}")
+                if filters.get("is_oa") is not None:
+                    filter_parts.append(f"is_oa:{str(filters['is_oa']).lower()}")
+                if filters.get("language"):
+                    filter_parts.append(f"language:{filters['language']}")
+
+            q_str = query.strip()
+            if re.search(r'(TITLE|AUTHOR|YEAR|TITLE-ABS-KEY)\(', q_str):
+                for match in re.finditer(r'(TITLE-ABS-KEY|TITLE|AUTHOR|YEAR)\("?([^")]+)"?\)', q_str):
+                    field, val = match.groups()
+                    val = val.strip()
+                    if field == "TITLE":
+                        filter_parts.append(f"title.search:{val}")
+                    elif field == "YEAR":
+                        filter_parts.append(f"publication_year:{val}")
+                    elif field == "AUTHOR":
+                        filter_parts.append(f"authorships.author.display_name.search:{val}")
+                    elif field == "TITLE-ABS-KEY":
+                        filter_parts.append(f"default.search:{val}")
+                q_str = ""
+
+            if q_str.strip():
+                filter_parts.append(f"default.search:{q_str.strip()}")
+            if filter_parts:
+                params["filter"] = ",".join(filter_parts)
 
         # Ordenação server-side ("relevance" = padrão do OpenAlex, sem param).
         oa_sort = {"citations": "cited_by_count:desc",

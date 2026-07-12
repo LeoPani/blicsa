@@ -788,121 +788,41 @@ class BlicsaApp(ctk.CTk):
         
     def _build_tab_import(self) -> ctk.CTkFrame:
         frame = self._tab()
-        
-        # Search Card (Top)
-        scard = self._card(frame, 0)
-        scard.grid_columnconfigure(1, weight=1)
-        
-        ctk.CTkLabel(scard, text="Busca Online", font=ctk.CTkFont(size=16, weight="bold")).grid(
-            row=0, column=0, padx=16, pady=(16, 8), sticky="w")
-            
-        self._search_provider_var = ctk.StringVar(value="openalex")
-        sp_f = ctk.CTkFrame(scard, fg_color="transparent")
-        sp_f.grid(row=1, column=0, columnspan=2, padx=16, pady=4, sticky="w")
-        for lbl, val in [("Todas as Bases", "all"), ("OpenAlex", "openalex"), ("Crossref", "crossref"), ("PubMed", "pubmed"), ("Zotero", "zotero")]:
-            ctk.CTkRadioButton(sp_f, text=lbl, variable=self._search_provider_var,
-                               value=val, fg_color=ACCENT, hover_color=ACCENT_HOV).pack(side="left", padx=8)
-                               
-        self._search_query_entry = ctk.CTkEntry(scard, placeholder_text="Termo / Query (ex: 'deep learning')", placeholder_text_color=MUTED, height=36, fg_color=WHITE_CARD, text_color=INK)
-        self._search_query_entry.grid(row=2, column=0, columnspan=2, padx=16, pady=4, sticky="ew")
-        
-        act_sf = ctk.CTkFrame(scard, fg_color="transparent")
-        act_sf.grid(row=3, column=0, columnspan=2, padx=16, pady=(4, 16), sticky="e")
-        
-        ctk.CTkLabel(act_sf, text="Qtd:").pack(side="left", padx=4)
-        self._search_max_entry = ctk.CTkEntry(act_sf, width=60, placeholder_text="1000", placeholder_text_color=MUTED, fg_color=WHITE_CARD, text_color=INK)
-        self._search_max_entry.insert(0, "1000")
-        self._search_max_entry.pack(side="left", padx=4)
+        frame.grid_columnconfigure(0, weight=1)
+        frame.grid_rowconfigure(0, weight=1)
 
-        # Ilimitado: sem teto (baixa tudo o que a API entregar). Ligado por padrão.
-        self._search_unlimited_var = ctk.BooleanVar(value=True)
-        self._search_unlimited_chk = ctk.CTkCheckBox(act_sf, text="Ilimitado", variable=self._search_unlimited_var, width=50,
-                                                     command=lambda: self._search_max_entry.configure(state="disabled" if self._search_unlimited_var.get() else "normal"))
-        self._search_unlimited_chk.pack(side="left", padx=4)
-        self._search_max_entry.configure(state="disabled")
-        
-        self._btn(act_sf, "⚙ Avançada", self._open_query_builder, height=30).pack(side="left", padx=4)
-        self._btn(act_sf, "🔍 Buscar", self._on_gui_search, height=30, color=RED, hover=RED_HOV).pack(side="left", padx=4)
-        self._btn(act_sf, "✨ Blink", self._trigger_import_ai_assistant, height=30, color=YELLOW, hover=YELLOW_HOV).pack(side="left", padx=4)
-        
-        self._search_cancel_btn = self._btn(act_sf, "✕ Cancelar", self._cancel_search, height=30, color="#E63946", hover="#C12B37")
-        self._search_cancel_btn.pack_forget() # Hide initially
-        
-        filter_f = ctk.CTkFrame(scard, fg_color="transparent")
-        filter_f.grid(row=4, column=0, columnspan=2, padx=16, pady=4, sticky="ew")
-        
-        ctk.CTkLabel(filter_f, text="Ano Início:", font=ctk.CTkFont(size=12)).pack(side="left", padx=4)
-        self._search_year_start = ctk.CTkEntry(filter_f, width=60, placeholder_text="Ex: 2018", placeholder_text_color=MUTED, fg_color=WHITE_CARD, text_color=INK)
-        self._search_year_start.pack(side="left", padx=4)
-        
-        ctk.CTkLabel(filter_f, text="Ano Fim:", font=ctk.CTkFont(size=12)).pack(side="left", padx=(10,4))
-        self._search_year_end = ctk.CTkEntry(filter_f, width=60, placeholder_text="Ex: 2024", placeholder_text_color=MUTED, fg_color=WHITE_CARD, text_color=INK)
-        self._search_year_end.pack(side="left", padx=4)
-        
-        ctk.CTkLabel(filter_f, text="Tipo:", font=ctk.CTkFont(size=12)).pack(side="left", padx=(10,4))
-        self._search_type_var = ctk.StringVar(value="Todos")
-        self._search_type = ctk.CTkOptionMenu(filter_f, variable=self._search_type_var, fg_color=WHITE_CARD, text_color=INK, button_color=WHITE_CARD, button_hover_color=CARD2_BG,
-                                              values=["Todos", "article", "review", "book-chapter", "dataset"], width=100)
-        self._search_type.pack(side="left", padx=4)
-        
-        ctk.CTkLabel(filter_f, text="Idioma:", font=ctk.CTkFont(size=12)).pack(side="left", padx=(10,4))
-        self._search_lang_var = ctk.StringVar(value="Todos")
-        self._search_lang = ctk.CTkOptionMenu(filter_f, variable=self._search_lang_var, fg_color=WHITE_CARD, text_color=INK, button_color=WHITE_CARD, button_hover_color=CARD2_BG,
-                                              values=["Todos", "en", "pt", "es", "fr", "de"], width=70)
-        self._search_lang.pack(side="left", padx=4)
-        # BUG-02: no Crossref o filtro de idioma é aplicado localmente (a API não é confiável nisso).
-        ctk.CTkLabel(filter_f, text="ⓘ Crossref: local", font=ctk.CTkFont(size=10), text_color=MUTED).pack(side="left", padx=(2,4))
-        
-        self._search_oa_var = ctk.BooleanVar(value=False)
-        self._search_oa_chk = ctk.CTkCheckBox(filter_f, text="Apenas Open Access", variable=self._search_oa_var, font=ctk.CTkFont(size=12), width=20)
-        self._search_oa_chk.pack(side="left", padx=(10,4))
+        # Coletar redesenhada (estilo Scopus): busca avançada + páginas rápidas.
+        from ui.search_panel import SearchPanel
 
-        ctk.CTkLabel(filter_f, text="Ordenar por:", font=ctk.CTkFont(size=12)).pack(side="left", padx=(10,4))
-        self._search_sort_var = ctk.StringVar(value="Relevância")
-        self._search_sort = ctk.CTkOptionMenu(filter_f, variable=self._search_sort_var, fg_color=WHITE_CARD, text_color=INK, button_color=WHITE_CARD, button_hover_color=CARD2_BG,
-                                              values=["Relevância", "Mais citados", "Mais recentes"], width=130)
-        self._search_sort.pack(side="left", padx=4)
+        def on_harvest(query, filters, total):
+            # "Formar corpus" → colheita do conjunto que bate a busca (só OpenAlex por ora).
+            self.search_to_dataset(query=query, provider_name="openalex", max_results=total, filters=filters)
 
-        # File Import Hero Zone (Bottom)
-        fcard = self._card(frame, 1)
-        fcard.grid_columnconfigure(1, weight=1)
-        
-        ctk.CTkLabel(fcard, text="Arraste arquivos ou clique", font=ctk.CTkFont(size=16, weight="bold")).grid(
-            row=0, column=0, columnspan=3, padx=16, pady=(16, 8), sticky="w")
-            
-        list_frame = ctk.CTkFrame(fcard, fg_color=CARD2_BG, corner_radius=0)
-        list_frame.grid(row=1, column=0, columnspan=2, padx=16, pady=(8, 16), sticky="ew")
-        list_frame.grid_columnconfigure(0, weight=1)
-        self._file_list_frame = ctk.CTkScrollableFrame(list_frame, fg_color=CARD2_BG, height=100)
-        self._file_list_frame.grid(row=0, column=0, padx=4, pady=4, sticky="ew")
+        self._search_panel = SearchPanel(frame, on_harvest)
+        self._search_panel.grid(row=0, column=0, sticky="nsew")
+
+        # Botão Cancelar da colheita (usado pelo worker de busca); vive no rodapé do painel.
+        self._search_cancel_btn = ctk.CTkButton(self._search_panel.bar, text="✕ Cancelar", width=100,
+                                                corner_radius=0, fg_color="#E63946", text_color="white",
+                                                command=self._cancel_search)
+        self._search_cancel_btn.pack_forget()
+
+        # Barra compacta de importação de arquivos / projeto.
+        tools = ctk.CTkFrame(frame, fg_color="transparent")
+        tools.grid(row=1, column=0, sticky="ew", padx=16, pady=(4, 4))
+        self._file_list_frame = ctk.CTkScrollableFrame(frame, fg_color=CARD2_BG, height=80)
+        self._file_list_frame.grid(row=2, column=0, sticky="ew", padx=16, pady=(0, 8))
         self._file_list_frame.grid_columnconfigure(0, weight=1)
         self._file_row_widgets = []
-        self._file_list_frame.grid_remove() # Hide initially
-        
-        fbf = ctk.CTkFrame(fcard, fg_color="transparent")
-        fbf.grid(row=1, column=2, padx=12, pady=(8, 16), sticky="n")
-        self._btn(fbf, "➕  Adicionar Arquivos", self._pick_file, height=36).pack(pady=(0, 6))
-        self._btn(fbf, "🗑  Limpar Tudo", self._clear_files, color="#4a1a1a", hover="#6a2a2a", height=36).pack()
-        
-        act_f = ctk.CTkFrame(fcard, fg_color="transparent")
-        act_f.grid(row=2, column=0, columnspan=3, padx=16, pady=(12, 16), sticky="ew")
-        act_f.grid_columnconfigure((0, 1, 2), weight=1)
-        
-        self._btn(act_f, "⚡  Carregar e Combinar", self._load_data, height=40, color=RED, hover=RED_HOV).grid(
-            row=0, column=0, padx=(0, 4), sticky="ew")
-        self._btn(act_f, "🔍  Deduplicar", self._run_dedup, height=40,
-                  color=INK, hover=INK_HOV).grid(
-            row=0, column=1, padx=4, sticky="ew")
-        self._btn(act_f, "📂  Abrir Projeto (.blicsa)", self._load_project_gui, height=40,
-                  color=BLUE, hover=BLUE_HOV).grid(
-            row=0, column=2, padx=(4, 0), sticky="ew")
+        self._file_list_frame.grid_remove()
+        self._btn(tools, "➕ Adicionar Arquivos", self._pick_file, height=32).pack(side="left", padx=4)
+        self._btn(tools, "⚡ Carregar e Combinar", self._load_data, height=32, color=RED, hover=RED_HOV).pack(side="left", padx=4)
+        self._btn(tools, "🔍 Deduplicar", self._run_dedup, height=32, color=INK, hover=INK_HOV).pack(side="left", padx=4)
+        self._btn(tools, "📂 Abrir Projeto (.blicsa)", self._load_project_gui, height=32, color=BLUE, hover=BLUE_HOV).pack(side="left", padx=4)
 
-        # The Log is now in toasts, so no need for log box here
-        # But wait, self._log_box was used for sys.stdout redirection and background thread logs.
-        # So I will create a hidden log_box to avoid exceptions from LogWriter.
+        # Log oculto (LogWriter redireciona stdout pra cá).
         self._log_box = ctk.CTkTextbox(frame)
         self._log_box.grid_forget()
-
         return frame
 
     def _build_tab_review(self) -> ctk.CTkFrame:
