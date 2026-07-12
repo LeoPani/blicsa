@@ -80,3 +80,24 @@ def test_pubmed_count_retmax_zero():
         n = PubMedProvider().count("saude")
     assert n == 45231
     assert "retmax=0" in mock.call_args[0][0].full_url
+
+
+def test_browse_field_search_and_paging():
+    body = json.dumps({"meta": {"count": 3402}, "results": [
+        {"title": "Inovação X", "publication_year": 2023, "cited_by_count": 40,
+         "authorships": [{"author": {"display_name": "Silva"}}], "doi": "10/x"}]})
+    with patch("urllib.request.urlopen", return_value=_resp(body)) as mock:
+        recs, total = OpenAlexProvider().browse(
+            "", filters={"fields": [("title", "inovação"), ("author", "silva")], "sort": "citations"},
+            page=2, per_page=25)
+    assert total == 3402 and len(recs) == 1 and recs[0]["citations"] == 40
+    url = mock.call_args[0][0].full_url
+    assert "title.search" in url and "display_name.search" in url
+    assert "page=2" in url and "cited_by_count" in url
+
+
+def test_browse_per_page_capped_200():
+    body = json.dumps({"meta": {"count": 1}, "results": []})
+    with patch("urllib.request.urlopen", return_value=_resp(body)) as mock:
+        OpenAlexProvider().browse("x", per_page=999)
+    assert "per_page=200" in mock.call_args[0][0].full_url
