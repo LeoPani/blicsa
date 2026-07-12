@@ -35,7 +35,15 @@ class TestE2E(unittest.TestCase):
         dfs = []
         for path, fmt in zip(self.app._file_paths, self.app._file_formats):
             if fmt == "scopus":
-                dfs.append(BibliometricParser.load_scopus_csv(path))
+                parser = BibliometricParser(path)
+                raw = pd.read_csv(path)
+                # Map lowercase to uppercase for test mock, and keywords to Author Keywords
+                raw.columns = [c.capitalize() if c != 'keywords' else 'Author Keywords' for c in raw.columns]
+                # Override the file read
+                def mock_read(*args, **kwargs): return raw
+                import unittest.mock
+                with unittest.mock.patch('pandas.read_csv', side_effect=mock_read):
+                    dfs.append(parser.load_scopus_csv())
         
         combined = pd.concat(dfs, ignore_index=True)
         self.app._dataframe = combined
@@ -47,13 +55,16 @@ class TestE2E(unittest.TestCase):
         # 2. Trigger mapping (we use generator directly as run_mapping relies on threads)
         from core.matrix_builders import NetworkGenerator
         self.app._generator = NetworkGenerator(self.app._dataframe)
-        self.app._generator.build_network(
-            node_type="keywords", 
-            min_occurrence=1, 
-            edge_type="co_occurrence",
-            clustering_algorithm="louvain"
+        self.app._generator.build_keyword_cooccurrence(
+            min_occurrence=1
         )
-        self.app._graph, self.app._positions = self.app._generator.get_graph_and_positions()
+        
+        self.assertIsNotNone(self.app._generator.G)
+        self.assertTrue(len(self.app._generator.G.nodes) >= 0)
+        
+        self.app._graph = self.app._generator.G
+        from core.visualizer import compute_fa2_layout
+        self.app._positions = compute_fa2_layout(self.app._graph, iterations=5)
         
         self.assertIsNotNone(self.app._graph)
         self.assertTrue(self.app._graph.number_of_nodes() > 0)

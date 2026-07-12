@@ -47,6 +47,8 @@ def load_locales(lang_code: str = None):
                 lang_code = "pt_BR"
             elif sys_lang.startswith("fr"):
                 lang_code = "fr"
+            elif sys_lang.startswith("de"):
+                lang_code = "de"
             else:
                 lang_code = "en"
                 

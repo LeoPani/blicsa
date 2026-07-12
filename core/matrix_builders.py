@@ -284,7 +284,7 @@ class NetworkGenerator:
             yr = int(row.get("year", 0) or 0)
             if yr == 0:
                 continue
-            kw_str = row.get("keywords", "") or ""
+            kw_str = str(row.get("keywords", ""))
             if field == "keywords":
                 sep = ";" if ";" in kw_str else ","
                 row_terms = [

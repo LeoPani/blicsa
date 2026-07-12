@@ -97,6 +97,48 @@ class AIAnalyst:
             temperature=temperature
         )
 
+    def chat_history_stream(self, messages: list[dict], temperature: float = 0.7):
+        if not self.api_key:
+            yield "Erro: API Key não configurada nos Ajustes."
+            return
+            
+        payload = {
+            "model": self.model,
+            "messages": messages,
+            "temperature": temperature,
+            "stream": True
+        }
+        
+        url = self.base_url.rstrip("/") + "/chat/completions"
+        headers = {
+            "Content-Type": "application/json",
+            "User-Agent": "Blicsa/1.0 (Python)"
+        }
+        if self.api_key:
+            headers["Authorization"] = f"Bearer {self.api_key}"
+            
+        data = json.dumps(payload).encode("utf-8")
+        req = urllib.request.Request(url, data=data, headers=headers, method="POST")
+        
+        try:
+            with urllib.request.urlopen(req, timeout=30) as resp:
+                for line in resp:
+                    line = line.decode("utf-8").strip()
+                    if line.startswith("data: "):
+                        data_str = line[6:]
+                        if data_str == "[DONE]":
+                            break
+                        try:
+                            chunk = json.loads(data_str)
+                            if "choices" in chunk and len(chunk["choices"]) > 0:
+                                delta = chunk["choices"][0].get("delta", {})
+                                if "content" in delta:
+                                    yield delta["content"]
+                        except json.JSONDecodeError:
+                            continue
+        except Exception as e:
+            yield f"\nErro na requisição: {e}"
+
     def generate_insights(
         self,
         top_keywords: list[tuple[str, int]],

@@ -34,15 +34,18 @@ class CrossrefProvider(SearchProvider):
                     filter_parts.append("type:book")
                 else:
                     filter_parts.append(f"type:{t}")
-            if filters.get("language"):
-                filter_parts.append(f"language:{filters['language']}")
+
 
         params: Dict[str, Any] = {
             "rows": min(100, max_results),
             "cursor": "*"
         }
         if query.strip():
-            params["query.bibliographic"] = query.strip()
+            import re
+            q_str = re.sub(r'\b(AND|OR|NOT)\b', ' ', query, flags=re.IGNORECASE)
+            q_str = re.sub(r'[\(\)]', ' ', q_str)
+            q_str = re.sub(r'\s+', ' ', q_str).strip()
+            params["query.bibliographic"] = q_str
         if filter_parts:
             params["filter"] = ",".join(filter_parts)
 

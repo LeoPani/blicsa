@@ -155,10 +155,11 @@ class SearchFeedView(ctk.CTkFrame):
     Features filtering sidebars, pagination, selection logic,
     and a bottom bar for confirming import to the corpus.
     """
-    def __init__(self, master, on_import_confirm: Callable, on_cancel: Callable):
-        super().__init__(master, fg_color=PAPER, corner_radius=0)
+    def __init__(self, master, on_import_confirm: Callable, on_cancel: Callable, on_ai_assistant: Callable = None):
+        super().__init__(master, fg_color="transparent")
         self.on_import_confirm = on_import_confirm
         self.on_cancel = on_cancel
+        self.on_ai_assistant = on_ai_assistant
         self.records = []
         self.filtered_indices = []
         self.selected_indices = set()
@@ -195,12 +196,19 @@ class SearchFeedView(ctk.CTkFrame):
         self.sel_lbl = ctk.CTkLabel(self.bottom_bar, text="0 selecionados de 0", text_color=WHITE, font=ctk.CTkFont(size=14, weight="bold"))
         self.sel_lbl.pack(side="left", padx=24)
         
-        ctk.CTkButton(self.bottom_bar, text="Importar para o corpus", fg_color=RED, text_color=WHITE, hover_color="#b82611", corner_radius=0, border_width=0, font=ctk.CTkFont(weight="bold"), command=self._show_summary_and_import).pack(side="right", padx=24)
+        ctk.CTkButton(self.bottom_bar, text="Importar para o corpus", fg_color=RED, text_color=WHITE, hover_color="#b82611", corner_radius=0, border_width=0, font=ctk.CTkFont(weight="bold"), command=self._show_summary_and_import).pack(side="right", padx=(0, 24))
+        
+        if self.on_ai_assistant:
+            ctk.CTkButton(self.bottom_bar, text="✨ Blink", fg_color="#F5BE00", text_color=INK, hover_color="#D4A000", corner_radius=0, border_width=0, font=ctk.CTkFont(weight="bold"), command=self._trigger_ai).pack(side="right", padx=16)
         
         self.cards = []
         self.page = 0
         self.page_size = 25
         self.load_more_btn = ctk.CTkButton(self.feed, text="Carregar mais", fg_color=WHITE, text_color=INK, hover_color="#EEEEEE", border_width=2, border_color=INK, corner_radius=0, command=self._render_page)
+
+    def _trigger_ai(self):
+        if self.on_ai_assistant:
+            self.on_ai_assistant(self.records, self.selected_indices)
 
     def load_results(self, records: List[dict], count_trail: str):
         self.records = records

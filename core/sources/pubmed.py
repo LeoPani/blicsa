@@ -69,7 +69,7 @@ class PubMedProvider(SearchProvider):
         
         # 3. Fetch details using EFetch in batches of 200 (since we limit by max_results anyway, typically one batch)
         efetch_url = "https://eutils.ncbi.nlm.nih.gov/entrez/eutils/efetch.fcgi"
-        batch_size = 200
+        batch_size = 100
         count_fetched = 0
         
         for i in range(0, len(id_list), batch_size):

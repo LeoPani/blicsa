@@ -1,0 +1,4 @@
+{
+ "url": "https://eutils.ncbi.nlm.nih.gov/entrez/eutils/esearch.fcgi?db=pubmed&term=bibliometria+AND+pt%5BLA%5D&retmode=json&retmax=25&retstart=0",
+ "body": "{\"header\":{\"type\":\"esearch\",\"version\":\"0.3\"},\"esearchresult\":{\"count\":\"0\",\"retmax\":\"0\",\"retstart\":\"0\",\"idlist\":[],\"translationset\":[],\"querytranslation\":\"bibliometria AND pt[LA]\",\"errorlist\":{\"phrasesnotfound\":[\"pt\"],\"fieldsnotfound\":[]},\"warninglist\":{\"phrasesignored\":[],\"quotedphrasesnotfound\":[],\"outputmessages\":[\"No items found.\"]}}}\n"
+}

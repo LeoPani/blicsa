@@ -10,6 +10,8 @@ hiddenimports = []
 # Bundle locales if folder exists
 if os.path.exists('locales'):
     datas.append(('locales', 'locales'))
+if os.path.exists('assets'):
+    datas.append(('assets', 'assets'))
 
 # Bundle customtkinter and tkinterdnd2
 tmp_ret = collect_all('customtkinter')

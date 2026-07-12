@@ -36,7 +36,8 @@ class OpenAlexProvider(SearchProvider):
 
         params: Dict[str, Any] = {
             "per_page": min(100, max_results),
-            "cursor": "*"
+            "cursor": "*",
+            "mailto": "blicsa.app@gmail.com"
         }
         
         import re
@@ -77,7 +78,7 @@ class OpenAlexProvider(SearchProvider):
             q_str = ""
 
         if q_str.strip():
-            filter_parts.append(f"title_and_abstract.search:{q_str.strip()}")
+            filter_parts.append(f"default.search:{q_str.strip()}")
         if filter_parts:
             params["filter"] = ",".join(filter_parts)
 

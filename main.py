@@ -37,7 +37,7 @@ from core.visualizer import compute_fa2_layout, build_plotly_map, build_plotly_d
 from core.nlp import load_thesaurus
 from ai.client import GroqBibliometricAnalyst
 
-from ui.design_tokens import SIDEBAR_BG, CONTENT_BG, CARD_BG, CARD2_BG, ACCENT, ACCENT_HOV, TEXT_MUTED, MUTED, BLUE, YELLOW, RED, INK, PAPER, RED_HOV, RED_HOVER, WHITE_CARD as WHITE, INK_HOV, BLUE_HOV, YELLOW_HOV
+from ui.design_tokens import SIDEBAR_BG, CONTENT_BG, CARD_BG, CARD2_BG, ACCENT, ACCENT_HOV, TEXT_MUTED, MUTED, BLUE, YELLOW, RED, INK, PAPER, RED_HOV, RED_HOVER, WHITE_CARD, INK_HOV, BLUE_HOV, YELLOW_HOV
 from ui.styles import get_color, LogWriter
 from ui.components import DeduplicationDialog, TrendChartWindow, VerificationDialog, MapCanvas, BurstDetectionWindow, HoverTooltip
 
@@ -87,10 +87,13 @@ class BlicsaApp(ctk.CTk):
         self.configure(fg_color=CONTENT_BG)
 
         self._file_paths: list[str]              = []
-        self._file_formats: list[str]            = []   # parallel list of format per file
+        self._file_formats: list[str]            = []
         self._dataframe                          = None
         self._generator: NetworkGenerator | None = None
         self._positions: dict                    = {}
+        
+        self._start_local_server()
+        
         self._map_canvas: MapCanvas | None       = None
         self._thesaurus: dict[str, str]          = {}
         self._thesaurus_path: str | None         = None
@@ -129,6 +132,33 @@ class BlicsaApp(ctk.CTk):
             sys.stdout = LogWriter(self._log_box)
         self._setup_dnd()
         self._setup_shortcuts()
+
+    def _start_local_server(self):
+        import http.server
+        import socketserver
+        import threading
+        import socket
+        
+        if hasattr(self, '_local_server_port'): return
+        
+        s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        s.bind(('127.0.0.1', 0))
+        self._local_server_port = s.getsockname()[1]
+        s.close()
+        
+        def serve():
+            try:
+                # Python 3.7+ SimpleHTTPRequestHandler directory argument
+                class Handler(http.server.SimpleHTTPRequestHandler):
+                    def __init__(self, *args, **kwargs):
+                        super().__init__(*args, directory=str(OUTPUT_DIR), **kwargs)
+                with socketserver.TCPServer(("127.0.0.1", self._local_server_port), Handler) as httpd:
+                    httpd.serve_forever()
+            except Exception as e:
+                print(f"[HTTP Server] Error: {e}")
+                
+        threading.Thread(target=serve, daemon=True).start()
+        print(f"[HTTP Server] Started at http://127.0.0.1:{self._local_server_port} serving {OUTPUT_DIR}")
 
     # ── Skeleton ───────────────────────────────────────────────────────
     def _build_layout(self):
@@ -175,7 +205,7 @@ class BlicsaApp(ctk.CTk):
         
         from PIL import Image
         for i, (key, icon_name, label_text) in enumerate([
-            ("home",    "sparkle", "Blink Research"),
+            ("home",    "sparkle", "Blink"),
             ("import",  "magnet", "Coletar"),
             ("corpus",  "stack", "Corpus"),
             ("stats",   "chart", "Estatísticas"),
@@ -421,7 +451,16 @@ class BlicsaApp(ctk.CTk):
         if msg == 'Concluído' or 'Sucesso' in msg: self.blink_status()
 
     def _switch_tab(self, tab_key: str):
+        prev = getattr(self, '_current_tab_key', None)
+        if prev and prev != tab_key:
+            self._previous_tab_key = prev
         self._current_tab_key = tab_key
+        
+        if hasattr(self, '_blink_back_btn'):
+            if tab_key == 'home' and getattr(self, '_previous_tab_key', None):
+                self._blink_back_btn.pack(side="right", padx=20)
+            else:
+                self._blink_back_btn.pack_forget()
         for key, frame in self._tabs.items():
             frame.grid_remove()
         if tab_key in self._tabs:
@@ -516,8 +555,43 @@ class BlicsaApp(ctk.CTk):
             text_color="#000" if color == ACCENT else "white",
             command=cmd, **kw)
 
+    def _add_blink_message(self, role, text=""):
+        from core.markdown_parser import configure_markdown_tags, insert_markdown
+        row = ctk.CTkFrame(self._research_chat_history_main, fg_color="transparent")
+        row.pack(fill="x", pady=5)
+        
+        from ui.design_tokens import BLUE, WHITE_CARD, INK
+        bubble = ctk.CTkFrame(row, fg_color=BLUE if role == "user" else WHITE_CARD, corner_radius=0, border_width=0 if role == "user" else 2, border_color=INK)
+        bubble.pack(side="right" if role == "user" else "left", padx=10, pady=2)
+        
+        tb = ctk.CTkTextbox(bubble, wrap="word", font=ctk.CTkFont(size=14), fg_color="transparent", text_color=WHITE_CARD if role == "user" else INK, corner_radius=0, width=550)
+        tb.pack(padx=10, pady=10)
+        
+        if role == "assistant":
+            configure_markdown_tags(tb)
+            
+        if text:
+            if role == "assistant":
+                insert_markdown(tb, text)
+            else:
+                tb.insert("end", text)
+        tb.configure(state="disabled")
+        
+        def update_height():
+            try:
+                lines = tb._textbox.count("1.0", "end", "displaylines")
+                if lines:
+                    tb.configure(height=lines[0] * 22 + 20)
+            except:
+                tb.configure(height=(tb.get("1.0", "end").count('\n') + 1) * 22 + 20)
+            self._research_chat_history_main._parent_canvas.yview_moveto(1.0)
+            
+        tb.after(50, update_height)
+        return tb, update_height, row
+
     # ── Tab: Importação ────────────────────────────────────────────────
     def _build_tab_home(self) -> ctk.CTkFrame:
+        from ui.design_tokens import WHITE_CARD, MUTED, INK, RED, RED_HOV, PAPER, BLUE, ACCENT, ACCENT_HOV
         from PIL import Image
         frame = self._tab()
         
@@ -534,7 +608,7 @@ class BlicsaApp(ctk.CTk):
             self._refresh_language()
             
         try:
-            for i, (l, f_name) in enumerate([("pt_BR", "flag-pt-br.png"), ("en", "flag-en.png"), ("fr", "flag-fr.png")]):
+            for i, (l, f_name) in enumerate([("pt_BR", "flag-pt-br.png"), ("en", "flag-en.png"), ("fr", "flag-fr.png"), ("de", "flag-de.png")]):
                 img = ctk.CTkImage(light_image=Image.open(f"assets/branding/{f_name}"), size=(32, 22))
                 btn = ctk.CTkButton(flag_f, image=img, text="", width=32, height=22, fg_color="transparent", corner_radius=0, border_width=2, border_color=INK, hover_color="#e0e0e0", command=lambda x=l: set_l(x))
                 btn.grid(row=0, column=i, padx=4)
@@ -546,38 +620,43 @@ class BlicsaApp(ctk.CTk):
         chat_container.pack(fill="both", expand=True, padx=40, pady=20)
         
         title_f = ctk.CTkFrame(chat_container, fg_color="transparent")
-        title_f.pack(pady=(0, 20), anchor="w")
-        ctk.CTkLabel(title_f, text="O que vamos ", font=ctk.CTkFont(size=32, weight="bold"), text_color=INK).pack(side="left")
-        ctk.CTkLabel(title_f, text="pesquisar", font=ctk.CTkFont(size=32, weight="bold"), text_color=RED).pack(side="left")
-        ctk.CTkLabel(title_f, text=" hoje?", font=ctk.CTkFont(size=32, weight="bold"), text_color=INK).pack(side="left")
+        title_f.pack(pady=(0, 20), fill="x")
         
-        self._research_chat_history_main = ctk.CTkTextbox(chat_container, wrap="word", font=ctk.CTkFont(size=14), fg_color=WHITE, text_color=INK, border_width=2, border_color=INK, corner_radius=0)
+        lbl_f = ctk.CTkFrame(title_f, fg_color="transparent")
+        lbl_f.pack(side="left")
+        ctk.CTkLabel(lbl_f, text=t("O que vamos "), font=ctk.CTkFont(size=32, weight="bold"), text_color=INK).pack(side="left")
+        ctk.CTkLabel(lbl_f, text=t("pesquisar"), font=ctk.CTkFont(size=32, weight="bold"), text_color=RED).pack(side="left")
+        ctk.CTkLabel(lbl_f, text=t(" hoje?"), font=ctk.CTkFont(size=32, weight="bold"), text_color=INK).pack(side="left")
+        
+        def _go_back():
+            if hasattr(self, '_previous_tab_key') and self._previous_tab_key:
+                self._switch_tab(self._previous_tab_key)
+                
+        self._blink_back_btn = ctk.CTkButton(title_f, text="⬅ Voltar", width=80, height=30, fg_color="#E0E0E0", text_color=INK, hover_color="#C0C0C0", command=_go_back)
+        
+        self._research_chat_history_main = ctk.CTkScrollableFrame(chat_container, fg_color="transparent")
         self._research_chat_history_main.pack(fill="both", expand=True, pady=(0, 20))
         from core.markdown_parser import configure_markdown_tags, insert_markdown
-        configure_markdown_tags(self._research_chat_history_main)
-        insert_markdown(self._research_chat_history_main, "**Blink Research:** Olá! Sou seu assistente de pesquisa. Diga-me o que deseja investigar ou peça dicas de bibliometria.\n\n")
-        self._research_chat_history_main.configure(state="disabled")
+        
+        self._research_messages = [{"role": "system", "content": t("Você é o 'Blink', um assistente de IA focado em pesquisa dentro do software Blicsa. Ajude o usuário com sua pesquisa bibliométrica. Use markdown para formatar a resposta.")}]
+
+
+        self._add_blink_message("assistant", t("**Blink:** fala mano, bora pesquisar?"))
         
         input_f = ctk.CTkFrame(chat_container, fg_color="transparent")
         input_f.pack(fill="x", pady=(0, 20))
         
-        self._research_chat_input_main = ctk.CTkEntry(input_f, placeholder_text="Digite sua pergunta...", placeholder_text_color=MUTED, font=ctk.CTkFont(size=14), fg_color=WHITE, text_color=INK, height=44, corner_radius=0, border_width=2, border_color=INK)
+        self._research_chat_input_main = ctk.CTkEntry(input_f, placeholder_text=t("Digite sua pergunta..."), placeholder_text_color=MUTED, font=ctk.CTkFont(size=14), fg_color=WHITE_CARD, text_color=INK, height=44, corner_radius=0, border_width=2, border_color=INK)
         self._research_chat_input_main.pack(side="left", fill="x", expand=True, padx=(0, 10))
         
         def send_main_chat(e=None):
             msg = self._research_chat_input_main.get().strip()
             if not msg: return
             self._research_chat_input_main.delete(0, "end")
-            self._research_chat_history_main.configure(state="normal")
-            insert_markdown(self._research_chat_history_main, f"**Você:** {msg}\n")
-            self._research_chat_history_main.see("end")
-            self._research_chat_history_main.configure(state="disabled")
             
-            if not hasattr(self, '_research_messages') or not self._research_messages:
-                self._research_messages = [{"role": "system", "content": "Você é o 'Blink Research', um assistente de IA focado em pesquisa dentro do software Blicsa. Ajude o usuário com sua pesquisa bibliométrica. Use markdown para formatar a resposta."}]
+            self._add_blink_message("user", msg)
             
-            # RAG Integration per query
-            system_prompt = "Você é o 'Blink Research', um assistente de IA focado em pesquisa dentro do software Blicsa. Ajude o usuário com sua pesquisa bibliométrica. Use markdown para formatar a resposta."
+            system_prompt = t("Você é o 'Blink', um assistente de IA focado em pesquisa dentro do software Blicsa. Ajude o usuário com sua pesquisa bibliométrica. Use markdown para formatar a resposta.")
             if self._dataframe is not None and not self._dataframe.empty:
                 try:
                     from sklearn.feature_extraction.text import TfidfVectorizer
@@ -597,39 +676,70 @@ class BlicsaApp(ctk.CTk):
                                 row = df.iloc[idx]
                                 title = row.get("title", "")
                                 abs_txt = str(row.get("abstract", ""))[:300]
-                                abstracts.append(f"Title: {title}\nAbstract: {abs_txt}...")
+                                abstracts.append(f"Title: {title}\\nAbstract: {abs_txt}...")
                         
                         if abstracts:
-                            ctx = "\n\n---\n".join(abstracts)
-                            system_prompt += f"\n\nContexto relevante do corpus:\n{ctx}"
-                except Exception as e:
-                    print(f"[Blink RAG] Error: {e}")
+                            ctx = "\\n\\n---\\n".join(abstracts)
+                            system_prompt += f"\\n\\n{t('Contexto relevante do corpus:')}\\n{ctx}"
+                except Exception as ex:
+                    print(f"[Blink RAG] Error: {ex}")
             
             system_prompt = system_prompt[:4000]
-            print(f"[Blink RAG] contexto: {len(system_prompt)} chars")
             self._research_messages[0] = {"role": "system", "content": system_prompt}
-                
             self._research_messages.append({"role": "user", "content": msg})
+            
+            # Indicator
+            indicator_row = ctk.CTkFrame(self._research_chat_history_main, fg_color="transparent")
+            indicator_row.pack(fill="x", pady=5)
+            indicator = ctk.CTkFrame(indicator_row, fg_color=INK, width=16, height=16, corner_radius=0)
+            indicator.pack(side="left", padx=14, pady=14)
+            
+            def pulse_indicator():
+                if indicator.winfo_exists():
+                    current = indicator.cget("fg_color")
+                    indicator.configure(fg_color=WHITE_CARD if current == INK else INK, border_width=2 if current == INK else 0, border_color=INK)
+                    indicator.after(400, pulse_indicator)
+            pulse_indicator()
+            self._research_chat_history_main._parent_canvas.yview_moveto(1.0)
             
             import threading
             def worker():
                 try:
                     from ai.client import AIAnalyst
                     analyst = AIAnalyst(api_key=self._api_key_var.get() or None, base_url=self._ai_base_url_var.get(), model=self._ai_model_var.get())
-                    resp = analyst.chat_history(self._research_messages, temperature=0.7)
-                    self._research_messages.append({"role": "assistant", "content": resp})
+                    stream = analyst.chat_history_stream(self._research_messages, temperature=0.7)
+                    
+                    full_response = ""
+                    tb_ref = []
+                    
+                    for chunk in stream:
+                        full_response += chunk
+                        
+                        def update_chunk(resp=full_response):
+                            if indicator_row.winfo_exists():
+                                indicator_row.destroy()
+                            if not tb_ref:
+                                tb, upd, _ = self._add_blink_message("assistant", "")
+                                tb_ref.append((tb, upd))
+                            
+                            tb, upd = tb_ref[0]
+                            tb.configure(state="normal")
+                            tb.delete("1.0", "end")
+                            insert_markdown(tb, resp)
+                            tb.configure(state="disabled")
+                            upd()
+                        self.after(0, update_chunk)
+                    
+                    self._research_messages.append({"role": "assistant", "content": full_response})
                 except Exception as ex:
-                    resp = f"Erro: {ex}"
-                def update_ui():
-                    self._research_chat_history_main.configure(state="normal")
-                    insert_markdown(self._research_chat_history_main, f"**Blink:**\n{resp}\n")
-                    self._research_chat_history_main.see("end")
-                    self._research_chat_history_main.configure(state="disabled")
-                self.after(0, update_ui)
+                    if indicator_row.winfo_exists(): indicator_row.destroy()
+                    def err_ui():
+                        self._add_blink_message("assistant", f"{t('Erro:')} {ex}")
+                    self.after(0, err_ui)
             threading.Thread(target=worker, daemon=True).start()
             
         self._research_chat_input_main.bind("<Return>", send_main_chat)
-        ctk.CTkButton(input_f, text="Enviar", font=ctk.CTkFont(size=14, weight="bold"), fg_color=RED, text_color="white", hover_color=RED_HOV, corner_radius=0, border_width=2, border_color=INK, height=44, width=100, command=send_main_chat).pack(side="right")
+        ctk.CTkButton(input_f, text=t("Enviar"), font=ctk.CTkFont(size=14, weight="bold"), fg_color=RED, text_color="white", hover_color=RED_HOV, corner_radius=0, border_width=2, border_color=INK, height=44, width=100, command=send_main_chat).pack(side="right")
         
         # Suggestions
         sug_f = ctk.CTkFrame(chat_container, fg_color="transparent")
@@ -675,14 +785,14 @@ class BlicsaApp(ctk.CTk):
             ctk.CTkRadioButton(sp_f, text=lbl, variable=self._search_provider_var,
                                value=val, fg_color=ACCENT, hover_color=ACCENT_HOV).pack(side="left", padx=8)
                                
-        self._search_query_entry = ctk.CTkEntry(scard, placeholder_text="Termo / Query (ex: 'deep learning')", placeholder_text_color=MUTED, height=36, fg_color=WHITE, text_color=INK)
+        self._search_query_entry = ctk.CTkEntry(scard, placeholder_text="Termo / Query (ex: 'deep learning')", placeholder_text_color=MUTED, height=36, fg_color=WHITE_CARD, text_color=INK)
         self._search_query_entry.grid(row=2, column=0, columnspan=2, padx=16, pady=4, sticky="ew")
         
         act_sf = ctk.CTkFrame(scard, fg_color="transparent")
         act_sf.grid(row=3, column=0, columnspan=2, padx=16, pady=(4, 16), sticky="e")
         
         ctk.CTkLabel(act_sf, text="Qtd:").pack(side="left", padx=4)
-        self._search_max_entry = ctk.CTkEntry(act_sf, width=60, placeholder_text="100", placeholder_text_color=MUTED, fg_color=WHITE, text_color=INK)
+        self._search_max_entry = ctk.CTkEntry(act_sf, width=60, placeholder_text="100", placeholder_text_color=MUTED, fg_color=WHITE_CARD, text_color=INK)
         self._search_max_entry.insert(0, "100")
         self._search_max_entry.pack(side="left", padx=4)
         
@@ -694,6 +804,7 @@ class BlicsaApp(ctk.CTk):
         
         self._btn(act_sf, "⚙ Avançada", self._open_query_builder, height=30).pack(side="left", padx=4)
         self._btn(act_sf, "🔍 Buscar", self._on_gui_search, height=30, color=RED, hover=RED_HOV).pack(side="left", padx=4)
+        self._btn(act_sf, "✨ Blink", self._trigger_import_ai_assistant, height=30, color=YELLOW, hover=YELLOW_HOV).pack(side="left", padx=4)
         
         self._search_cancel_btn = self._btn(act_sf, "✕ Cancelar", self._cancel_search, height=30, color="#E63946", hover="#C12B37")
         self._search_cancel_btn.pack_forget() # Hide initially
@@ -702,22 +813,22 @@ class BlicsaApp(ctk.CTk):
         filter_f.grid(row=4, column=0, columnspan=2, padx=16, pady=4, sticky="ew")
         
         ctk.CTkLabel(filter_f, text="Ano Início:", font=ctk.CTkFont(size=12)).pack(side="left", padx=4)
-        self._search_year_start = ctk.CTkEntry(filter_f, width=60, placeholder_text="Ex: 2018", placeholder_text_color=MUTED, fg_color=WHITE, text_color=INK)
+        self._search_year_start = ctk.CTkEntry(filter_f, width=60, placeholder_text="Ex: 2018", placeholder_text_color=MUTED, fg_color=WHITE_CARD, text_color=INK)
         self._search_year_start.pack(side="left", padx=4)
         
         ctk.CTkLabel(filter_f, text="Ano Fim:", font=ctk.CTkFont(size=12)).pack(side="left", padx=(10,4))
-        self._search_year_end = ctk.CTkEntry(filter_f, width=60, placeholder_text="Ex: 2024", placeholder_text_color=MUTED, fg_color=WHITE, text_color=INK)
+        self._search_year_end = ctk.CTkEntry(filter_f, width=60, placeholder_text="Ex: 2024", placeholder_text_color=MUTED, fg_color=WHITE_CARD, text_color=INK)
         self._search_year_end.pack(side="left", padx=4)
         
         ctk.CTkLabel(filter_f, text="Tipo:", font=ctk.CTkFont(size=12)).pack(side="left", padx=(10,4))
         self._search_type_var = ctk.StringVar(value="Todos")
-        self._search_type = ctk.CTkOptionMenu(filter_f, variable=self._search_type_var, fg_color=WHITE, text_color=INK, button_color=WHITE, button_hover_color=CARD2_BG,
+        self._search_type = ctk.CTkOptionMenu(filter_f, variable=self._search_type_var, fg_color=WHITE_CARD, text_color=INK, button_color=WHITE_CARD, button_hover_color=CARD2_BG,
                                               values=["Todos", "article", "review", "book-chapter", "dataset"], width=100)
         self._search_type.pack(side="left", padx=4)
         
         ctk.CTkLabel(filter_f, text="Idioma:", font=ctk.CTkFont(size=12)).pack(side="left", padx=(10,4))
         self._search_lang_var = ctk.StringVar(value="Todos")
-        self._search_lang = ctk.CTkOptionMenu(filter_f, variable=self._search_lang_var, fg_color=WHITE, text_color=INK, button_color=WHITE, button_hover_color=CARD2_BG,
+        self._search_lang = ctk.CTkOptionMenu(filter_f, variable=self._search_lang_var, fg_color=WHITE_CARD, text_color=INK, button_color=WHITE_CARD, button_hover_color=CARD2_BG,
                                               values=["Todos", "en", "pt", "es", "fr", "de"], width=70)
         self._search_lang.pack(side="left", padx=4)
         
@@ -807,8 +918,8 @@ class BlicsaApp(ctk.CTk):
         return f
 
     # ── Tab: Mapa & IA ─────────────────────────────────────────────────
-    def _build_tab_viz(self) -> ctk.CTkFrame:
-        frame = self._tab()
+    def _build_tab_viz(self, parent=None) -> ctk.CTkFrame:
+        frame = ctk.CTkFrame(parent if parent else self._content, fg_color="transparent", corner_radius=0)
         # Col 0 (left config sidebar, fixed), Col 1 (middle canvas, expanding)
         frame.grid_columnconfigure(0, weight=0, minsize=280)
         frame.grid_columnconfigure(1, weight=1)
@@ -853,24 +964,53 @@ class BlicsaApp(ctk.CTk):
             row=0, column=1, padx=4, sticky="ew")
         
         def save_plot():
-            if not getattr(self, '_graph', None): return
-            import os
-            from core.visualizer import build_plotly_map
+            if not getattr(self, '_graph', None):
+                messagebox.showwarning("Sem mapa", "Gere o mapa primeiro.")
+                return
+            import os, time, re
             os.makedirs("reports", exist_ok=True)
-            path = f"reports/mapa_{int(time.time())}.svg"
-            fig = build_plotly_map(self._graph, self._positions, color_mode=self._color_mode_var.get(), df=self._dataframe)
-            # Plotly to SVG requires kaleido or ORCA. We can write HTML instead if kaleido is missing, but prompt asks for SVG.
-            # Using fig.write_image which requires kaleido, if not installed will throw error.
-            try:
-                fig.write_image(path)
-                messagebox.showinfo("Sucesso", f"Salvo em {path}")
-            except Exception as e:
-                # fallback to HTML
-                path = path.replace(".svg", ".html")
-                fig.write_html(path)
-                messagebox.showinfo("Aviso", f"SVG falhou (falta kaleido). Salvo como HTML em {path}")
+            
+            # Save a bundled Sigma.js map to the gallery
+            from core.sigma_exporter import export_sigma_json
+            import tempfile
+            
+            # Temporary path for graph.json
+            with tempfile.NamedTemporaryFile("w+", delete=False, encoding="utf-8") as tmp_json:
+                sigma_path = tmp_json.name
+            
+            export_sigma_json(self._graph, self._positions, sigma_path)
+            
+            html_template_path = str(OUTPUT_DIR / "assets" / "map_template.html")
+            js_path = str(OUTPUT_DIR / "assets" / "map.js")
+            
+            with open(html_template_path, "r", encoding="utf-8") as f:
+                template = f.read()
+            with open(js_path, "r", encoding="utf-8") as f:
+                map_js = f.read()
+            with open(sigma_path, "r", encoding="utf-8") as f:
+                graph_json = f.read()
+                
+            os.remove(sigma_path)
+            
+            # Replace fetch with inline data robustly
+            map_js = re.sub(
+                r'const response = await fetch\("graph\.json"\);.*?data = await response\.json\(\);',
+                f'data = {graph_json};',
+                map_js,
+                flags=re.DOTALL
+            )
+            
+            # Inject inline script
+            template = template.replace('<script type="module" src="map.js"></script>', f'<script type="module">\n{map_js}\n</script>')
+            
+            path = f"reports/blicsa_mapa_{int(time.time())}.html"
+            with open(path, "w", encoding="utf-8") as f:
+                f.write(template)
+                
+            messagebox.showinfo("Sucesso", f"Mapa salvo na galeria!\nVerifique a aba Galeria.")
+            self._refresh_gallery()
 
-        self._btn(br, "💾  Salvar Plot",
+        self._btn(br, "💾  Salvar na Galeria",
                   save_plot,
                   color=RED, hover=RED_HOV, height=44).grid(
             row=0, column=2, padx=4, sticky="ew")
@@ -1170,8 +1310,8 @@ class BlicsaApp(ctk.CTk):
         self._btn(pf, "💾 Salvar", self._save_config, height=28, color=INK, hover=INK_HOV).pack(side="left", fill="x", expand=True, padx=(0, 4))
         self._btn(pf, "📂 Carregar", self._load_config, height=28, color=INK, hover=INK_HOV).pack(side="right", fill="x", expand=True, padx=(4, 0))
     # ── Tab: Rankings ──────────────────────────────────────────────────
-    def _build_tab_ranking(self) -> ctk.CTkFrame:
-        frame = self._tab()
+    def _build_tab_ranking(self, parent=None) -> ctk.CTkFrame:
+        frame = ctk.CTkFrame(parent if parent else self._content, fg_color="transparent", corner_radius=0)
         frame.grid_rowconfigure(2, weight=1)
         self._h1(frame, "Rankings", 0)
 
@@ -1560,7 +1700,7 @@ class BlicsaApp(ctk.CTk):
                 providers_to_run = [PubMedProvider()]
                 
             records = []
-            max_per_provider = max_results // len(providers_to_run) if providers_to_run else max_results
+            max_per_provider = max_results
             total_found_sum = 0
 
             
@@ -1693,6 +1833,73 @@ class BlicsaApp(ctk.CTk):
             def on_cancel():
                 self._switch_tab("import")
 
+            def on_ai_assistant(records_list, selected_idx):
+                if not records_list: return
+                df_temp = pd.DataFrame(records_list)
+                langs = df_temp['language'].value_counts().head(3).to_dict() if 'language' in df_temp.columns else {}
+                years = df_temp['year'].value_counts().head(3).to_dict() if 'year' in df_temp.columns else {}
+                top_sources = df_temp['source'].value_counts().head(3).to_dict() if 'source' in df_temp.columns else {}
+                
+                context = f"**Resultados Baixados:** {len(records_list)}\n**Artigos Selecionados:** {len(selected_idx)}\n"
+                context += f"**Principais Idiomas:** {langs}\n**Principais Anos:** {years}\n**Principais Fontes:** {top_sources}\n"
+                
+                prompt_msg = f"Acabei de baixar {len(records_list)} artigos e filtrei {len(selected_idx)}. Analise essas estatísticas de fontes, idiomas e anos. Justifique os prós e contras desse conjunto, apontando se há algum viés claro nessa distribuição que eu deveria considerar ou ajustar antes de consolidar meu corpus final."
+                
+                self._switch_tab("home")
+                self._add_blink_message("user", prompt_msg)
+                
+                system_prompt = self._research_messages[0]["content"]
+                system_prompt += f"\n\nContexto Atual (Revisão Pós-Busca):\n{context}"
+                
+                messages = [{"role": "system", "content": system_prompt}, {"role": "user", "content": prompt_msg}]
+                self._research_messages.append({"role": "user", "content": prompt_msg})
+                
+                import customtkinter as ctk
+                from ui.design_tokens import INK, WHITE_CARD
+                indicator_row = ctk.CTkFrame(self._research_chat_history_main, fg_color="transparent")
+                indicator_row.pack(fill="x", pady=5)
+                indicator = ctk.CTkFrame(indicator_row, fg_color=INK, width=16, height=16, corner_radius=0)
+                indicator.pack(side="left", padx=14, pady=14)
+                
+                def pulse_indicator():
+                    if indicator.winfo_exists():
+                        current = indicator.cget("fg_color")
+                        indicator.configure(fg_color=WHITE_CARD if current == INK else INK, border_width=2 if current == INK else 0, border_color=INK)
+                        indicator.after(400, pulse_indicator)
+                pulse_indicator()
+                self._research_chat_history_main._parent_canvas.yview_moveto(1.0)
+                
+                import threading
+                def _stream_worker_ai():
+                    try:
+                        from ai.client import AIAnalyst
+                        analyst = AIAnalyst(api_key=self._api_key_var.get() or None, base_url=self._ai_base_url_var.get(), model=self._ai_model_var.get())
+                        stream = analyst.chat_history_stream(messages, temperature=0.7)
+                        full_response = ""
+                        tb_ref = []
+                        from core.markdown_parser import insert_markdown
+                        
+                        for chunk in stream:
+                            full_response += chunk
+                            def update_chunk(resp=full_response):
+                                if indicator_row.winfo_exists(): indicator_row.destroy()
+                                if not tb_ref:
+                                    tb, upd, _ = self._add_blink_message("assistant", "")
+                                    tb_ref.append((tb, upd))
+                                tb, upd = tb_ref[0]
+                                tb.configure(state="normal")
+                                tb.delete("1.0", "end")
+                                insert_markdown(tb, resp)
+                                tb.configure(state="disabled")
+                                upd()
+                            self.after(0, update_chunk)
+                        
+                        self._research_messages.append({"role": "assistant", "content": full_response})
+                    except Exception as ex:
+                        if indicator_row.winfo_exists(): indicator_row.destroy()
+                        self.after(0, lambda e=ex: self._add_blink_message("assistant", f"Erro: {e}"))
+                threading.Thread(target=_stream_worker_ai, daemon=True).start()
+                
             def show_feed():
                 from ui.search_feed import SearchFeedView
                 self._search_cancel_btn.pack_forget()
@@ -1703,7 +1910,7 @@ class BlicsaApp(ctk.CTk):
                     w.destroy()
                     
                 # Create SearchFeedView inside the review tab
-                self.search_feed_view = SearchFeedView(review_tab, on_import_confirm, on_cancel)
+                self.search_feed_view = SearchFeedView(review_tab, on_import_confirm, on_cancel, on_ai_assistant)
                 self.search_feed_view.pack(fill="both", expand=True)
                 self.search_feed_view.load_results(df.to_dict('records'), trail)
                 self._set_idle("Pronto para revisar")
@@ -1914,21 +2121,23 @@ class BlicsaApp(ctk.CTk):
             gen.export_to_html(MAP_PATH)
             
             from core.sigma_exporter import export_sigma_json
-            sigma_path = os.path.join(ROOT_DIR, "assets", "graph.json")
+            sigma_path = str(OUTPUT_DIR / "assets" / "graph.json")
             export_sigma_json(gen.G, self._positions, sigma_path)
             
-            html_path = os.path.join(ROOT_DIR, "assets", "map_template.html")
-            import subprocess, sys
-            subprocess.Popen([sys.executable, os.path.join(ROOT_DIR, "core", "webview_viewer.py"), "Blicsa — Mapa Interativo", f"file://{html_path}"])
+            import webbrowser
+            url = f"http://127.0.0.1:{self._local_server_port}/assets/map_template.html"
+            webbrowser.open(url)
             print("[OK] Mapas prontos.\n")
 
             self.after(0, self._update_stats, stats)
-            self.after(0, self._switch_tab, "viz")
+            if getattr(self, '_tv_analises', None):
+                self._tv_analises.set("Mapa")
+            self.after(0, self._switch_tab, "analises")
             self.after(0, self._set_idle, "Mapa gerado")
             
             if self._api_key_var.get().strip() or os.environ.get("GROQ_API_KEY"):
                 self._show_ai_modal = False
-                self.after(200, lambda: threading.Thread(target=self._ai_seminal_worker, daemon=True).start())
+                self.after(200, lambda: threading.Thread(target=self._trigger_map_ai_insights, daemon=True).start())
         except Exception as exc:
             print(f"[ERRO] {exc}\n")
             self.after(0, self._set_idle, "Erro")
@@ -2059,18 +2268,8 @@ class BlicsaApp(ctk.CTk):
         pass
 
     def _open_in_webview(self, title: str, path: str):
-        import subprocess
-        import sys
-        from pathlib import Path
-        
-        script_path = str(Path(__file__).parent / "core" / "webview_viewer.py")
-        url = f"file://{path}"
-        
-        try:
-            subprocess.Popen([sys.executable, script_path, title, url])
-        except Exception as e:
-            import webbrowser
-            webbrowser.open(url)
+        import webbrowser
+        webbrowser.open(str(path))
 
     def _open_plotly(self):
         if self._generator is None or not self._positions:
@@ -2101,7 +2300,7 @@ class BlicsaApp(ctk.CTk):
     def _open_map_browser(self):
         target = PLOTLY_PATH if Path(PLOTLY_PATH).exists() else MAP_PATH
         if Path(target).exists():
-            webbrowser.open(f"file://{target}")
+            webbrowser.open(str(target))
         else:
             messagebox.showinfo("Não gerado", "Gere o mapa primeiro.")
 
@@ -2300,46 +2499,321 @@ class BlicsaApp(ctk.CTk):
             self.after(0, self._set_idle, "Erro IA")
             self.after(0, lambda e=exc: messagebox.showerror("Erro IA", f"Erro ao analisar Historiografia:\n{e}"))
 
-    def _ai_seminal_worker(self):
+    def _trigger_map_ai_insights(self):
         if self._dataframe is None:
             return
         try:
-            print("[IA] Analisando autores seminais...")
+            print("[IA] Coletando sumário do mapa e de autores seminais...")
             df = self._dataframe
+            
+            # 1. Seminal authors summary
             ref_col = None
             for col in ("CR", "References", "Cited References", "references"):
                 if col in df.columns:
                     ref_col = col
                     break
-            if not ref_col:
-                self.after(0, self._show_seminal_insights, "Nenhuma coluna de referências encontrada no dataset.")
-                return
-
-            from collections import Counter
-            import re
-            
-            counter = Counter()
-            for val in df[ref_col].dropna():
-                refs = [r.strip() for r in re.split(r"[;\n]", str(val)) if r.strip()]
-                for r in refs:
-                    counter[r] += 1
                     
-            top_refs = counter.most_common(20)
-            if not top_refs:
-                self.after(0, self._show_seminal_insights, "Nenhuma referência citada encontrada para analisar.")
+            seminal_summary = ""
+            if ref_col:
+                from collections import Counter
+                import re
+                counter = Counter()
+                for val in df[ref_col].dropna():
+                    refs = [r.strip() for r in re.split(r"[;\n]", str(val)) if r.strip()]
+                    for r in refs:
+                        counter[r] += 1
+                top_refs = counter.most_common(20)
+                if top_refs:
+                    seminal_summary = "Principais Trabalhos/Autores Seminais:\n"
+                    for ref, count in top_refs:
+                        seminal_summary += f"  - {ref} (citado {count} vezes)\n"
+            
+            # 2. Map thematic summary
+            thematic_summary = ""
+            if getattr(self, '_generator', None) and getattr(self._generator, 'G', None):
+                import networkx as nx
+                G = self._generator.G
+                partition = nx.get_node_attributes(G, "group")
+                clusters = {}
+                for node, grp in partition.items():
+                    clusters.setdefault(grp, []).append(node)
+                
+                thematic_summary = "Clusters Temáticos do Mapa:\n"
+                for c, nodes in list(clusters.items())[:8]:
+                    top_nodes = sorted(nodes, key=lambda n: G.nodes[n].get("occurrence", 0), reverse=True)[:5]
+                    thematic_summary += f"  - Cluster {c} (Termos principais: {', '.join(top_nodes)})\n"
+                    
+            # 3. Request streaming response in Blink Research chat
+            if not seminal_summary and not thematic_summary:
                 return
                 
-            summary = "Trabalhos mais citados no dataset:\n"
-            for ref, count in top_refs:
-                summary += f"  - {ref} (citado {count} vezes)\n"
+            full_context = f"{thematic_summary}\n\n{seminal_summary}"
+            prompt_msg = "O mapa bibliométrico acabou de ser gerado! Por favor, me dê:\n1. Alguns insights sobre os clusters temáticos do mapa.\n2. Quais são os principais autores seminais (trabalhos mais citados) com um pequeno resuminho sobre eles."
+            
+            # Use after(0) to update UI
+            def _start_streaming():
+                # Switch to Blink Research (home) tab automatically
+                self._switch_tab("home")
+                self._add_blink_message("user", prompt_msg)
                 
-            analyst = self._get_ai_analyst()
-            result = analyst.generate_seminal_insights(summary)
-            self.after(0, self._show_seminal_insights, result)
-            print("[IA] Análise seminal concluída.\n")
+                # Setup context
+                system_prompt = self._research_messages[0]["content"]
+                system_prompt += f"\n\nContexto atual:\n{full_context}"
+                
+                messages = [{"role": "system", "content": system_prompt}, {"role": "user", "content": prompt_msg}]
+                self._research_messages.append({"role": "user", "content": prompt_msg})
+                
+                # Indicator
+                import customtkinter as ctk
+                from ui.design_tokens import INK, WHITE_CARD
+                indicator_row = ctk.CTkFrame(self._research_chat_history_main, fg_color="transparent")
+                indicator_row.pack(fill="x", pady=5)
+                indicator = ctk.CTkFrame(indicator_row, fg_color=INK, width=16, height=16, corner_radius=0)
+                indicator.pack(side="left", padx=14, pady=14)
+                
+                def pulse_indicator():
+                    if indicator.winfo_exists():
+                        current = indicator.cget("fg_color")
+                        indicator.configure(fg_color=WHITE_CARD if current == INK else INK, border_width=2 if current == INK else 0, border_color=INK)
+                        indicator.after(400, pulse_indicator)
+                pulse_indicator()
+                self._research_chat_history_main._parent_canvas.yview_moveto(1.0)
+                
+                import threading
+                def _stream_worker():
+                    try:
+                        from ai.client import AIAnalyst
+                        analyst = AIAnalyst(api_key=self._api_key_var.get() or None, base_url=self._ai_base_url_var.get(), model=self._ai_model_var.get())
+                        stream = analyst.chat_history_stream(messages, temperature=0.7)
+                        
+                        full_response = ""
+                        tb_ref = []
+                        from core.markdown_parser import insert_markdown
+                        
+                        for chunk in stream:
+                            full_response += chunk
+                            def update_chunk(resp=full_response):
+                                if indicator_row.winfo_exists():
+                                    indicator_row.destroy()
+                                if not tb_ref:
+                                    tb, upd, _ = self._add_blink_message("assistant", "")
+                                    tb_ref.append((tb, upd))
+                                tb, upd = tb_ref[0]
+                                tb.configure(state="normal")
+                                tb.delete("1.0", "end")
+                                insert_markdown(tb, resp)
+                                tb.configure(state="disabled")
+                                upd()
+                            self.after(0, update_chunk)
+                        
+                        self._research_messages.append({"role": "assistant", "content": full_response})
+                    except Exception as ex:
+                        if indicator_row.winfo_exists(): indicator_row.destroy()
+                        self.after(0, lambda e=ex: self._add_blink_message("assistant", f"Erro: {e}"))
+                threading.Thread(target=_stream_worker, daemon=True).start()
+                
+            self.after(0, _start_streaming)
+            
         except Exception as exc:
-            print(f"[ERRO IA SEMINAL] {exc}\n")
-            self.after(0, self._show_seminal_insights, f"Erro ao analisar autores seminais:\n{exc}")
+            print(f"[ERRO IA] {exc}\n")
+
+    def _trigger_corpus_ai_insights(self):
+        if self._dataframe is None or self._dataframe.empty:
+            return
+            
+        try:
+            print("[IA] Analisando o corpus selecionado...")
+            df = self._dataframe
+            
+            # Prepare context
+            total_docs = len(df)
+            years = df.get('year', df.iloc[:,0]).dropna()
+            try:
+                years = years.astype(int)
+                years = years[years > 0]
+                year_min, year_max = int(years.min()), int(years.max()) if not years.empty else ("?", "?")
+            except:
+                year_min, year_max = "?", "?"
+            
+            # Top authors
+            from collections import Counter
+            all_authors = []
+            if 'authors' in df.columns:
+                for a in df['authors'].dropna().astype(str):
+                    all_authors.extend([x.strip() for x in a.split(';') if x.strip()])
+            top_authors = [a for a, c in Counter(all_authors).most_common(5)]
+            
+            # Top sources
+            all_sources = []
+            if 'source' in df.columns:
+                for s in df['source'].dropna().astype(str):
+                    all_sources.extend([x.strip() for x in s.split(';') if x.strip()])
+            top_sources = [s for s, c in Counter(all_sources).most_common(5)]
+            
+            # User filters (search queries or local filters)
+            query = self._search_query.get().strip() if getattr(self, '_search_query', None) else "Não especificada / Filtro Local"
+            
+            context = f"**Estatísticas do Corpus:**\n"
+            context += f"- Documentos: {total_docs}\n"
+            context += f"- Período: {year_min} a {year_max}\n"
+            context += f"- Top Autores: {', '.join(top_authors)}\n"
+            context += f"- Top Fontes: {', '.join(top_sources)}\n"
+            context += f"- Termo de Busca Original: {query}\n"
+            
+            prompt_msg = "Gere uma análise justificando a escolha e a utilidade acadêmica deste corpus. Para que ele serve? Quais critérios parecem unir esses documentos e por que outros documentos (de outras épocas, áreas ou autores) podem ter sido deixados de fora dessa filtragem?"
+            
+            def _start_streaming():
+                self._switch_tab("home")
+                self._add_blink_message("user", prompt_msg)
+                
+                system_prompt = self._research_messages[0]["content"]
+                system_prompt += f"\n\nContexto atual (Corpus Selecionado):\n{context}"
+                
+                messages = [{"role": "system", "content": system_prompt}, {"role": "user", "content": prompt_msg}]
+                self._research_messages.append({"role": "user", "content": prompt_msg})
+                
+                import customtkinter as ctk
+                from ui.design_tokens import INK, WHITE_CARD
+                indicator_row = ctk.CTkFrame(self._research_chat_history_main, fg_color="transparent")
+                indicator_row.pack(fill="x", pady=5)
+                indicator = ctk.CTkFrame(indicator_row, fg_color=INK, width=16, height=16, corner_radius=0)
+                indicator.pack(side="left", padx=14, pady=14)
+                
+                def pulse_indicator():
+                    if indicator.winfo_exists():
+                        current = indicator.cget("fg_color")
+                        indicator.configure(fg_color=WHITE_CARD if current == INK else INK, border_width=2 if current == INK else 0, border_color=INK)
+                        indicator.after(400, pulse_indicator)
+                pulse_indicator()
+                self._research_chat_history_main._parent_canvas.yview_moveto(1.0)
+                
+                import threading
+                def _stream_worker():
+                    try:
+                        from ai.client import AIAnalyst
+                        analyst = AIAnalyst(api_key=self._api_key_var.get() or None, base_url=self._ai_base_url_var.get(), model=self._ai_model_var.get())
+                        stream = analyst.chat_history_stream(messages, temperature=0.7)
+                        
+                        full_response = ""
+                        tb_ref = []
+                        from core.markdown_parser import insert_markdown
+                        
+                        for chunk in stream:
+                            full_response += chunk
+                            def update_chunk(resp=full_response):
+                                if indicator_row.winfo_exists():
+                                    indicator_row.destroy()
+                                if not tb_ref:
+                                    tb, upd, _ = self._add_blink_message("assistant", "")
+                                    tb_ref.append((tb, upd))
+                                tb, upd = tb_ref[0]
+                                tb.configure(state="normal")
+                                tb.delete("1.0", "end")
+                                insert_markdown(tb, resp)
+                                tb.configure(state="disabled")
+                                upd()
+                            self.after(0, update_chunk)
+                        
+                        self._research_messages.append({"role": "assistant", "content": full_response})
+                    except Exception as ex:
+                        if indicator_row.winfo_exists(): indicator_row.destroy()
+                        self.after(0, lambda e=ex: self._add_blink_message("assistant", f"Erro: {e}"))
+                threading.Thread(target=_stream_worker, daemon=True).start()
+                
+            self.after(0, _start_streaming)
+            
+        except Exception as exc:
+            print(f"[ERRO IA Corpus] {exc}\n")
+
+    def _trigger_import_ai_assistant(self):
+        try:
+            print("[IA] Analisando os parâmetros de busca...")
+            
+            query = self._search_query_entry.get().strip()
+            if not query:
+                prompt_msg = "Preciso de ajuda para criar uma string de busca bibliométrica. Quais dicas e operadores booleanos você sugere para uma pesquisa eficiente? OBRIGATÓRIO 1: No final da sua resposta, forneça pelo menos um exemplo de string de busca completa e pronta para copiar e colar. OBRIGATÓRIO 2: A string DEVE CONTER APENAS termos de pesquisa e booleanos. NUNCA INCLUA filtros de ano ou idioma DENTRO DA STRING, pois o software já possui filtros visuais para isso."
+                context = "**Nenhuma string de busca informada.**"
+            else:
+                provider = self._search_provider_var.get()
+                start_yr = self._search_year_start.get().strip() or "Qualquer"
+                end_yr = self._search_year_end.get().strip() or "Qualquer"
+                doc_type = self._search_type_var.get()
+                lang = self._search_lang_var.get()
+                oa = "Sim" if self._search_oa_var.get() else "Não exigido"
+                
+                context = f"**Parâmetros de Busca Configurados:**\n"
+                context += f"- Base: {provider.upper()}\n"
+                context += f"- String: `{query}`\n"
+                context += f"- Período: {start_yr} a {end_yr}\n"
+                context += f"- Tipo de Documento: {doc_type}\n"
+                context += f"- Idioma: {lang}\n"
+                context += f"- Open Access: {oa}\n"
+                
+                prompt_msg = f"Eu configurei esta busca bibliométrica. Justifique as escolhas dessa string (prós e contras) e me dê sugestões de refinamento. OBRIGATÓRIO 1: No final da resposta, forneça pelo menos uma nova string de busca completa e pronta para copiar e colar. OBRIGATÓRIO 2: A nova string DEVE CONTER APENAS termos temáticos e booleanos. NUNCA INCLUA idioma, anos ou tipos de documento (ex: 2020:*, English, etc) DENTRO DA STRING. O software tem filtros nativos para isso, instrua o usuário a usar os botões do Blicsa para essas restrições adicionais."
+
+            def _start_streaming():
+                self._switch_tab("home")
+                self._add_blink_message("user", prompt_msg)
+                
+                system_prompt = self._research_messages[0]["content"]
+                system_prompt += f"\n\nContexto atual (Busca em Configuração):\n{context}"
+                
+                messages = [{"role": "system", "content": system_prompt}, {"role": "user", "content": prompt_msg}]
+                self._research_messages.append({"role": "user", "content": prompt_msg})
+                
+                import customtkinter as ctk
+                from ui.design_tokens import INK, WHITE_CARD
+                indicator_row = ctk.CTkFrame(self._research_chat_history_main, fg_color="transparent")
+                indicator_row.pack(fill="x", pady=5)
+                indicator = ctk.CTkFrame(indicator_row, fg_color=INK, width=16, height=16, corner_radius=0)
+                indicator.pack(side="left", padx=14, pady=14)
+                
+                def pulse_indicator():
+                    if indicator.winfo_exists():
+                        current = indicator.cget("fg_color")
+                        indicator.configure(fg_color=WHITE_CARD if current == INK else INK, border_width=2 if current == INK else 0, border_color=INK)
+                        indicator.after(400, pulse_indicator)
+                pulse_indicator()
+                self._research_chat_history_main._parent_canvas.yview_moveto(1.0)
+                
+                import threading
+                def _stream_worker():
+                    try:
+                        from ai.client import AIAnalyst
+                        analyst = AIAnalyst(api_key=self._api_key_var.get() or None, base_url=self._ai_base_url_var.get(), model=self._ai_model_var.get())
+                        stream = analyst.chat_history_stream(messages, temperature=0.7)
+                        
+                        full_response = ""
+                        tb_ref = []
+                        from core.markdown_parser import insert_markdown
+                        
+                        for chunk in stream:
+                            full_response += chunk
+                            def update_chunk(resp=full_response):
+                                if indicator_row.winfo_exists():
+                                    indicator_row.destroy()
+                                if not tb_ref:
+                                    tb, upd, _ = self._add_blink_message("assistant", "")
+                                    tb_ref.append((tb, upd))
+                                tb, upd = tb_ref[0]
+                                tb.configure(state="normal")
+                                tb.delete("1.0", "end")
+                                insert_markdown(tb, resp)
+                                tb.configure(state="disabled")
+                                upd()
+                            self.after(0, update_chunk)
+                        
+                        self._research_messages.append({"role": "assistant", "content": full_response})
+                    except Exception as ex:
+                        if indicator_row.winfo_exists(): indicator_row.destroy()
+                        self.after(0, lambda e=ex: self._add_blink_message("assistant", f"Erro: {e}"))
+                threading.Thread(target=_stream_worker, daemon=True).start()
+                
+            self.after(0, _start_streaming)
+            
+        except Exception as exc:
+            print(f"[ERRO IA Assistente Busca] {exc}\n")
+
 
     def _show_seminal_insights(self, text: str):
         from ui.components import insert_markdown
@@ -3420,18 +3894,16 @@ class BlicsaApp(ctk.CTk):
         main_content.grid(row=0, column=0, sticky="nsew")
         main_content.grid_rowconfigure(1, weight=1)
         
-        tv = ctk.CTkTabview(main_content, fg_color=CONTENT_BG, text_color=INK, segmented_button_selected_color=RED, segmented_button_selected_hover_color=RED_HOVER, segmented_button_unselected_color=PAPER, segmented_button_unselected_hover_color="#e0e0e0")
-        tv.pack(fill="both", expand=True, padx=20, pady=20)
+        self._tv_analises = ctk.CTkTabview(main_content, fg_color=CONTENT_BG, text_color=INK, segmented_button_selected_color=RED, segmented_button_selected_hover_color=RED_HOVER, segmented_button_unselected_color=PAPER, segmented_button_unselected_hover_color="#e0e0e0")
+        self._tv_analises.pack(fill="both", expand=True, padx=20, pady=20)
         
-        tab_mapa = tv.add("Mapa")
-        tab_rankings = tv.add("Rankings")
+        tab_mapa = self._tv_analises.add("Mapa")
+        tab_rankings = self._tv_analises.add("Rankings")
         
-        viz_f = self._build_tab_viz()
-        viz_f.master = tab_mapa
+        viz_f = self._build_tab_viz(parent=tab_mapa)
         viz_f.pack(in_=tab_mapa, fill="both", expand=True)
         
-        rank_f = self._build_tab_ranking()
-        rank_f.master = tab_rankings
+        rank_f = self._build_tab_ranking(parent=tab_rankings)
         rank_f.pack(in_=tab_rankings, fill="both", expand=True)
         
         return f
@@ -3457,14 +3929,14 @@ class BlicsaApp(ctk.CTk):
         self._gallery_scroll.grid(row=1, column=0, padx=20, pady=(0, 20), sticky="nsew")
         
         # IA Drawer for Gallery
-        self._gallery_drawer = ctk.CTkFrame(f, fg_color=WHITE, width=300, corner_radius=0, border_width=1, border_color=INK)
+        self._gallery_drawer = ctk.CTkFrame(f, fg_color=WHITE_CARD, width=300, corner_radius=0, border_width=1, border_color=INK)
         self._gallery_drawer.grid_propagate(False)
         self._gallery_drawer.grid_rowconfigure(1, weight=1)
         self._gallery_drawer.grid_columnconfigure(0, weight=1)
         
         header = ctk.CTkFrame(self._gallery_drawer, fg_color="transparent")
         header.grid(row=0, column=0, sticky="ew", padx=10, pady=10)
-        ctk.CTkLabel(header, text="✨ Blink Research", font=ctk.CTkFont(size=16, weight="bold"), text_color=INK).pack(side="left")
+        ctk.CTkLabel(header, text="✨ Blink", font=ctk.CTkFont(size=16, weight="bold"), text_color=INK).pack(side="left")
         
         self._gallery_chat_history = ctk.CTkTextbox(self._gallery_drawer, wrap="word", font=ctk.CTkFont(size=13), fg_color=PAPER, text_color=INK, border_width=1, border_color=INK, corner_radius=0)
         self._gallery_chat_history.grid(row=1, column=0, sticky="nsew", padx=10, pady=10)
@@ -3477,7 +3949,7 @@ class BlicsaApp(ctk.CTk):
         input_f.grid(row=2, column=0, sticky="ew", padx=10, pady=10)
         input_f.grid_columnconfigure(0, weight=1)
         
-        self._gallery_chat_input = ctk.CTkEntry(input_f, placeholder_text="Sua pergunta...", placeholder_text_color=MUTED, font=ctk.CTkFont(size=13), fg_color=WHITE, text_color=INK, height=36, corner_radius=0, border_width=1, border_color=INK)
+        self._gallery_chat_input = ctk.CTkEntry(input_f, placeholder_text="Sua pergunta...", placeholder_text_color=MUTED, font=ctk.CTkFont(size=13), fg_color=WHITE_CARD, text_color=INK, height=36, corner_radius=0, border_width=1, border_color=INK)
         self._gallery_chat_input.grid(row=0, column=0, sticky="ew", padx=(0, 5))
         
         def send_chat(e=None):
@@ -3490,7 +3962,7 @@ class BlicsaApp(ctk.CTk):
             self._gallery_chat_history.configure(state="disabled")
             
             if not hasattr(self, '_gallery_messages') or not self._gallery_messages:
-                self._gallery_messages = [{"role": "system", "content": "Você é o 'Blink Research', um assistente focado em analisar mapas bibliométricos na galeria. Use markdown."}]
+                self._gallery_messages = [{"role": "system", "content": "Você é o 'Blink', um assistente focado em analisar mapas bibliométricos na galeria. Use markdown."}]
             
             self._gallery_messages.append({"role": "user", "content": msg})
             
@@ -3559,7 +4031,11 @@ class BlicsaApp(ctk.CTk):
             btn_f.pack(side="right", padx=15, pady=15)
             
             def open_map(p=fpath, n=name):
-                self._open_in_webview(f"Blicsa - {n}", str(p))
+                import urllib.parse
+                rel_path = p.relative_to(OUTPUT_DIR).as_posix()
+                url = f"http://127.0.0.1:{self._local_server_port}/{urllib.parse.quote(rel_path)}"
+                import webbrowser
+                webbrowser.open(url)
                 
             def delete_map(p=fpath):
                 import os
@@ -3686,6 +4162,7 @@ class BlicsaApp(ctk.CTk):
         
         btns_f = ctk.CTkFrame(hdr, fg_color="transparent")
         btns_f.grid(row=0, column=2, rowspan=2, sticky="e")
+        self._btn(btns_f, "Análise IA do Corpus", self._trigger_corpus_ai_insights, height=40, color=YELLOW, hover=YELLOW_HOV).pack(side="left", padx=(0, 10))
         self._btn(btns_f, "Baixar PDFs abertos", self._download_oa_pdfs, height=40, color="#1E4DA0").pack(side="left", padx=(0, 10))
         self._btn(btns_f, "Ir para Análises", lambda: self._switch_tab("analises"), height=40, color=RED).pack(side="left")
         
