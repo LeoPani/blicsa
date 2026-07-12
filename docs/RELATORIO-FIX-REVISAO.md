@@ -40,4 +40,29 @@ Suíte: **75 passed, 1 xfailed** (OBS-03).
 
 ---
 
-<!-- BUG-B e BUG-C adicionados nos commits seguintes -->
+## BUG-B — Blink destruía a tela de revisão
+
+### Diagnóstico
+`on_ai_assistant` (callback do botão "✨ Blink" do feed) fazia `self._switch_tab("home")` —
+navegava para a aba Home (chat do Blink), tirando a revisão da vista; o usuário percebia a
+"tela de importação sumindo". O `SearchFeedView` não era destruído, mas o contexto de
+revisão (posição, foco) era perdido.
+
+### Correção
+- Novo **drawer do Blink AO LADO do feed** no `SearchFeedView` (`open_blink_drawer` /
+  `close_blink_drawer`), coluna 3 do grid — o feed (coluna 1) e seu estado
+  (cards, seleções, filtros, scroll, trilha) **não são tocados**. O ✕ fecha o drawer e
+  devolve a revisão intacta. Sem troca de aba, sem reconstrução.
+- `on_ai_assistant` reescrito: abre o drawer e **transmite a resposta nele**, com **RAG dos
+  resultados EM REVISÃO** (estatísticas + amostra de abstracts dos records em revisão),
+  não do corpus antigo. Reusa `AIAnalyst.chat_history_stream` + `insert_markdown` (caminho já provado).
+
+### Evidência
+- Teste `tests/test_search_feed_ui.py::test_blink_drawer_preserves_feed_state`: feed com 50
+  records → abre drawer (cards/seleções/trilha/records idênticos) → fecha drawer (idem). ✅
+
+---
+
+## BUG-C — Card com área em branco gigante
+<!-- preenchido no commit do BUG-C -->
+

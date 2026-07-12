@@ -1930,70 +1930,62 @@ class BlicsaApp(ctk.CTk):
                 self._switch_tab("import")
 
             def on_ai_assistant(records_list, selected_idx):
-                if not records_list: return
+                # BUG-B: abre o Blink num DRAWER ao lado do feed — NÃO troca de aba nem
+                # destrói o SearchFeedView (cards/seleções/filtros/scroll ficam intactos).
+                if not records_list:
+                    return
+                fv = getattr(self, "search_feed_view", None)
+                if fv is None:
+                    return
+                out = fv.open_blink_drawer()  # textbox de saída
+
                 df_temp = pd.DataFrame(records_list)
                 langs = df_temp['language'].value_counts().head(3).to_dict() if 'language' in df_temp.columns else {}
                 years = df_temp['year'].value_counts().head(3).to_dict() if 'year' in df_temp.columns else {}
                 top_sources = df_temp['source'].value_counts().head(3).to_dict() if 'source' in df_temp.columns else {}
-                
-                context = f"**Resultados Baixados:** {len(records_list)}\n**Artigos Selecionados:** {len(selected_idx)}\n"
-                context += f"**Principais Idiomas:** {langs}\n**Principais Anos:** {years}\n**Principais Fontes:** {top_sources}\n"
-                
-                prompt_msg = f"Acabei de baixar {len(records_list)} artigos e filtrei {len(selected_idx)}. Analise essas estatísticas de fontes, idiomas e anos. Justifique os prós e contras desse conjunto, apontando se há algum viés claro nessa distribuição que eu deveria considerar ou ajustar antes de consolidar meu corpus final."
-                
-                self._switch_tab("home")
-                self._add_blink_message("user", prompt_msg)
-                
-                system_prompt = self._research_messages[0]["content"]
-                system_prompt += f"\n\nContexto Atual (Revisão Pós-Busca):\n{context}"
-                
-                messages = [{"role": "system", "content": system_prompt}, {"role": "user", "content": prompt_msg}]
-                self._research_messages.append({"role": "user", "content": prompt_msg})
-                
-                import customtkinter as ctk
-                from ui.design_tokens import INK, WHITE_CARD
-                indicator_row = ctk.CTkFrame(self._research_chat_history_main, fg_color="transparent")
-                indicator_row.pack(fill="x", pady=5)
-                indicator = ctk.CTkFrame(indicator_row, fg_color=INK, width=16, height=16, corner_radius=0)
-                indicator.pack(side="left", padx=14, pady=14)
-                
-                def pulse_indicator():
-                    if indicator.winfo_exists():
-                        current = indicator.cget("fg_color")
-                        indicator.configure(fg_color=WHITE_CARD if current == INK else INK, border_width=2 if current == INK else 0, border_color=INK)
-                        indicator.after(400, pulse_indicator)
-                pulse_indicator()
-                self._research_chat_history_main._parent_canvas.yview_moveto(1.0)
-                
+
+                # RAG: amostra de abstracts dos resultados EM REVISÃO (não o corpus antigo).
+                sample = []
+                for r in records_list[:8]:
+                    ab = str(r.get("abstract", ""))[:280]
+                    if ab:
+                        sample.append(f"- {r.get('title', '')}: {ab}")
+                rag = "\n".join(sample)
+
+                context = (f"Resultados em revisão: {len(records_list)} "
+                           f"(selecionados {len(selected_idx)}). "
+                           f"Idiomas {langs} · Anos {years} · Fontes {top_sources}.")
+                system_prompt = (self._blink_system_prompt() +
+                                 f"\n\nContexto (resultados EM REVISÃO):\n{context}" +
+                                 (f"\n\nAmostra de abstracts em revisão:\n{rag}" if rag else ""))
+                user_msg = ("Analise estes resultados em revisão: o que há de bom no conjunto, "
+                            "possíveis vieses e o que ajustar antes de consolidar o corpus?")
+                messages = [{"role": "system", "content": system_prompt},
+                            {"role": "user", "content": user_msg}]
+
+                def _set_out(text):
+                    if out.winfo_exists():
+                        out.configure(state="normal")
+                        out.delete("1.0", "end")
+                        try:
+                            from core.markdown_parser import insert_markdown
+                            insert_markdown(out, text)
+                        except Exception:
+                            out.insert("1.0", text)
+                        out.configure(state="disabled")
+                self.after(0, lambda: _set_out("Analisando os resultados em revisão…"))
+
                 import threading
                 def _stream_worker_ai():
                     try:
                         from ai.client import AIAnalyst
                         analyst = AIAnalyst(api_key=self._api_key_var.get() or None, base_url=self._ai_base_url_var.get(), model=self._ai_model_var.get())
-                        stream = analyst.chat_history_stream(messages, temperature=0.7)
                         full_response = ""
-                        tb_ref = []
-                        from core.markdown_parser import insert_markdown
-                        
-                        for chunk in stream:
+                        for chunk in analyst.chat_history_stream(messages, temperature=0.7):
                             full_response += chunk
-                            def update_chunk(resp=full_response):
-                                if indicator_row.winfo_exists(): indicator_row.destroy()
-                                if not tb_ref:
-                                    tb, upd, _ = self._add_blink_message("assistant", "")
-                                    tb_ref.append((tb, upd))
-                                tb, upd = tb_ref[0]
-                                tb.configure(state="normal")
-                                tb.delete("1.0", "end")
-                                insert_markdown(tb, resp)
-                                tb.configure(state="disabled")
-                                upd()
-                            self.after(0, update_chunk)
-                        
-                        self._research_messages.append({"role": "assistant", "content": full_response})
+                            self.after(0, lambda r=full_response: _set_out(r))
                     except Exception as ex:
-                        if indicator_row.winfo_exists(): indicator_row.destroy()
-                        self.after(0, lambda e=ex: self._add_blink_message("assistant", f"Erro: {e}"))
+                        self.after(0, lambda e=ex: _set_out(f"Erro: {e}"))
                 threading.Thread(target=_stream_worker_ai, daemon=True).start()
                 
             # Liga os callbacks reais aos lambdas do feed (criado em begin_feed).

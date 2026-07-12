@@ -170,7 +170,7 @@ class SearchFeedView(ctk.CTkFrame):
         
         # Header
         hdr = ctk.CTkFrame(self, fg_color=WHITE, corner_radius=0, border_width=2, border_color=INK, height=60)
-        hdr.grid(row=0, column=0, columnspan=2, sticky="ew", padx=16, pady=(16, 8))
+        hdr.grid(row=0, column=0, columnspan=3, sticky="ew", padx=16, pady=(16, 8))
         hdr.pack_propagate(False)
         self.title_lbl = ctk.CTkLabel(hdr, text="Resultados da Busca", font=ctk.CTkFont(size=18, weight="bold"), text_color=INK)
         self.title_lbl.pack(side="left", padx=16)
@@ -202,7 +202,7 @@ class SearchFeedView(ctk.CTkFrame):
         
         # Bottom Bar
         self.bottom_bar = ctk.CTkFrame(self, fg_color=INK, corner_radius=0, height=60)
-        self.bottom_bar.grid(row=2, column=0, columnspan=2, sticky="ew")
+        self.bottom_bar.grid(row=2, column=0, columnspan=3, sticky="ew")
         self.bottom_bar.pack_propagate(False)
         
         self.sel_lbl = ctk.CTkLabel(self.bottom_bar, text="0 selecionados de 0", text_color=WHITE, font=ctk.CTkFont(size=14, weight="bold"))
@@ -292,6 +292,40 @@ class SearchFeedView(ctk.CTkFrame):
         # load_results -> _clear_feed() destrói os cards de streaming (self.cards) e
         # re-renderiza a página 1 já com deduplicação/enriquecimento.
         self.load_results(records, count_trail)
+
+    # ---------------- Drawer do Blink (BUG-B: não destrói o feed) ----------------
+    def open_blink_drawer(self):
+        """Abre o Blink AO LADO do feed (coluna 3), preservando cards/seleções/filtros/scroll.
+        Retorna o textbox de saída para streaming. Idempotente (reusa o drawer)."""
+        if getattr(self, "_blink_drawer", None) is not None and self._blink_drawer.winfo_exists():
+            self._blink_drawer.grid()
+            self._blink_output.configure(state="normal")
+            self._blink_output.delete("1.0", "end")
+            self._blink_output.configure(state="disabled")
+            return self._blink_output
+        self._blink_drawer = ctk.CTkFrame(self, width=340, fg_color=WHITE, corner_radius=0, border_width=2, border_color=INK)
+        self._blink_drawer.grid(row=1, column=2, sticky="ns", padx=(0, 16), pady=8)
+        self._blink_drawer.grid_propagate(False)
+        self._blink_drawer.grid_rowconfigure(1, weight=1)
+        self._blink_drawer.grid_columnconfigure(0, weight=1)
+        hdr = ctk.CTkFrame(self._blink_drawer, fg_color="transparent")
+        hdr.grid(row=0, column=0, sticky="ew", padx=8, pady=8)
+        ctk.CTkLabel(hdr, text="✨ Blink", font=ctk.CTkFont(size=14, weight="bold"), text_color=INK).pack(side="left")
+        ctk.CTkButton(hdr, text="✕", width=28, fg_color=WHITE, text_color=INK, border_width=1, border_color=INK, corner_radius=0, hover_color="#EEEEEE", command=self.close_blink_drawer).pack(side="right")
+        self._blink_output = ctk.CTkTextbox(self._blink_drawer, wrap="word", font=ctk.CTkFont(size=12), fg_color=PAPER, text_color=INK, border_width=1, border_color=INK, corner_radius=0)
+        self._blink_output.grid(row=1, column=0, sticky="nsew", padx=8, pady=(0, 8))
+        self._blink_output.configure(state="disabled")
+        return self._blink_output
+
+    def close_blink_drawer(self):
+        if getattr(self, "_blink_drawer", None) is not None and self._blink_drawer.winfo_exists():
+            self._blink_drawer.grid_remove()
+
+    def blink_drawer_open(self) -> bool:
+        d = getattr(self, "_blink_drawer", None)
+        # winfo_manager() == 'grid' quando gridado; '' após grid_remove (independe de
+        # o toplevel estar mapeado — funciona headless).
+        return d is not None and d.winfo_exists() and d.winfo_manager() == "grid"
 
     def _build_sidebar(self):
         for widget in self.sidebar.winfo_children():
