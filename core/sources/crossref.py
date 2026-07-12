@@ -86,6 +86,15 @@ class CrossrefProvider(SearchProvider):
         if filter_parts:
             params["filter"] = ",".join(filter_parts)
 
+        # Ordenação server-side ("relevance" = padrão do Crossref, sem param).
+        _sort = (filters or {}).get("sort")
+        if _sort == "citations":
+            params["sort"] = "is-referenced-by-count"
+            params["order"] = "desc"
+        elif _sort == "date":
+            params["sort"] = "published"
+            params["order"] = "desc"
+
         # Crossref politeness
         params["mailto"] = self.mailto
 

@@ -7,6 +7,33 @@ from core.sources.base import SearchProvider
 logger = logging.getLogger("OpenAlexProvider")
 
 class OpenAlexProvider(SearchProvider):
+    def count(self, query: str, filters: Optional[Dict[str, Any]] = None, cancel_event=None) -> int:
+        """Total de resultados numa ÚNICA request barata (nada é baixado)."""
+        # Reusa a montagem de filtro de search() rodando um search 'a seco' de 1 página:
+        # mais simples e sem duplicar a lógica de filtros.
+        params: Dict[str, Any] = {"per_page": 1, "mailto": "blicsa.app@gmail.com"}
+        fp = []
+        f = filters or {}
+        if f.get("year_start") and f.get("year_end"):
+            fp.append(f"publication_year:{f['year_start']}-{f['year_end']}")
+        elif f.get("year_start"):
+            fp.append(f"publication_year:>{int(f['year_start']) - 1}")
+        elif f.get("year_end"):
+            fp.append(f"publication_year:<{int(f['year_end']) + 1}")
+        if f.get("type"):
+            fp.append(f"type:{f['type']}")
+        if f.get("is_oa") is not None:
+            fp.append(f"is_oa:{str(f['is_oa']).lower()}")
+        if f.get("language"):
+            fp.append(f"language:{f['language']}")
+        if query.strip():
+            fp.append(f"default.search:{query.strip()}")
+        if fp:
+            params["filter"] = ",".join(fp)
+        url = f"https://api.openalex.org/works?{urllib.parse.urlencode(params)}"
+        data = json.loads(self.fetch_url(url, cancel_event=cancel_event))
+        return int(data.get("meta", {}).get("count", 0))
+
     def search(
         self,
         query: str,
@@ -81,6 +108,12 @@ class OpenAlexProvider(SearchProvider):
             filter_parts.append(f"default.search:{q_str.strip()}")
         if filter_parts:
             params["filter"] = ",".join(filter_parts)
+
+        # Ordenação server-side ("relevance" = padrão do OpenAlex, sem param).
+        oa_sort = {"citations": "cited_by_count:desc",
+                   "date": "publication_date:desc"}.get((filters or {}).get("sort"))
+        if oa_sort:
+            params["sort"] = oa_sort
 
         count_fetched = 0
         total_results = None

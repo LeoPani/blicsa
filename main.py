@@ -857,6 +857,12 @@ class BlicsaApp(ctk.CTk):
         self._search_oa_chk = ctk.CTkCheckBox(filter_f, text="Apenas Open Access", variable=self._search_oa_var, font=ctk.CTkFont(size=12), width=20)
         self._search_oa_chk.pack(side="left", padx=(10,4))
 
+        ctk.CTkLabel(filter_f, text="Ordenar por:", font=ctk.CTkFont(size=12)).pack(side="left", padx=(10,4))
+        self._search_sort_var = ctk.StringVar(value="Relevância")
+        self._search_sort = ctk.CTkOptionMenu(filter_f, variable=self._search_sort_var, fg_color=WHITE_CARD, text_color=INK, button_color=WHITE_CARD, button_hover_color=CARD2_BG,
+                                              values=["Relevância", "Mais citados", "Mais recentes"], width=130)
+        self._search_sort.pack(side="left", padx=4)
+
         # File Import Hero Zone (Bottom)
         fcard = self._card(frame, 1)
         fcard.grid_columnconfigure(1, weight=1)
@@ -1686,8 +1692,67 @@ class BlicsaApp(ctk.CTk):
         oa = getattr(self, "_search_oa_var", ctk.BooleanVar(value=False)).get()
         if oa:
             filters["is_oa"] = True
-            
-        self.search_to_dataset(query, provider, max_results, filters)
+
+        # Ordenação server-side.
+        sort_key = {"Relevância": "relevance", "Mais citados": "citations",
+                    "Mais recentes": "date"}.get(
+            getattr(self, "_search_sort_var", ctk.StringVar(value="Relevância")).get(), "relevance")
+        filters["sort"] = sort_key
+
+        # Aviso de contagem antes de colher sets grandes (OpenAlex tem count barato).
+        if provider.lower() == "openalex":
+            self._set_busy("Contando resultados…")
+            import threading
+            def _count_worker():
+                try:
+                    from core.sources import OpenAlexProvider
+                    n = OpenAlexProvider().count(query, filters)
+                except Exception:
+                    n = None
+                self.after(0, lambda: self._search_after_count(n, query, provider, max_results, filters))
+            threading.Thread(target=_count_worker, daemon=True).start()
+        else:
+            self.search_to_dataset(query, provider, max_results, filters)
+
+    def _search_after_count(self, n, query, provider, max_results, filters):
+        self._set_idle("")
+        THRESHOLD = 2000
+        # Só avisa quando REALMENTE vai colher muito (conjunto grande E sem limite baixo).
+        if not n or n <= THRESHOLD or max_results <= THRESHOLD:
+            self.search_to_dataset(query, provider, max_results, filters)
+            return
+        self._show_count_dialog(n, query, provider, max_results, filters)
+
+    def _show_count_dialog(self, n, query, provider, max_results, filters):
+        import customtkinter as ctk
+        dlg = ctk.CTkToplevel(self)
+        dlg.title("Muitos resultados")
+        dlg.geometry("460x230")
+        dlg.transient(self)
+        dlg.grab_set()
+        ctk.CTkLabel(dlg, text=f"Encontrados {n:,}".replace(",", ".") + " resultados.",
+                     font=ctk.CTkFont(size=16, weight="bold")).pack(pady=(20, 4), padx=20)
+        ctk.CTkLabel(dlg, text="Baixar todos pode demorar (paginação de 100 em 100).\n"
+                              "Como você quer baixar?", justify="left").pack(pady=(0, 12), padx=20)
+        btns = ctk.CTkFrame(dlg, fg_color="transparent")
+        btns.pack(fill="x", padx=20, pady=8)
+
+        def top_cited():
+            dlg.destroy()
+            f = dict(filters); f["sort"] = "citations"
+            self.search_to_dataset(query, provider, 2000, f)
+
+        def all_of():
+            dlg.destroy()
+            self.search_to_dataset(query, provider, max_results, filters)
+
+        ctk.CTkButton(btns, text="Top 2000 mais citados", fg_color=RED, text_color="white",
+                      corner_radius=0, command=top_cited).pack(fill="x", pady=3)
+        ctk.CTkButton(btns, text=f"Baixar todos ({n:,})".replace(",", "."), fg_color=WHITE_CARD,
+                      text_color=INK, border_width=2, border_color=INK, corner_radius=0,
+                      command=all_of).pack(fill="x", pady=3)
+        ctk.CTkButton(btns, text="Cancelar", fg_color="transparent", text_color=INK,
+                      hover_color="#e0e0e0", corner_radius=0, command=dlg.destroy).pack(fill="x", pady=3)
 
     def _open_query_builder(self):
         from ui.query_builder import show_query_builder

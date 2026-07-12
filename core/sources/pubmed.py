@@ -77,6 +77,9 @@ class PubMedProvider(SearchProvider):
             "retmax": max_results,
             "retstart": 0
         }
+        # Ordenação server-side (PubMed não tem citações; 'date' → pub_date, resto = relevância).
+        if (filters or {}).get("sort") == "date":
+            esearch_params["sort"] = "pub_date"
         
         query_str = urllib.parse.urlencode(esearch_params)
         url = f"{esearch_url}?{query_str}"
