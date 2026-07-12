@@ -42,7 +42,7 @@ class FetchRecorder:
         self.calls = []
         self._i = 0
 
-    def __call__(self, _self, url, headers=None, cancel_event=None, rate_limit_delay=0.0):
+    def __call__(self, _self, url, headers=None, cancel_event=None, rate_limit_delay=0.0, **kwargs):
         # Respeita cancelamento como o fetch_url real faz.
         if cancel_event is not None and cancel_event.is_set():
             raise InterruptedError("Search cancelled by user")

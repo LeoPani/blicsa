@@ -106,7 +106,8 @@ class CrossrefProvider(SearchProvider):
 
             self.pages_fetched += 1
             try:
-                raw_data = self.fetch_url(url, cancel_event=cancel_event)
+                # no_cache: o cursor de scroll do Crossref repete a URL entre páginas.
+                raw_data = self.fetch_url(url, cancel_event=cancel_event, no_cache=True)
                 data = json.loads(raw_data)
             except Exception as e:
                 self.stop_reason = f"erro de rede na página {self.pages_fetched}: {e}"
@@ -187,7 +188,10 @@ class CrossrefProvider(SearchProvider):
                 progress_cb(count_fetched, min(max_results, total_results))
 
             next_cursor = message.get("next-cursor")
-            if not next_cursor or next_cursor == params.get("cursor"):
+            # O cursor de deep paging do Crossref é um token de scroll que se REPETE entre
+            # páginas (mesma string, mas avança no servidor). NÃO parar quando ele repete —
+            # só quando não há próximo cursor (o fim real é detectado por items vazio acima).
+            if not next_cursor:
                 self.stop_reason = "cursor encerrado (fim dos resultados)"
                 break
             params["cursor"] = next_cursor

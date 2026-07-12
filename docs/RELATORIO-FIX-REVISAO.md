@@ -23,9 +23,26 @@ saturando a API (HTTP 429).
 - `fetch_url` já faz 3 tentativas com backoff 1s/2s/4s (confirmado nos logs). Mantido.
 - Providers expõem `stop_reason`/`stop_error`/`pages_fetched`. O worker lê e a trilha mostra
   `"⚠ interrompido (Provider, página N) por erro de rede — resultados parciais"` — **nunca silencioso**.
-- Limite honesto: padrão **1000**, teto **10000**; "Ilimitado" virou "Máx (10000)" e é
-  desligado por padrão; valores acima de 10000 são rejeitados na UI (`t("search.limit_exceeded")`).
-- Trilha honesta: quando `encontrados > baixados`, mostra `"baixados M de {limite} (limite)"`.
+- Limite: **sem teto** (a pedido do Leonardo — o teto de 10000 foi revertido). "Ilimitado"
+  (ligado por padrão) baixa tudo o que a API entregar; o campo "Qtd" (padrão 1000) vale
+  quando "Ilimitado" está desligado.
+- Trilha honesta: quando há um limite FINITO definido e `encontrados > baixados`, mostra
+  `"baixados M de {limite} (limite)"`; no modo ilimitado, mostra a contagem simples (o aviso
+  de erro de rede, quando houver, explica qualquer parada parcial).
+- **Nota:** a parte central do BUG-A (erro de rede visível na trilha, nunca silencioso) foi
+  **mantida** — só o teto numérico saiu.
+
+### BUG-A.2 — Crossref parava em 200 (cursor de scroll + cache) — descoberto depois
+Relato: "200 baixados de 80598 encontrados". Diagnóstico com paginação manual:
+- O cursor de deep paging do Crossref é um **token de scroll que se REPETE** entre páginas
+  (mesma string, mas o servidor avança). Dois defeitos somados:
+  1. O guard `next_cursor == cursor` interpretava a repetição como "fim" → parava na página 2 (200).
+  2. Sem o guard, a URL idêntica batia no **cache do `fetch_url`** → devolvia a mesma página
+     (500 baixados, só 200 únicos).
+- **Correção:** no Crossref, parar só quando `items` vem vazio (não quando o cursor repete);
+  e `fetch_url(no_cache=True)` para a paginação por scroll. Resultado live: "innovation",
+  limite 500 → **500 registros, 500 únicos, 5 páginas**. Teste offline
+  `test_crossref_repeating_cursor_does_not_stop_early` (cursor repetido + itens distintos → 300 únicos).
 
 ### Evidências
 - **Reprodutibilidade (mesma busca 2x):**

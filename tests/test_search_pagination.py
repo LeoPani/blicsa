@@ -60,3 +60,34 @@ def test_persistent_error_is_not_silent():
     assert len(recs) == 200, f"esperava 200 parciais, obteve {len(recs)}"
     assert prov.stop_error is True, "erro persistente deveria ser sinalizado (não silencioso)"
     assert "erro de rede na página 3" in prov.stop_reason
+
+
+def test_crossref_repeating_cursor_does_not_stop_early():
+    """BUG (200 de 80598): o cursor de deep paging do Crossref REPETE a mesma string
+    entre páginas (scroll server-side). O provider não pode parar quando o cursor repete —
+    só quando os items vêm vazios. Aqui 3 páginas com o MESMO next-cursor + itens distintos."""
+    import json as _json
+    from core.sources import CrossrefProvider
+    from tests.conftest import serve
+
+    def cr_page(start, count, next_cursor):
+        return _json.dumps({"message": {
+            "total-results": 1000,
+            "next-cursor": next_cursor,
+            "items": [{"DOI": f"10.1/{i}", "title": [f"T{i}"],
+                       "author": [{"family": "X", "given": "Y"}],
+                       "issued": {"date-parts": [[2020]]}} for i in range(start, start + count)],
+        }}).encode("utf-8")
+
+    SAME = "DnF1ZXJ5VGhlbkZldGNoScroll"
+    bodies = [cr_page(0, 100, SAME), cr_page(100, 100, SAME),
+              cr_page(200, 100, SAME), cr_page(300, 0, SAME)]  # última: items vazio
+
+    with serve([b.decode("utf-8") for b in bodies]):
+        prov = CrossrefProvider()
+        recs = list(prov.search("x", max_results=1000))
+
+    dois = [r["doi"] for r in recs]
+    assert len(recs) == 300, f"esperava 300 (3 páginas), obteve {len(recs)}"
+    assert len(set(dois)) == 300, "não pode haver DOIs duplicados entre páginas"
+    assert prov.stop_reason == "exauriu (sem resultados)"
