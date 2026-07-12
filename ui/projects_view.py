@@ -85,10 +85,11 @@ class ProjectCard(ctk.CTkFrame):
         actions_frame = ctk.CTkFrame(self, fg_color="transparent")
         actions_frame.grid(row=3, column=1, sticky="w", padx=12, pady=(0, 12))
         
-        ctk.CTkButton(actions_frame, text=t("projects.action_open"), width=60, fg_color=BLUE, corner_radius=0, command=lambda: self.on_open(self.proj_path)).pack(side="left", padx=(0, 8))
-        ctk.CTkButton(actions_frame, text=t("projects.action_rename"), width=60, fg_color=WHITE, text_color=INK, border_width=1, border_color=INK, hover_color="#EEEEEE", corner_radius=0, command=lambda: self.on_rename(self.proj_path)).pack(side="left", padx=8)
-        ctk.CTkButton(actions_frame, text=t("projects.action_duplicate"), width=60, fg_color=WHITE, text_color=INK, border_width=1, border_color=INK, hover_color="#EEEEEE", corner_radius=0, command=lambda: self.on_duplicate(self.proj_path)).pack(side="left", padx=8)
-        ctk.CTkButton(actions_frame, text=t("projects.action_delete"), width=60, fg_color=RED, text_color=WHITE, hover_color="#b82611", corner_radius=0, command=lambda: self.on_delete(self.proj_path)).pack(side="left", padx=8)
+        # width=100 cabe o maior rótulo medido nos 3 idiomas ("Renommer"=84px) + folga.
+        ctk.CTkButton(actions_frame, text=t("projects.action_open"), width=100, fg_color=BLUE, corner_radius=0, command=lambda: self.on_open(self.proj_path)).pack(side="left", padx=(0, 8))
+        ctk.CTkButton(actions_frame, text=t("projects.action_rename"), width=100, fg_color=WHITE, text_color=INK, border_width=1, border_color=INK, hover_color="#EEEEEE", corner_radius=0, command=lambda: self.on_rename(self.proj_path)).pack(side="left", padx=8)
+        ctk.CTkButton(actions_frame, text=t("projects.action_duplicate"), width=100, fg_color=WHITE, text_color=INK, border_width=1, border_color=INK, hover_color="#EEEEEE", corner_radius=0, command=lambda: self.on_duplicate(self.proj_path)).pack(side="left", padx=8)
+        ctk.CTkButton(actions_frame, text=t("projects.action_delete"), width=100, fg_color=RED, text_color=WHITE, hover_color="#b82611", corner_radius=0, command=lambda: self.on_delete(self.proj_path)).pack(side="left", padx=8)
 
 class ProjectsView(ctk.CTkFrame):
     def __init__(self, master, on_open_project):

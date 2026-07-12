@@ -304,15 +304,24 @@ class SearchFeedView(ctk.CTkFrame):
         self.filter_vars = {}
         
         # Year
+        # Rebuild limpo: descarta um slider de uma busca anterior (evita referência
+        # a widget destruído em _apply_filters).
+        if hasattr(self, "year_slider"):
+            del self.year_slider
         years = [r.get("year") for r in self.records if r.get("year")]
         if years:
             min_y, max_y = min(years), max(years)
             ctk.CTkLabel(self.sidebar, text="Ano de Publicação", font=ctk.CTkFont(weight="bold")).pack(anchor="w", pady=(8, 0))
-            self.year_slider = ctk.CTkSlider(self.sidebar, from_=min_y, to=max_y, number_of_steps=max_y - min_y, command=self._apply_filters)
-            self.year_slider.set(min_y)
-            self.year_slider.pack(fill="x", pady=4)
-            self.year_lbl = ctk.CTkLabel(self.sidebar, text=f"A partir de {min_y}")
-            self.year_lbl.pack(anchor="w")
+            if max_y > min_y:
+                # number_of_steps > 0 garantido (evita ZeroDivisionError com ano único).
+                self.year_slider = ctk.CTkSlider(self.sidebar, from_=min_y, to=max_y, number_of_steps=max(1, max_y - min_y), command=self._apply_filters)
+                self.year_slider.set(min_y)
+                self.year_slider.pack(fill="x", pady=4)
+                self.year_lbl = ctk.CTkLabel(self.sidebar, text=f"A partir de {min_y}")
+                self.year_lbl.pack(anchor="w")
+            else:
+                # Ano único: slider não faz sentido; rótulo estático.
+                ctk.CTkLabel(self.sidebar, text=f"Ano único: {min_y}").pack(anchor="w")
             
         # Open Access
         ctk.CTkLabel(self.sidebar, text="Acesso", font=ctk.CTkFont(weight="bold")).pack(anchor="w", pady=(16, 0))

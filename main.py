@@ -173,6 +173,7 @@ class BlicsaApp(ctk.CTk):
 
         self._tabs: dict[str, ctk.CTkFrame] = {
             "home":    self._build_tab_home(),
+            "projects": self._build_tab_projects(),
             "import":  self._build_tab_import(),
             "review":  self._build_tab_review(),
             "corpus":  self._build_tab_corpus(),
@@ -188,7 +189,7 @@ class BlicsaApp(ctk.CTk):
         sb.grid(row=0, column=0, sticky="nsew")
         sb.grid_propagate(False)
         sb.grid_columnconfigure(0, weight=1)
-        sb.grid_rowconfigure(9, weight=1)
+        sb.grid_rowconfigure(10, weight=1)
 
         try:
             from PIL import Image
@@ -205,13 +206,14 @@ class BlicsaApp(ctk.CTk):
         
         from PIL import Image
         for i, (key, icon_name, label_text) in enumerate([
-            ("home",    "sparkle", "Blink"),
-            ("import",  "magnet", "Coletar"),
-            ("corpus",  "stack", "Corpus"),
-            ("stats",   "chart", "Estatísticas"),
-            ("analises", "chart", "Análises"),
-            ("galeria", "stack", "Galeria"),
-            ("export",  "export", "Exportar"),
+            ("home",     "sparkle", "Blink"),
+            ("projects", "house",   t("projects.title")),
+            ("import",   "magnet",  "Coletar"),
+            ("corpus",   "stack",   "Corpus"),
+            ("stats",    "chart",   "Estatísticas"),
+            ("analises", "chart",   "Análises"),
+            ("galeria",  "stack",   "Galeria"),
+            ("export",   "export",  "Exportar"),
         ], start=1):
             try:
                 img_normal = ctk.CTkImage(light_image=Image.open(f"assets/icons/{icon_name}.png"), size=(20, 20))
@@ -244,28 +246,28 @@ class BlicsaApp(ctk.CTk):
 
         # Corpus Badge at bottom of sidebar
         self._corpus_badge = ctk.CTkLabel(sb, text="Nenhum corpus", text_color=MUTED, font=ctk.CTkFont(size=11))
-        self._corpus_badge.grid(row=8, column=0, padx=16, pady=(10, 5), sticky="sw")
+        self._corpus_badge.grid(row=9, column=0, padx=16, pady=(10, 5), sticky="sw")
         
         try:
             gear_img = ctk.CTkImage(light_image=Image.open("assets/icons/gear.png"), size=(16, 16))
         except: gear_img = None
         self._settings_btn = ctk.CTkButton(sb, text=" Configurações" if gear_img else "⚙️ Configurações", image=gear_img, anchor="w", font=ctk.CTkFont(size=11), fg_color="transparent", hover_color="#e0e0e0", text_color=INK, corner_radius=0, height=32, border_width=1, border_color=INK, command=self._show_settings)
-        self._settings_btn.grid(row=10, column=0, padx=16, pady=(0, 10), sticky="ew")
+        self._settings_btn.grid(row=11, column=0, padx=16, pady=(0, 10), sticky="ew")
 
         self._status_square = ctk.CTkFrame(sb, width=10, height=10, fg_color=BLUE, corner_radius=0)
-        self._status_square.grid(row=11, column=0, padx=(16, 0), pady=(0, 2), sticky="sw")
+        self._status_square.grid(row=12, column=0, padx=(16, 0), pady=(0, 2), sticky="sw")
         self._status_lbl = ctk.CTkLabel(
             sb, text="", font=ctk.CTkFont(size=10),
             text_color=TEXT_MUTED, anchor="w",
         )
-        self._status_lbl.grid(row=11, column=0, padx=(32, 16), pady=(0, 2), sticky="sew")
+        self._status_lbl.grid(row=12, column=0, padx=(32, 16), pady=(0, 2), sticky="sew")
 
         self._progress_bar = ctk.CTkProgressBar(sb, mode="indeterminate", height=5, progress_color=YELLOW, fg_color=PAPER, border_width=1, border_color=INK, corner_radius=0)
-        self._progress_bar.grid(row=12, column=0, padx=16, pady=(0, 8), sticky="sew")
+        self._progress_bar.grid(row=13, column=0, padx=16, pady=(0, 8), sticky="sew")
         self._progress_bar.grid_remove()
 
         self._about_btn = ctk.CTkButton(sb, text="v3.0 • Blicsa Engine", font=ctk.CTkFont(size=10), text_color=TEXT_MUTED, fg_color="transparent", hover_color="#e0e0e0", corner_radius=0, command=self._show_about)
-        self._about_btn.grid(row=13, column=0, padx=22, pady=(0, 16), sticky="sw")
+        self._about_btn.grid(row=14, column=0, padx=22, pady=(0, 16), sticky="sw")
 
     # ── Drag-and-drop ──────────────────────────────────────────────────
     def _setup_dnd(self):
@@ -642,7 +644,7 @@ class BlicsaApp(ctk.CTk):
             if hasattr(self, '_previous_tab_key') and self._previous_tab_key:
                 self._switch_tab(self._previous_tab_key)
                 
-        self._blink_back_btn = ctk.CTkButton(title_f, text=t("blink.voltar"), width=80, height=30, fg_color="#E0E0E0", text_color=INK, hover_color="#C0C0C0", command=_go_back)
+        self._blink_back_btn = ctk.CTkButton(title_f, text=t("blink.voltar"), width=100, height=30, fg_color="#E0E0E0", text_color=INK, hover_color="#C0C0C0", command=_go_back)
         
         self._research_chat_history_main = ctk.CTkScrollableFrame(chat_container, fg_color="transparent")
         self._research_chat_history_main.pack(fill="both", expand=True, pady=(0, 20))
@@ -760,16 +762,22 @@ class BlicsaApp(ctk.CTk):
             t("blink.sugestao_2"),
             t("blink.sugestao_3"),
         ]
-        
+
+        # Grid de 2 colunas: as sugestões quebram em 2 linhas quando não cabem (fr),
+        # sem truncar o texto. Largura ajustada ao maior rótulo do idioma atual.
+        import tkinter.font as _tkfont
+        _sf = _tkfont.Font(family=ctk.CTkFont(size=12).cget("family"), size=12)
+        _sug_w = max(_sf.measure(s) for s in sugs) + 24
+        sug_f.grid_columnconfigure((0, 1), weight=0)
         for i, s_txt in enumerate(sugs):
-            btn = ctk.CTkButton(sug_f, text=s_txt, font=ctk.CTkFont(size=12), fg_color=PAPER, text_color=INK, hover_color="#e0e0e0", corner_radius=0, border_width=1, border_color=INK, command=lambda txt=s_txt: self._research_chat_input_main.insert(0, txt) or send_main_chat())
-            btn.pack(side="left", padx=(0, 10))
+            btn = ctk.CTkButton(sug_f, text=s_txt, width=_sug_w, font=ctk.CTkFont(size=12), fg_color=PAPER, text_color=INK, hover_color="#e0e0e0", corner_radius=0, border_width=1, border_color=INK, command=lambda txt=s_txt: self._research_chat_input_main.insert(0, txt) or send_main_chat())
+            btn.grid(row=i // 2, column=i % 2, padx=(0, 10), pady=(0, 8), sticky="w")
             
         return frame
 
     def _build_tab_projects(self) -> ctk.CTkFrame:
         from ui.projects_view import ProjectsView
-        frame = ctk.CTkFrame(self._main_content, fg_color="transparent")
+        frame = ctk.CTkFrame(self._content, fg_color="transparent")
         
         def on_open_project(path):
             self.after(0, lambda: self._load_project_file(path))
