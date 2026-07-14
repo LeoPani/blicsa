@@ -135,6 +135,7 @@ def test_export_integrity():
 # 9. Teste Topic Modeling (LDA)
 def test_topic_modeling_lda():
     """Teste 9: LDA Topic Modeling com Scikit-Learn"""
+    pytest.importorskip("sklearn", reason="extra de IA (requirements-ai.txt) não instalado")
     abstracts = [
         "Machine learning applied to healthcare and medicine.",
         "Deep learning models for medical image analysis.",
