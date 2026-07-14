@@ -98,5 +98,9 @@
   "projects.delete_title": "Confirmer la suppression",
   "projects.delete_confirm": "Voulez-vous vraiment supprimer le projet « {name} » ?",
   "deps.missing_ai": "Cette fonctionnalité nécessite les extras IA. Installez-les avec : pip install -r requirements-ai.txt (paquet manquant : {pkg})",
-  "deps.missing_pdf": "L'import PDF nécessite les extras PDF. Installez-les avec : pip install -r requirements-pdf.txt (paquet manquant : {pkg})"
+  "deps.missing_pdf": "L'import PDF nécessite les extras PDF. Installez-les avec : pip install -r requirements-pdf.txt (paquet manquant : {pkg})",
+  "search.source": "Source :",
+  "search.interpreted": "Interprété comme : {query}",
+  "search.trail": "Trouvés {found} · téléchargés {downloaded} · {reason}",
+  "search.trail_limited": "Trouvés {found} · téléchargés {downloaded} sur {limit} (limite) · {reason}"
 }

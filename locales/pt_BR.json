@@ -97,5 +97,9 @@
   "projects.delete_title": "Confirmar Exclusão",
   "projects.delete_confirm": "Tem certeza que deseja excluir o projeto '{name}'?",
   "deps.missing_ai": "Este recurso requer os extras de IA. Instale com: pip install -r requirements-ai.txt (pacote em falta: {pkg})",
-  "deps.missing_pdf": "A importação de PDF requer os extras de PDF. Instale com: pip install -r requirements-pdf.txt (pacote em falta: {pkg})"
+  "deps.missing_pdf": "A importação de PDF requer os extras de PDF. Instale com: pip install -r requirements-pdf.txt (pacote em falta: {pkg})",
+  "search.source": "Fonte:",
+  "search.interpreted": "Interpretado como: {query}",
+  "search.trail": "Encontrados {found} · baixados {downloaded} · {reason}",
+  "search.trail_limited": "Encontrados {found} · baixados {downloaded} de {limit} (limite) · {reason}"
 }

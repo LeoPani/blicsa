@@ -284,7 +284,10 @@ class SearchFeedView(ctk.CTkFrame):
             self._stream_rendered += 1
         tot = total or loaded
         self.trail_lbl.configure(text=f"Encontrados {tot} · carregando {loaded}…")
-        self.progress.set(min(1.0, loaded / self._stream_limit))
+        # Denominador: o que for menor entre limite e total real (no Ilimitado o
+        # limite é uma sentinela gigante — usa o total da base).
+        denom = min(self._stream_limit, tot) if tot else self._stream_limit
+        self.progress.set(min(1.0, loaded / max(1, denom)))
         self._update_bottom_bar()
 
     def finish_stream(self, records: List[dict], count_trail: str):
@@ -414,12 +417,9 @@ class SearchFeedView(ctk.CTkFrame):
         lang_options = ["Todos"] + [lang for lang, _ in Counter(languages).most_common()]
         ctk.CTkOptionMenu(self.sidebar, variable=self.lang_var, values=lang_options, command=self._apply_filters, corner_radius=0).pack(fill="x", pady=4)
         
-        # Opções de Importação — dedup desligada por padrão: adicione cada base ao corpus
-        # e deduplique depois (botão "Deduplicar" na Coletar).
-        ctk.CTkLabel(self.sidebar, text="Importação", font=ctk.CTkFont(weight="bold")).pack(anchor="w", pady=(16, 0))
-        self.dedup_var = ctk.BooleanVar(value=False)
-        ctk.CTkCheckBox(self.sidebar, text="Deduplicar ao importar", variable=self.dedup_var, corner_radius=0).pack(anchor="w", pady=4)
-        
+        # DECISÃO DE PRODUTO: importar NUNCA deduplica — a dedup é ação explícita
+        # no Corpus (botão Deduplicar). Por isso não há mais opção aqui.
+
     def _apply_filters(self, *args):
         if hasattr(self, "year_slider"):
             y = int(self.year_slider.get())
@@ -516,8 +516,7 @@ class SearchFeedView(ctk.CTkFrame):
         
         def on_confirm():
             dlg.destroy()
-            do_dedup = getattr(self, "dedup_var", ctk.BooleanVar(value=False)).get()
-            self.on_import_confirm(selected_records, do_dedup)
+            self.on_import_confirm(selected_records, False)
             
         btns = ctk.CTkFrame(dlg, fg_color="transparent")
         btns.pack(fill="x", pady=16, padx=24)

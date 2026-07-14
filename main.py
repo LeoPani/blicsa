@@ -865,30 +865,42 @@ class BlicsaApp(ctk.CTk):
         ctk.CTkLabel(scard, text="Busca Online", font=ctk.CTkFont(size=16, weight="bold")).grid(
             row=0, column=0, padx=16, pady=(16, 8), sticky="w")
             
+        # DECISÃO DE PRODUTO: UMA base por busca — seletor único, sem multi-select.
         self._search_provider_var = ctk.StringVar(value="openalex")
+        self._PROVIDER_LABELS = {"OpenAlex": "openalex", "Crossref": "crossref", "PubMed": "pubmed"}
         sp_f = ctk.CTkFrame(scard, fg_color="transparent")
         sp_f.grid(row=1, column=0, columnspan=2, padx=16, pady=4, sticky="w")
-        for lbl, val in [("Todas as Bases", "all"), ("OpenAlex", "openalex"), ("Crossref", "crossref"), ("PubMed", "pubmed"), ("Zotero", "zotero")]:
-            ctk.CTkRadioButton(sp_f, text=lbl, variable=self._search_provider_var,
-                               value=val, fg_color=ACCENT, hover_color=ACCENT_HOV).pack(side="left", padx=8)
-                               
+        ctk.CTkLabel(sp_f, text=t("search.source"), font=ctk.CTkFont(size=12)).pack(side="left", padx=(0, 8))
+        self._provider_seg = ctk.CTkSegmentedButton(
+            sp_f, values=list(self._PROVIDER_LABELS), corner_radius=0,
+            fg_color=WHITE_CARD, unselected_color=WHITE_CARD, unselected_hover_color=CARD2_BG,
+            selected_color=RED, selected_hover_color=RED_HOV, text_color=INK,
+            command=lambda lbl: self._search_provider_var.set(self._PROVIDER_LABELS[lbl]))
+        self._provider_seg.set("OpenAlex")
+        self._provider_seg.pack(side="left")
+
         self._search_query_entry = ctk.CTkEntry(scard, placeholder_text="Termo / Query (ex: 'deep learning')", placeholder_text_color=MUTED, height=36, fg_color=WHITE_CARD, text_color=INK)
         self._search_query_entry.grid(row=2, column=0, columnspan=2, padx=16, pady=4, sticky="ew")
-        
+
+        # Translator NÃO-destrutivo: o campo do usuário fica intacto; a query
+        # interpretada aparece neste label discreto.
+        self._interpreted_lbl = ctk.CTkLabel(scard, text="", font=ctk.CTkFont(size=11),
+                                             text_color=MUTED, anchor="w")
+        self._interpreted_lbl.grid(row=3, column=0, columnspan=2, padx=18, pady=(0, 2), sticky="w")
+
         act_sf = ctk.CTkFrame(scard, fg_color="transparent")
-        act_sf.grid(row=3, column=0, columnspan=2, padx=16, pady=(4, 16), sticky="e")
-        
+        act_sf.grid(row=4, column=0, columnspan=2, padx=16, pady=(4, 16), sticky="e")
+
         ctk.CTkLabel(act_sf, text="Qtd:").pack(side="left", padx=4)
         self._search_max_entry = ctk.CTkEntry(act_sf, width=60, placeholder_text="1000", placeholder_text_color=MUTED, fg_color=WHITE_CARD, text_color=INK)
         self._search_max_entry.insert(0, "1000")
         self._search_max_entry.pack(side="left", padx=4)
 
-        # Ilimitado: sem teto (baixa tudo o que a API entregar). Ligado por padrão.
-        self._search_unlimited_var = ctk.BooleanVar(value=True)
+        # Limite default 1000 (configurável até 10000); Ilimitado disponível.
+        self._search_unlimited_var = ctk.BooleanVar(value=False)
         self._search_unlimited_chk = ctk.CTkCheckBox(act_sf, text="Ilimitado", variable=self._search_unlimited_var, width=50,
                                                      command=lambda: self._search_max_entry.configure(state="disabled" if self._search_unlimited_var.get() else "normal"))
         self._search_unlimited_chk.pack(side="left", padx=4)
-        self._search_max_entry.configure(state="disabled")
         
         self._btn(act_sf, "⚙ Avançada", self._open_query_builder, height=30).pack(side="left", padx=4)
         self._btn(act_sf, "🔍 Buscar", self._on_gui_search, height=30, color=RED, hover=RED_HOV).pack(side="left", padx=4)
@@ -898,7 +910,7 @@ class BlicsaApp(ctk.CTk):
         self._search_cancel_btn.pack_forget() # Hide initially
         
         filter_f = ctk.CTkFrame(scard, fg_color="transparent")
-        filter_f.grid(row=4, column=0, columnspan=2, padx=16, pady=4, sticky="ew")
+        filter_f.grid(row=5, column=0, columnspan=2, padx=16, pady=4, sticky="ew")
         
         ctk.CTkLabel(filter_f, text="Ano Início:", font=ctk.CTkFont(size=12)).pack(side="left", padx=4)
         self._search_year_start = ctk.CTkEntry(filter_f, width=60, placeholder_text="Ex: 2018", placeholder_text_color=MUTED, fg_color=WHITE_CARD, text_color=INK)
@@ -1728,21 +1740,21 @@ class BlicsaApp(ctk.CTk):
             self._search_cancel_btn.pack_forget()
 
     def _on_gui_search(self):
-        query = self._search_query_entry.get().strip()
+        typed_query = self._search_query_entry.get().strip()
         provider = self._search_provider_var.get()
-        
-        # --- BLICSA TRANSLATOR ---
-        translated_query = query
-        if provider == "openalex":
-            translated_query = f'"{query}"'
-        elif provider == "pubmed":
-            translated_query = f'{query}[Title/Abstract]'
-        
-        if translated_query != query:
-            self._search_query_entry.delete(0, 'end')
-            self._search_query_entry.insert(0, translated_query)
-            query = translated_query
-            
+
+        # --- BLICSA TRANSLATOR (não-destrutivo: o campo do usuário fica intacto) ---
+        query = typed_query
+        if typed_query and not typed_query.startswith('"') and "(" not in typed_query:
+            if provider == "openalex":
+                query = f'"{typed_query}"'
+            elif provider == "pubmed":
+                query = f'{typed_query}[Title/Abstract]'
+        if query != typed_query:
+            self._interpreted_lbl.configure(text=t("search.interpreted", query=query))
+        else:
+            self._interpreted_lbl.configure(text="")
+
         # --- DIÁRIO DE PESQUISA ---
         import os, json, datetime
         from pathlib import Path
@@ -1775,10 +1787,9 @@ class BlicsaApp(ctk.CTk):
         if not query:
             messagebox.showwarning("Campo vazio", "Por favor, digite um termo de busca.")
             return
-        provider = self._search_provider_var.get()
-        
-        # Ilimitado = sem teto (sentinela grande). Sem esse teto de 10000.
-        UNLIMITED, DEFAULT_LIMIT = 10_000_000, 1000
+
+        # Limite: default 1000, configurável até 10000; Ilimitado = sentinela grande.
+        UNLIMITED, DEFAULT_LIMIT, MAX_LIMIT = 10_000_000, 1000, 10_000
         if self._search_unlimited_var.get():
             max_results = UNLIMITED
         else:
@@ -1788,6 +1799,10 @@ class BlicsaApp(ctk.CTk):
                 max_results = DEFAULT_LIMIT
             if max_results < 1:
                 max_results = DEFAULT_LIMIT
+            if max_results > MAX_LIMIT:
+                max_results = MAX_LIMIT
+                self._search_max_entry.delete(0, "end")
+                self._search_max_entry.insert(0, str(MAX_LIMIT))
             
         filters = {}
         if self._search_year_start.get().strip(): filters["year_start"] = self._search_year_start.get().strip()
@@ -1820,11 +1835,10 @@ class BlicsaApp(ctk.CTk):
         threading.Thread(target=_count_worker, daemon=True).start()
 
     def _count_for_provider(self, provider, query, filters):
-        """Contagem barata da(s) base(s). 'all' = soma das três. None se falhar."""
+        """Contagem barata da base selecionada (fonte única). None se falhar."""
         from core.sources import OpenAlexProvider, CrossrefProvider, PubMedProvider
         provs = {"openalex": [OpenAlexProvider], "crossref": [CrossrefProvider],
-                 "pubmed": [PubMedProvider],
-                 "all": [OpenAlexProvider, CrossrefProvider, PubMedProvider]}.get(provider.lower())
+                 "pubmed": [PubMedProvider]}.get(provider.lower())
         if not provs:  # zotero e outros: sem count → não avisa
             return None
         total = 0
@@ -1901,19 +1915,11 @@ class BlicsaApp(ctk.CTk):
                              "max_results": max_results, "filters": dict(filters or {})}
         try:
             from core.sources import OpenAlexProvider, CrossrefProvider, PubMedProvider
-            from core.sources.zotero import ZoteroProvider
-            
-            providers_to_run = []
-            if provider_name.lower() == "all":
-                providers_to_run = [OpenAlexProvider(), CrossrefProvider(), PubMedProvider()]
-            elif provider_name.lower() == "openalex":
-                providers_to_run = [OpenAlexProvider()]
-            elif provider_name.lower() == "crossref":
-                providers_to_run = [CrossrefProvider()]
-            elif provider_name.lower() == "zotero":
-                providers_to_run = [ZoteroProvider()]
-            else:
-                providers_to_run = [PubMedProvider()]
+
+            # DECISÃO DE PRODUTO: fonte única por busca (multi-fonte simultânea removida).
+            provider_cls = {"openalex": OpenAlexProvider, "crossref": CrossrefProvider,
+                            "pubmed": PubMedProvider}.get(provider_name.lower(), OpenAlexProvider)
+            providers_to_run = [provider_cls()]
                 
             records = []
             max_per_provider = max_results
@@ -2015,9 +2021,7 @@ class BlicsaApp(ctk.CTk):
                 return
                 
             df = pd.DataFrame(records)
-            if provider_name.lower() == "all":
-                self.after(0, self._set_busy, "Deduplicando registros (Fuzzy Match)...")
-            
+
             if "language" not in df.columns:
                 df["language"] = ""
             if "language_source" not in df.columns:
@@ -2044,37 +2048,21 @@ class BlicsaApp(ctk.CTk):
             
             baixados = len(df)
 
-            baixados = len(df)
-
-            df["is_duplicate"] = False
-            df["dup_reason"] = ""
-
-            # Identify duplicates
-            # First by DOI
-            if 'doi' in df.columns:
-                doi_mask = df.duplicated(subset=['doi'], keep='first') & (df['doi'] != '') & df['doi'].notna()
-                df.loc[doi_mask, 'is_duplicate'] = True
-                df.loc[doi_mask, 'dup_reason'] = "DOI duplicado"
-            
-            # Then by title normalized
-            if 'title' in df.columns:
-                import re
-                def norm_title(t):
-                    return re.sub(r'[^a-z0-9]', '', str(t).lower())
-                
-                df['norm_title'] = df['title'].apply(norm_title)
-                title_mask = df.duplicated(subset=['norm_title'], keep='first') & ~df['is_duplicate'] & (df['norm_title'] != '')
-                df.loc[title_mask, 'is_duplicate'] = True
-                df.loc[title_mask, 'dup_reason'] = "Título duplicado"
-                df.drop(columns=['norm_title'], inplace=True)
-                
-            apos_dedup = len(df[~df["is_duplicate"]])
-            # Trilha honesta: só mostra "de {limite}" quando há um limite FINITO definido
-            # pelo usuário (ilimitado usa uma sentinela grande e não exibe teto).
+            # DECISÃO DE PRODUTO: a busca NÃO deduplica — a dedup é ação explícita
+            # no Corpus (botão Deduplicar). Trilha: Encontrados · baixados · motivo.
+            stop_reason = ""
+            if providers_to_run:
+                stop_reason = str(getattr(providers_to_run[-1], "stop_reason", "") or "")
+            if not stop_reason:
+                stop_reason = "concluída"
+            # Só mostra "de {limite}" quando há um limite FINITO definido pelo usuário
+            # (ilimitado usa uma sentinela grande e não exibe teto).
             if total_found_sum > baixados and max_results < 10_000_000:
-                trail = f"Encontrados {total_found_sum} · baixados {baixados} de {max_results} (limite) · após deduplicação {apos_dedup}"
+                trail = t("search.trail_limited", found=total_found_sum, downloaded=baixados,
+                          limit=max_results, reason=stop_reason)
             else:
-                trail = f"Encontrados {total_found_sum} · baixados {baixados} · após deduplicação {apos_dedup}"
+                trail = t("search.trail", found=max(total_found_sum, baixados),
+                          downloaded=baixados, reason=stop_reason)
             if lang_filtered_total:
                 trail += f" · filtrados por idioma: {lang_filtered_total}"
             if net_error_info:
@@ -2082,22 +2070,20 @@ class BlicsaApp(ctk.CTk):
             print(f"[Search] {trail}")
             
             # Show SearchFeedView for import review
+            # DECISÃO DE PRODUTO: importar NÃO deduplica (importar 2x é permitido);
+            # a dedup é ação explícita no Corpus.
             def on_import_confirm(selected_records, fuzzy_dedup=False):
                 if not selected_records:
                     self._switch_tab("home")
                     return
                 df_selected = pd.DataFrame(selected_records)
                 if self._dataframe is not None and not self._dataframe.empty:
-                    combined = BibliometricParser.merge(self._dataframe, df_selected)
+                    # concat puro (sem drop_duplicates do merge): importar o mesmo
+                    # conjunto 2x é permitido — a dedup existe para limpar depois.
+                    combined = pd.concat([self._dataframe, df_selected], ignore_index=True)
                 else:
                     combined = df_selected
-                    
-                if fuzzy_dedup:
-                    from core.harmonization import fuzzy_deduplicate_papers
-                    self.after(0, self._set_busy, "Deduplicando com o corpus atual (Fuzzy Match)...")
-                    combined = fuzzy_deduplicate_papers(combined)
-                    self.after(0, self._set_idle, "Pronto!")
-                    
+
                 self._dataframe = combined
                 self._refresh_candidate_counts()
                 
@@ -2116,6 +2102,8 @@ class BlicsaApp(ctk.CTk):
                 self._switch_tab("corpus")
                 
             def on_cancel():
+                # Cancela a colheita em andamento (cancel_event) E volta para a Coletar.
+                self._cancel_search()
                 self._switch_tab("import")
 
             def on_ai_assistant(records_list, selected_idx):
