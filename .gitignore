@@ -2,6 +2,14 @@
 blicsa_*.html
 lib/
 assets/graph.json
+reports/
+
+# Screenshots/imagens geradas soltas no repo (assets/, docs/ e extension/icons/
+# CONTINUAM versionados — docs/evidence/ é evidência intencional)
+*.png
+!assets/**/*.png
+!docs/**/*.png
+!extension/icons/*.png
 
 # Python
 __pycache__/
