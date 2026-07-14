@@ -134,31 +134,13 @@ class BlicsaApp(ctk.CTk):
         self._setup_shortcuts()
 
     def _start_local_server(self):
-        import http.server
-        import socketserver
-        import threading
-        import socket
-        
+        # SEGURANÇA: serve APENAS ~/Blicsa/.serve (estáticos do webview copiados
+        # para lá) — nunca a raiz do repo (settings com API key, código, projetos).
         if hasattr(self, '_local_server_port'): return
-        
-        s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        s.bind(('127.0.0.1', 0))
-        self._local_server_port = s.getsockname()[1]
-        s.close()
-        
-        def serve():
-            try:
-                # Python 3.7+ SimpleHTTPRequestHandler directory argument
-                class Handler(http.server.SimpleHTTPRequestHandler):
-                    def __init__(self, *args, **kwargs):
-                        super().__init__(*args, directory=str(OUTPUT_DIR), **kwargs)
-                with socketserver.TCPServer(("127.0.0.1", self._local_server_port), Handler) as httpd:
-                    httpd.serve_forever()
-            except Exception as e:
-                print(f"[HTTP Server] Error: {e}")
-                
-        threading.Thread(target=serve, daemon=True).start()
-        print(f"[HTTP Server] Started at http://127.0.0.1:{self._local_server_port} serving {OUTPUT_DIR}")
+        from core.local_server import prepare_serve_dir, start_server
+        self._serve_dir = prepare_serve_dir(OUTPUT_DIR)
+        self._local_server_port, self._http_server = start_server(self._serve_dir)
+        print(f"[HTTP Server] Started at http://127.0.0.1:{self._local_server_port} serving {self._serve_dir}")
 
     # ── Skeleton ───────────────────────────────────────────────────────
 
@@ -2398,7 +2380,8 @@ class BlicsaApp(ctk.CTk):
             gen.export_to_html(MAP_PATH)
             
             from core.sigma_exporter import export_sigma_json
-            sigma_path = str(OUTPUT_DIR / "assets" / "graph.json")
+            # graph.json vai para o diretório SERVIDO (nunca a raiz do repo).
+            sigma_path = str(self._serve_dir / "assets" / "graph.json")
             export_sigma_json(gen.G, self._positions, sigma_path)
             
             import webbrowser
@@ -4319,9 +4302,10 @@ class BlicsaApp(ctk.CTk):
             btn_f.pack(side="right", padx=15, pady=15)
             
             def open_map(p=fpath, n=name):
-                import urllib.parse
-                rel_path = p.relative_to(OUTPUT_DIR).as_posix()
-                url = f"http://127.0.0.1:{self._local_server_port}/{urllib.parse.quote(rel_path)}"
+                # Copia o mapa da galeria para o diretório SERVIDO antes de abrir.
+                import urllib.parse, shutil
+                shutil.copy2(p, self._serve_dir / "gallery" / p.name)
+                url = f"http://127.0.0.1:{self._local_server_port}/gallery/{urllib.parse.quote(p.name)}"
                 import webbrowser
                 webbrowser.open(url)
                 
