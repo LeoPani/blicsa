@@ -64,7 +64,7 @@ class OpenAlexProvider(SearchProvider):
 
     def count(self, query: str, filters: Optional[Dict[str, Any]] = None, cancel_event=None) -> int:
         """Total de resultados numa ÚNICA request barata (nada é baixado)."""
-        params: Dict[str, Any] = {"per_page": 1, "mailto": "blicsa.app@gmail.com"}
+        params: Dict[str, Any] = {"per_page": 1, "mailto": self.mailto}
         flt = self._oa_filter(query, filters)
         if flt:
             params["filter"] = flt
@@ -77,7 +77,7 @@ class OpenAlexProvider(SearchProvider):
         """Paginação BÁSICA pulável (tipo Scopus): devolve (records_da_página, total).
         Não colhe tudo — só a página pedida. Navega os primeiros ~10.000 do OpenAlex."""
         params: Dict[str, Any] = {"per_page": max(1, min(200, per_page)),
-                                  "page": max(1, page), "mailto": "blicsa.app@gmail.com"}
+                                  "page": max(1, page), "mailto": self.mailto}
         flt = self._oa_filter(query, filters)
         if flt:
             params["filter"] = flt
@@ -100,71 +100,43 @@ class OpenAlexProvider(SearchProvider):
         cancel_event = None
     ) -> Iterator[Dict[str, Any]]:
         base_url = "https://api.openalex.org/works"
-        
-        # Build filters
-        filter_parts = []
-        if filters:
-            if filters.get("year_start") and filters.get("year_end"):
-                filter_parts.append(f"publication_year:{filters['year_start']}-{filters['year_end']}")
-            elif filters.get("year_start"):
-                filter_parts.append(f"publication_year:>{int(filters['year_start']) - 1}")
-            elif filters.get("year_end"):
-                filter_parts.append(f"publication_year:<{int(filters['year_end']) + 1}")
-                
-            if filters.get("type"):
-                filter_parts.append(f"type:{filters['type']}")
-            if filters.get("is_oa") is not None:
-                filter_parts.append(f"is_oa:{str(filters['is_oa']).lower()}")
-            if filters.get("language"):
-                filter_parts.append(f"language:{filters['language']}")
 
         params: Dict[str, Any] = {
-            "per_page": min(100, max_results),
+            "per_page": min(200, max_results),
             "cursor": "*",
-            "mailto": "blicsa.app@gmail.com"
+            "mailto": self.mailto
         }
-        
+
         import re
         q_str = query.strip()
-        
-        # Parse Scopus-like Query Builder syntax
-        if re.search(r'(TITLE|AUTHOR|YEAR|TITLE-ABS-KEY)\(', q_str):
-            oa_filters = []
-            for match in re.finditer(r'(TITLE-ABS-KEY|TITLE|AUTHOR|YEAR)\("?([^")]+)"?\)', q_str):
-                field, val = match.groups()
-                val = val.strip()
-                if field == "TITLE":
-                    oa_filters.append(f"title.search:{val}")
-                elif field == "AUTHOR":
-                    oa_filters.append(f"author.id:{val}") # we'll use raw search below for names
-                elif field == "YEAR":
-                    oa_filters.append(f"publication_year:{val}")
-                elif field == "TITLE-ABS-KEY":
-                    oa_filters.append(f"default.search:{val}")
-            
-            # For Authors OpenAlex prefers author.search but it's not a standard filter for /works,
-            # works filter uses authorships.author.display_name.search or raw search.
-            # Actually, `default.search` handles everything nicely in a single query.
-            # Let's rebuild it cleanly:
-            for match in re.finditer(r'(TITLE-ABS-KEY|TITLE|AUTHOR|YEAR)\("?([^")]+)"?\)', q_str):
-                field, val = match.groups()
-                val = val.strip()
-                if field == "TITLE":
-                    filter_parts.append(f"title.search:{val}")
-                elif field == "YEAR":
-                    filter_parts.append(f"publication_year:{val}")
-                elif field == "AUTHOR":
-                    filter_parts.append(f"authorships.author.display_name.search:{val}")
-                elif field == "TITLE-ABS-KEY":
-                    filter_parts.append(f"default.search:{val}")
-            
-            # Clear q_str so we rely entirely on filters
-            q_str = ""
+        extra_fields = []
 
-        if q_str.strip():
-            filter_parts.append(f"default.search:{q_str.strip()}")
-        if filter_parts:
-            params["filter"] = ",".join(filter_parts)
+        # Sintaxe legada do Query Builder (TITLE()/AUTHOR()/...) vira busca por campo.
+        if re.search(r'(TITLE|AUTHOR|YEAR|TITLE-ABS-KEY)\(', q_str):
+            year_vals = []
+            for match in re.finditer(r'(TITLE-ABS-KEY|TITLE|AUTHOR|YEAR)\("?([^")]+)"?\)', q_str):
+                field, val = match.groups()
+                val = val.strip()
+                if field == "TITLE":
+                    extra_fields.append(("title", val))
+                elif field == "AUTHOR":
+                    extra_fields.append(("author", val))
+                elif field == "TITLE-ABS-KEY":
+                    extra_fields.append(("all", val))
+                elif field == "YEAR":
+                    year_vals.append(val)
+            q_str = ""
+            if year_vals and not (filters or {}).get("year_start"):
+                filters = dict(filters or {})
+                filters["year_start"] = filters["year_end"] = year_vals[0]
+
+        if extra_fields:
+            filters = dict(filters or {})
+            filters["fields"] = list(filters.get("fields") or []) + extra_fields
+
+        flt = self._oa_filter(q_str, filters)
+        if flt:
+            params["filter"] = flt
 
         # Ordenação server-side ("relevance" = padrão do OpenAlex, sem param).
         oa_sort = {"citations": "cited_by_count:desc",
@@ -211,51 +183,7 @@ class OpenAlexProvider(SearchProvider):
             for w in results:
                 if count_fetched >= max_results:
                     break
-                
-                # Normalize OpenAlex structure to standard record schema
-                authors = "; ".join(
-                    a.get("author", {}).get("display_name", "")
-                    for a in w.get("authorships", []) if a.get("author", {}).get("display_name")
-                )
-                kws = "; ".join(
-                    c.get("display_name", "")
-                    for c in w.get("concepts", []) if c.get("display_name")
-                )
-                
-                abstract = w.get("abstract", "") or ""
-                if not abstract and w.get("abstract_inverted_index"):
-                    inv = w["abstract_inverted_index"]
-                    word_pos = []
-                    for word, positions in inv.items():
-                        for pos in positions:
-                            word_pos.append((pos, word))
-                    abstract = " ".join(wd for _, wd in sorted(word_pos))
-
-                src = ""
-                if w.get("primary_location") and w["primary_location"].get("source"):
-                    src = w["primary_location"]["source"].get("display_name", "") or ""
-
-                oa_info = w.get("open_access", {})
-                is_oa = bool(oa_info.get("is_oa", False))
-                oa_url = str(oa_info.get("oa_url") or "")
-                lang = str(w.get("language") or "")
-
-                record = {
-                    "authors":    authors,
-                    "title":      w.get("title", "") or "",
-                    "year":       int(w.get("publication_year") or 0),
-                    "source":     src,
-                    "keywords":   kws,
-                    "abstract":   abstract,
-                    "citations":  int(w.get("cited_by_count", 0)),
-                    "doi":        w.get("doi", "") or "",
-                    "references": "; ".join(w.get("referenced_works", [])),
-                    "origin":     "OpenAlex",
-                    "language":   lang,
-                    "is_oa":      is_oa,
-                    "oa_url":     oa_url,
-                }
-                yield record
+                yield self._normalize_work(w)
                 count_fetched += 1
 
             if progress_cb and total_results:

@@ -3,21 +3,42 @@ import urllib.request
 import urllib.parse
 import json
 import logging
+from collections import OrderedDict
 from typing import Iterator, Callable, Dict, Any, Optional
 
 logger = logging.getLogger("SearchProvider")
 
+# Identidade única do app nas APIs (OpenAlex/Crossref pedem um mailto de contato).
+MAILTO = "blicsa.app@gmail.com"
+
+# Teto do cache de respostas por provider (LRU).
+CACHE_MAX_ENTRIES = 50
+
 class SearchProvider:
-    def __init__(self, mailto: str = "leopaniago2@gmail.com", cache: Optional[Dict[str, Any]] = None):
+    def __init__(self, mailto: str = MAILTO, cache: Optional[Dict[str, Any]] = None):
         self.mailto = mailto
-        self.cache = cache if cache is not None else {}
+        self.cache: OrderedDict = OrderedDict(cache or {})
         self.last_request_time = 0.0
+
+    def _cache_get(self, url: str) -> Optional[str]:
+        if url in self.cache:
+            self.cache.move_to_end(url)
+            return self.cache[url]
+        return None
+
+    def _cache_put(self, url: str, data: str):
+        self.cache[url] = data
+        self.cache.move_to_end(url)
+        while len(self.cache) > CACHE_MAX_ENTRIES:
+            self.cache.popitem(last=False)
 
     def fetch_url(self, url: str, headers: Optional[Dict[str, str]] = None, cancel_event = None, rate_limit_delay: float = 0.0, no_cache: bool = False) -> str:
         # Check cache (no_cache=True para paginação por cursor de scroll que REPETE a URL,
         # p.ex. Crossref — cachear devolveria a mesma página e travaria a paginação).
-        if not no_cache and url in self.cache:
-            return self.cache[url]
+        if not no_cache:
+            cached = self._cache_get(url)
+            if cached is not None:
+                return cached
 
         headers = headers or {}
         if "User-Agent" not in headers:
@@ -41,7 +62,7 @@ class SearchProvider:
                 with urllib.request.urlopen(req, timeout=15) as response:
                     data = response.read().decode("utf-8", errors="replace")
                     if not no_cache:
-                        self.cache[url] = data
+                        self._cache_put(url, data)
                     return data
             except urllib.error.HTTPError as e:
                 if e.code in (429, 500, 502, 503, 504):
