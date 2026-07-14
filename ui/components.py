@@ -74,111 +74,82 @@ class HoverTooltip:
             tw.destroy()
 
 # ── Deduplication Dialog ───────────────────────────────────────────────────────
-class DeduplicationDialog(ctk.CTkToplevel):
-    """
-    Dialog for handling duplicate records during data import.
-    """
-    """Shows fuzzy-duplicate pairs and lets the user confirm which to remove."""
+def classify_dedup_reason(reason: str) -> str:
+    """Agrupa o motivo textual do find_duplicates em: doi | title | author_year."""
+    r = str(reason)
+    if r.startswith("DOI"):
+        return "doi"
+    if r.startswith("Autor+Ano"):
+        return "author_year"
+    return "title"
+
+
+class DedupPreviewDialog(ctk.CTkToplevel):
+    """Resumo REVISÁVEL da deduplicação (antes de aplicar): quantos pares por
+    motivo (DOI / título similar / autor+ano), amostra dos 10 primeiros pares
+    (título A × título B + motivo) e botões Aplicar / Cancelar.
+    Neoplasticista: canto reto, sem sombra, sem gradiente."""
 
     def __init__(self, parent, df, dupes: list[tuple[int, int, str]], on_apply):
+        from core.i18n import t
         super().__init__(parent)
-        self.title("Blicsa — Deduplicação")
-        self.geometry("900x620")
+        self.title("Blicsa")
+        self.geometry("860x560")
         self.minsize(700, 420)
-        self.configure(fg_color=CONTENT_BG, border_width=3, border_color=INK)
+        self.configure(fg_color=CONTENT_BG)
         self.grab_set()
 
-        self._df       = df
-        self._dupes    = dupes       # [(keep_idx, remove_idx, reason)]
+        self._dupes = dupes            # [(keep_idx, remove_idx, reason)]
         self._on_apply = on_apply
-        self._vars: list[ctk.BooleanVar] = []
 
-        self.grid_rowconfigure(1, weight=1)
+        by = Counter(classify_dedup_reason(r) for _, _, r in dupes)
+
+        self.grid_rowconfigure(2, weight=1)
         self.grid_columnconfigure(0, weight=1)
 
-        # Header
-        hdr = ctk.CTkFrame(self, fg_color=CONTENT_BG, border_width=3, border_color=INK)
-        hdr.grid(row=0, column=0, sticky="ew", padx=20, pady=(16, 4))
-        ctk.CTkLabel(
-            hdr,
-            text=f"{len(dupes)} par(es) de duplicata detectado(s) — marque os que deseja remover:",
-            font=ctk.CTkFont(size=13),
-        ).pack(side="left")
-        ctk.CTkButton(
-            hdr, text="Todos", width=72, height=28,
-            fg_color=INK, hover_color=INK_HOV,
-            command=lambda: [v.set(True) for v in self._vars],
-        ).pack(side="right", padx=(6, 0))
-        ctk.CTkButton(
-            hdr, text="Nenhum", width=72, height=28,
-            fg_color=CARD_BG, hover_color=CARD2_BG,
-            command=lambda: [v.set(False) for v in self._vars],
-        ).pack(side="right")
+        ctk.CTkLabel(self, text=t("dedup.preview_title"),
+                     font=ctk.CTkFont(size=18, weight="bold"), text_color=INK
+                     ).grid(row=0, column=0, sticky="w", padx=24, pady=(20, 2))
+        ctk.CTkLabel(self, text=t("dedup.summary", n=len(dupes), doi=by.get("doi", 0),
+                                  title=by.get("title", 0), ay=by.get("author_year", 0)),
+                     font=ctk.CTkFont(size=13), text_color=INK
+                     ).grid(row=1, column=0, sticky="w", padx=24, pady=(0, 8))
 
-        # Scrollable pair list
-        sf = ctk.CTkScrollableFrame(self, fg_color=CARD2_BG, corner_radius=0)
-        sf.grid(row=1, column=0, sticky="nsew", padx=20, pady=4)
-        sf.grid_columnconfigure(1, weight=1)
+        sf = ctk.CTkScrollableFrame(self, fg_color="#FFFFFF", corner_radius=0,
+                                    border_width=2, border_color=INK)
+        sf.grid(row=2, column=0, sticky="nsew", padx=24, pady=4)
+        sf.grid_columnconfigure(0, weight=1)
 
-        for idx, (ki, ri, reason) in enumerate(dupes):
-            var = ctk.BooleanVar(value=True)
-            self._vars.append(var)
+        ctk.CTkLabel(sf, text=t("dedup.sample"), font=ctk.CTkFont(size=12, weight="bold"),
+                     text_color=TEXT_MUTED).grid(row=0, column=0, sticky="w", padx=10, pady=(8, 2))
+        for n, (ki, ri, reason) in enumerate(dupes[:10], start=1):
+            ta = str(df.at[ki, "title"])[:80]
+            tb = str(df.at[ri, "title"])[:80]
+            row_f = ctk.CTkFrame(sf, fg_color=CARD_BG if n % 2 else CARD2_BG, corner_radius=0)
+            row_f.grid(row=n, column=0, sticky="ew", padx=6, pady=2)
+            row_f.grid_columnconfigure(0, weight=1)
+            ctk.CTkLabel(row_f, text=f"{ta}  ×  {tb}", anchor="w",
+                         font=ctk.CTkFont(size=11), text_color=INK
+                         ).grid(row=0, column=0, sticky="w", padx=8, pady=(6, 0))
+            ctk.CTkLabel(row_f, text=reason, anchor="w",
+                         font=ctk.CTkFont(size=10), text_color=TEXT_MUTED
+                         ).grid(row=1, column=0, sticky="w", padx=8, pady=(0, 6))
 
-            keep_title   = str(df.at[ki, "title"])[:70]
-            remove_title = str(df.at[ri, "title"])[:70]
-            keep_origin  = df.at[ki, "origin"]
-            rm_origin    = df.at[ri, "origin"]
-            yr           = df.at[ri, "year"]
-
-            bg = CARD_BG if idx % 2 == 0 else CARD2_BG
-            row_f = ctk.CTkFrame(sf, fg_color=bg, corner_radius=0)
-            row_f.grid(row=idx, column=0, columnspan=2, sticky="ew", pady=2, padx=2)
-            row_f.grid_columnconfigure(1, weight=1)
-
-            ctk.CTkCheckBox(
-                row_f, text="", variable=var,
-                width=28, checkbox_width=16, checkbox_height=16,
-                fg_color=ACCENT, hover_color=ACCENT_HOV,
-            ).grid(row=0, column=0, padx=(8, 4), pady=6, rowspan=2)
-
-            ctk.CTkLabel(
-                row_f,
-                text=f"MANTER  [{keep_origin}]  {keep_title}",
-                anchor="w", font=ctk.CTkFont(size=11, weight="bold"),
-                text_color="#88ee88",
-            ).grid(row=0, column=1, padx=4, pady=(6, 0), sticky="w")
-            ctk.CTkLabel(
-                row_f,
-                text=f"REMOVER [{rm_origin}] ({yr})  {remove_title}",
-                anchor="w", font=ctk.CTkFont(size=11),
-                text_color="#ee8888",
-            ).grid(row=1, column=1, padx=4, pady=(0, 2), sticky="w")
-            ctk.CTkLabel(
-                row_f,
-                text=f"  {reason}",
-                anchor="w", font=ctk.CTkFont(size=10),
-                text_color=TEXT_MUTED,
-            ).grid(row=2, column=1, padx=4, pady=(0, 6), sticky="w")
-
-        # Footer
-        foot = ctk.CTkFrame(self, fg_color=CONTENT_BG, border_width=3, border_color=INK)
-        foot.grid(row=2, column=0, sticky="ew", padx=20, pady=(4, 16))
-        ctk.CTkButton(
-            foot, text="✕  Cancelar", width=110, height=38,
-            fg_color="#333355", hover_color="#444466",
-            command=self.destroy,
-        ).pack(side="right", padx=(8, 0))
-        ctk.CTkButton(
-            foot, text="🗑  Aplicar Remoção", width=180, height=38,
-            fg_color="#7a1a1a", hover_color="#9a2a2a",
-            font=ctk.CTkFont(size=13, weight="bold"),
-            command=self._apply,
-        ).pack(side="right")
+        foot = ctk.CTkFrame(self, fg_color="transparent")
+        foot.grid(row=3, column=0, sticky="ew", padx=24, pady=(8, 20))
+        ctk.CTkButton(foot, text=t("dedup.cancel"), width=120, height=38, corner_radius=0,
+                      fg_color="#FFFFFF", text_color=INK, hover_color=CARD2_BG,
+                      border_width=2, border_color=INK, command=self.destroy
+                      ).pack(side="right", padx=(8, 0))
+        ctk.CTkButton(foot, text=t("dedup.apply"), width=160, height=38, corner_radius=0,
+                      fg_color="#DF3117", hover_color=RED_HOV, text_color="#FFFFFF",
+                      font=ctk.CTkFont(size=13, weight="bold"), command=self._apply
+                      ).pack(side="right")
 
     def _apply(self):
-        to_remove = {self._dupes[i][1] for i, v in enumerate(self._vars) if v.get()}
+        dupes = self._dupes
         self.destroy()
-        self._on_apply(to_remove)
+        self._on_apply(dupes)
 
 
 def insert_markdown(textbox, text: str):

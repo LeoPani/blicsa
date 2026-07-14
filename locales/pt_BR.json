@@ -101,5 +101,13 @@
   "search.source": "Fonte:",
   "search.interpreted": "Interpretado como: {query}",
   "search.trail": "Encontrados {found} · baixados {downloaded} · {reason}",
-  "search.trail_limited": "Encontrados {found} · baixados {downloaded} de {limit} (limite) · {reason}"
+  "search.trail_limited": "Encontrados {found} · baixados {downloaded} de {limit} (limite) · {reason}",
+  "dedup.button": "Deduplicar",
+  "dedup.preview_title": "Deduplicação — revise antes de aplicar",
+  "dedup.summary": "{n} pares de possíveis duplicatas — {doi} por DOI · {title} por título similar · {ay} por autor+ano",
+  "dedup.sample": "Amostra (10 primeiros pares):",
+  "dedup.apply": "Aplicar",
+  "dedup.cancel": "Cancelar",
+  "dedup.removed": "Removidos {k} duplicados ({x} por DOI, {y} por título, {z} por autor+ano).",
+  "dedup.none": "Nenhuma duplicata encontrada."
 }

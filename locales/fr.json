@@ -102,5 +102,13 @@
   "search.source": "Source :",
   "search.interpreted": "Interprété comme : {query}",
   "search.trail": "Trouvés {found} · téléchargés {downloaded} · {reason}",
-  "search.trail_limited": "Trouvés {found} · téléchargés {downloaded} sur {limit} (limite) · {reason}"
+  "search.trail_limited": "Trouvés {found} · téléchargés {downloaded} sur {limit} (limite) · {reason}",
+  "dedup.button": "Dédupliquer",
+  "dedup.preview_title": "Déduplication — vérifiez avant d'appliquer",
+  "dedup.summary": "{n} paires de doublons possibles — {doi} par DOI · {title} par titre similaire · {ay} par auteur+année",
+  "dedup.sample": "Échantillon (10 premières paires) :",
+  "dedup.apply": "Appliquer",
+  "dedup.cancel": "Annuler",
+  "dedup.removed": "{k} doublons supprimés ({x} par DOI, {y} par titre, {z} par auteur+année).",
+  "dedup.none": "Aucun doublon trouvé."
 }

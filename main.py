@@ -39,7 +39,7 @@ from ai.client import GroqBibliometricAnalyst
 
 from ui.design_tokens import SIDEBAR_BG, CONTENT_BG, CARD_BG, CARD2_BG, ACCENT, ACCENT_HOV, TEXT_MUTED, MUTED, BLUE, YELLOW, RED, INK, PAPER, RED_HOV, RED_HOVER, WHITE_CARD, INK_HOV, BLUE_HOV, YELLOW_HOV
 from ui.styles import get_color, LogWriter
-from ui.components import DeduplicationDialog, TrendChartWindow, VerificationDialog, MapCanvas, BurstDetectionWindow, HoverTooltip
+from ui.components import DedupPreviewDialog, classify_dedup_reason, TrendChartWindow, VerificationDialog, MapCanvas, BurstDetectionWindow, HoverTooltip
 
 # Force light mode globally since we use a custom light theme (Paper & Ink)
 ctk.set_appearance_mode("Light")
@@ -969,14 +969,14 @@ class BlicsaApp(ctk.CTk):
         act_f.grid(row=2, column=0, columnspan=3, padx=16, pady=(12, 16), sticky="ew")
         act_f.grid_columnconfigure((0, 1, 2), weight=1)
         
+        # DECISÃO DE PRODUTO: a deduplicação saiu da Coletar — é ação explícita
+        # no Corpus (botão Deduplicar).
+        act_f.grid_columnconfigure((0, 1), weight=1)
         self._btn(act_f, "⚡  Carregar e Combinar", self._load_data, height=40, color=RED, hover=RED_HOV).grid(
             row=0, column=0, padx=(0, 4), sticky="ew")
-        self._btn(act_f, "🔍  Deduplicar", self._run_dedup, height=40,
-                  color=INK, hover=INK_HOV).grid(
-            row=0, column=1, padx=4, sticky="ew")
         self._btn(act_f, "📂  Abrir Projeto (.blicsa)", self._load_project_gui, height=40,
                   color=BLUE, hover=BLUE_HOV).grid(
-            row=0, column=2, padx=(4, 0), sticky="ew")
+            row=0, column=1, padx=(4, 0), sticky="ew")
 
         # The Log is now in toasts, so no need for log box here
         # But wait, self._log_box was used for sys.stdout redirection and background thread logs.
@@ -3682,22 +3682,28 @@ class BlicsaApp(ctk.CTk):
     # ── Tab: Estatísticas ──────────────────────────────────────────────
     # ── Deduplication ──────────────────────────────────────────────────
     def _run_dedup(self):
-        if self._dataframe is None:
-            messagebox.showwarning("Sem dados", "Carregue um arquivo primeiro.")
+        """Ação explícita do Corpus: encontra pares e mostra o resumo REVISÁVEL
+        (por motivo + amostra) antes de aplicar qualquer remoção."""
+        if self._dataframe is None or self._dataframe.empty:
+            messagebox.showwarning("Sem dados", "Carregue um corpus primeiro.")
             return
         print("[Dedup] Procurando duplicatas…")
         df    = self._dataframe
         dupes = find_duplicates(df, title_threshold=0.93)
         if not dupes:
-            messagebox.showinfo("Deduplicação", "Nenhuma duplicata encontrada.")
+            messagebox.showinfo("Blicsa", t("dedup.none"))
             print("[Dedup] Nenhuma duplicata.\n")
             return
         print(f"[Dedup] {len(dupes)} par(es) encontrado(s).\n")
-        DeduplicationDialog(self, df, dupes, self._apply_dedup)
+        DedupPreviewDialog(self, df, dupes, self._apply_dedup)
 
-    def _apply_dedup(self, to_remove: set[int]):
-        if not to_remove:
+    def _apply_dedup(self, dupes: list):
+        """Aplica a remoção dos pares confirmados e informa o resultado por motivo."""
+        if not dupes:
             return
+        to_remove = {ri for _, ri, _ in dupes}
+        from collections import Counter
+        by = Counter(classify_dedup_reason(r) for _, _, r in dupes)
         before = len(self._dataframe)
         self._dataframe = (
             self._dataframe
@@ -3705,9 +3711,14 @@ class BlicsaApp(ctk.CTk):
             .reset_index(drop=True)
         )
         removed = before - len(self._dataframe)
-        print(f"[Dedup] {removed} registro(s) removido(s). Base: {len(self._dataframe)} registros.\n")
+        msg = t("dedup.removed", k=removed, x=by.get("doi", 0),
+                y=by.get("title", 0), z=by.get("author_year", 0))
+        self._last_dedup_msg = msg
+        print(f"[Dedup] {msg} Base: {len(self._dataframe)} registros.\n")
         self._generator = None
         self.after(0, self._update_stats_tab)
+        self.after(0, self._refresh_corpus_tab)
+        messagebox.showinfo("Blicsa", msg)
 
     # ── Word Cloud ─────────────────────────────────────────────────────
     def _show_wordcloud(self):
@@ -4436,9 +4447,14 @@ class BlicsaApp(ctk.CTk):
         
         ctk.CTkLabel(hdr, text="Seu Corpus", font=ctk.CTkFont(size=28, weight="bold")).grid(row=0, column=0, sticky="w")
         ctk.CTkLabel(hdr, text=f"{total_docs} documentos • {total_cites} citações totais", font=ctk.CTkFont(size=14), text_color=MUTED).grid(row=1, column=0, sticky="w")
-        
+        # Resultado da última deduplicação (só aparece quando a ação foi rodada).
+        if getattr(self, "_last_dedup_msg", ""):
+            ctk.CTkLabel(hdr, text=self._last_dedup_msg, font=ctk.CTkFont(size=12),
+                         text_color=INK).grid(row=2, column=0, sticky="w")
+
         btns_f = ctk.CTkFrame(hdr, fg_color="transparent")
         btns_f.grid(row=0, column=2, rowspan=2, sticky="e")
+        self._btn(btns_f, t("dedup.button"), self._run_dedup, height=40, color=INK, hover=INK_HOV).pack(side="left", padx=(0, 10))
         self._btn(btns_f, "Análise IA do Corpus", self._trigger_corpus_ai_insights, height=40, color=YELLOW, hover=YELLOW_HOV).pack(side="left", padx=(0, 10))
         self._btn(btns_f, "Baixar PDFs abertos", self._download_oa_pdfs, height=40, color="#1E4DA0").pack(side="left", padx=(0, 10))
         self._btn(btns_f, "Ir para Análises", lambda: self._switch_tab("analises"), height=40, color=RED).pack(side="left")
