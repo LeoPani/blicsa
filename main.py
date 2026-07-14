@@ -966,6 +966,12 @@ class BlicsaApp(ctk.CTk):
                       border_width=1, border_color=INK,
                       command=self._add_field_row).grid(row=2, column=0, sticky="w", pady=(2, 0))
 
+        # Trilha de contagem da última busca — visível na própria Coletar
+        # (além do header do feed).
+        self._search_trail_lbl = ctk.CTkLabel(scard, text="", font=ctk.CTkFont(size=12, weight="bold"),
+                                              text_color=INK, anchor="w")
+        self._search_trail_lbl.grid(row=7, column=0, columnspan=2, padx=18, pady=(0, 10), sticky="w")
+
         # File Import Hero Zone (Bottom)
         fcard = self._card(frame, 1)
         fcard.grid_columnconfigure(1, weight=1)
@@ -2242,6 +2248,7 @@ class BlicsaApp(ctk.CTk):
             if net_error_info:
                 trail += f" · ⚠ interrompido ({net_error_info[0]}, página {net_error_info[1]}) por erro de rede — resultados parciais"
             log.info(f"[Search] {trail}")
+            self.after(0, lambda tr=trail: self._search_trail_lbl.configure(text=tr))
             
             # Show SearchFeedView for import review
             # DECISÃO DE PRODUTO: importar NÃO deduplica (importar 2x é permitido);
@@ -4715,7 +4722,7 @@ class BlicsaApp(ctk.CTk):
             import tkinter.ttk as ttk
             style = ttk.Style()
             style.theme_use("default")
-            style.configure("Treeview", background=WHITE, foreground=INK, rowheight=25, fieldbackground=WHITE, borderwidth=0)
+            style.configure("Treeview", background=WHITE_CARD, foreground=INK, rowheight=25, fieldbackground=WHITE_CARD, borderwidth=0)
             style.configure("Treeview.Heading", background=PAPER, foreground=INK, font=('Archivo', 10, 'bold'))
             
             tree_f = ctk.CTkFrame(tab_card, fg_color="transparent")
