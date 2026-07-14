@@ -95,5 +95,7 @@
   "projects.copy_suffix": "(Copy)",
   "projects.copy_suffix_n": "(Copy {n})",
   "projects.delete_title": "Confirm Deletion",
-  "projects.delete_confirm": "Are you sure you want to delete the project '{name}'?"
+  "projects.delete_confirm": "Are you sure you want to delete the project '{name}'?",
+  "deps.missing_ai": "This feature requires the AI extras. Install them with: pip install -r requirements-ai.txt (missing package: {pkg})",
+  "deps.missing_pdf": "PDF import requires the PDF extras. Install them with: pip install -r requirements-pdf.txt (missing package: {pkg})"
 }

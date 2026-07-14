@@ -3,6 +3,8 @@ import difflib
 import pandas as pd
 from pathlib import Path
 
+from core.i18n import t
+
 
 # ── Deduplication helpers ───────────────────────────────────────────────────
 
@@ -351,7 +353,7 @@ class BibliometricParser:
         try:
             import pdfplumber
         except ImportError:
-            raise RuntimeError("pdfplumber is not installed. Please install it.")
+            raise RuntimeError(t("deps.missing_pdf", pkg="pdfplumber"))
         full_text = ""
         try:
             with pdfplumber.open(self.file_path) as pdf:

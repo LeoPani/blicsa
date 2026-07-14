@@ -1,0 +1,4 @@
+# Blicsa — extra de IA: tópicos LDA (Análises) e embeddings.
+# Instale com: pip install -r requirements-ai.txt
+scikit-learn==1.9.0
+sentence-transformers==5.6.0

@@ -1,21 +1,24 @@
-pandas
-networkx
-pyvis
-groq
-customtkinter
-bibtexparser
-python-louvain
-matplotlib
-scipy
-fa2-modified
-plotly
-pywebview
-numpy
-wordcloud
-openpyxl
-tkinterdnd2
-
-pdfplumber
-sentence-transformers
-scikit-learn
-langdetect>=1.0.9
+# Blicsa — instalação completa (core + extras de IA e PDF), tudo pinado.
+# Para instalação mínima use requirements-core.txt.
+# Versões do ambiente de desenvolvimento (pip freeze) em 2026-07-14;
+# openpyxl e sentence-transformers pinados na última versão do PyPI (não estavam no venv).
+bibtexparser==1.4.4
+customtkinter==5.2.2
+fa2-modified==0.4
+groq==1.4.0
+langdetect==1.0.9
+matplotlib==3.10.9
+networkx==3.6.1
+numpy==2.4.6
+openpyxl==3.1.5
+pandas==3.0.3
+pdfplumber==0.11.10
+plotly==6.8.0
+python-louvain==0.16
+pyvis==0.3.2
+pywebview==6.2.1
+scikit-learn==1.9.0
+scipy==1.17.1
+sentence-transformers==5.6.0
+tkinterdnd2==0.5.0
+wordcloud==1.9.6

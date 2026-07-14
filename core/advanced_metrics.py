@@ -1,7 +1,7 @@
 import networkx as nx
 import pandas as pd
-from sklearn.decomposition import LatentDirichletAllocation
-from sklearn.feature_extraction.text import CountVectorizer
+
+from core.i18n import t
 
 def compute_eigenvector(G: nx.Graph) -> dict:
     """Calcula a centralidade de autovetor."""
@@ -47,7 +47,13 @@ def extract_topics_lda(texts: list[str], n_topics: int = 5) -> dict:
     """
     if not texts:
         return {}
-        
+
+    try:
+        from sklearn.decomposition import LatentDirichletAllocation
+        from sklearn.feature_extraction.text import CountVectorizer
+    except ImportError:
+        raise RuntimeError(t("deps.missing_ai", pkg="scikit-learn"))
+
     vectorizer = CountVectorizer(stop_words='english', max_df=0.9, min_df=2)
     try:
         X = vectorizer.fit_transform(texts)
