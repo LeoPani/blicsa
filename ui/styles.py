@@ -1,4 +1,4 @@
-import sys
+import logging
 import customtkinter as ctk
 
 # ── Brand v2 Palette ────────────────────────────────────────────────────────
@@ -23,25 +23,31 @@ def get_color(color_val):
         return color_val[0]
     return color_val
 
-class LogWriter:
-    def __init__(self, widget: ctk.CTkTextbox):
-        self._w, self._orig = widget, sys.__stdout__
+class TextboxLogHandler(logging.Handler):
+    """Alimenta o log box da UI via logging — sys.stdout/stderr ficam INTACTOS
+    (tracebacks continuam aparecendo no terminal)."""
 
-    def write(self, msg: str):
-        self._w.after(0, self._append, msg)
+    def __init__(self, widget: ctk.CTkTextbox):
+        super().__init__()
+        self._w = widget
+        self.setFormatter(logging.Formatter("%(message)s"))
+
+    def emit(self, record):
         try:
-            self._orig.write(msg)
+            self._w.after(0, self._append, self.format(record) + "\n")
         except Exception:
             pass
 
     def _append(self, msg: str):
-        self._w.configure(state="normal")
-        self._w.insert("end", msg)
-        self._w.see("end")
-        self._w.configure(state="disabled")
-
-    def flush(self):
-        pass
+        try:
+            if not self._w.winfo_exists():
+                return
+            self._w.configure(state="normal")
+            self._w.insert("end", msg)
+            self._w.see("end")
+            self._w.configure(state="disabled")
+        except Exception:
+            pass
 INK_HOV = "#2a2a2a"
 BLUE_HOV = "#153a60"
 YELLOW_HOV = "#d4a017"

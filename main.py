@@ -1,4 +1,5 @@
 import sys
+import logging
 import os
 
 __version__ = "1.1.0-beta"
@@ -38,11 +39,13 @@ from core.nlp import load_thesaurus
 from ai.client import GroqBibliometricAnalyst
 
 from ui.design_tokens import SIDEBAR_BG, CONTENT_BG, CARD_BG, CARD2_BG, ACCENT, ACCENT_HOV, TEXT_MUTED, MUTED, BLUE, YELLOW, RED, INK, PAPER, RED_HOV, RED_HOVER, WHITE_CARD, INK_HOV, BLUE_HOV, YELLOW_HOV
-from ui.styles import get_color, LogWriter
+from ui.styles import get_color, TextboxLogHandler
 from ui.components import DedupPreviewDialog, classify_dedup_reason, TrendChartWindow, VerificationDialog, MapCanvas, BurstDetectionWindow, HoverTooltip
 
 # Force light mode globally since we use a custom light theme (Paper & Ink)
 ctk.set_appearance_mode("Light")
+
+log = logging.getLogger("blicsa")
 
 OUTPUT_DIR  = Path(__file__).parent
 MAP_PATH    = str(OUTPUT_DIR / "blicsa_mapa.html")
@@ -128,10 +131,28 @@ class BlicsaApp(ctk.CTk):
         self._cluster_res_var = ctk.DoubleVar(value=1.0)
 
         self._build_layout()
-        if hasattr(self, '_log_box'):
-            sys.stdout = LogWriter(self._log_box)
+        self._attach_log_handler()
         self._setup_dnd()
         self._setup_shortcuts()
+
+    def _attach_log_handler(self):
+        """Item 6: o log box é alimentado por logging.Handler — sys.stdout e
+        sys.stderr ficam intactos (tracebacks continuam no terminal)."""
+        if not hasattr(self, "_log_box"):
+            return
+        root = logging.getLogger()
+        root.setLevel(logging.INFO)
+        # eco no terminal (uma única vez)
+        if not any(isinstance(h, logging.StreamHandler) and not isinstance(h, TextboxLogHandler)
+                   for h in root.handlers):
+            console = logging.StreamHandler()
+            console.setFormatter(logging.Formatter("%(message)s"))
+            root.addHandler(console)
+        old = getattr(self, "_gui_log_handler", None)
+        if old is not None:
+            root.removeHandler(old)
+        self._gui_log_handler = TextboxLogHandler(self._log_box)
+        root.addHandler(self._gui_log_handler)
 
     def _start_local_server(self):
         # SEGURANÇA: serve APENAS ~/Blicsa/.serve (estáticos do webview copiados
@@ -140,7 +161,7 @@ class BlicsaApp(ctk.CTk):
         from core.local_server import prepare_serve_dir, start_server
         self._serve_dir = prepare_serve_dir(OUTPUT_DIR)
         self._local_server_port, self._http_server = start_server(self._serve_dir)
-        print(f"[HTTP Server] Started at http://127.0.0.1:{self._local_server_port} serving {self._serve_dir}")
+        log.info(f"[HTTP Server] Started at http://127.0.0.1:{self._local_server_port} serving {self._serve_dir}")
 
     # ── Skeleton ───────────────────────────────────────────────────────
 
@@ -180,7 +201,7 @@ class BlicsaApp(ctk.CTk):
                 self._project_banner_label.configure(text=f"Projeto Atual: {proj_name}")
                 self._welcome_frame.place_forget()
                 self._switch_tab("import")
-                print(f"[Sistema] Projeto {proj_name} criado/selecionado.")
+                log.info(f"[Sistema] Projeto {proj_name} criado/selecionado.")
             
         def load_proj():
             self._welcome_frame.place_forget()
@@ -457,9 +478,7 @@ class BlicsaApp(ctk.CTk):
         for widget in self.winfo_children():
             widget.destroy()
         self._build_layout()
-        import sys
-        if hasattr(self, '_log_box'):
-            sys.stdout = LogWriter(self._log_box)
+        self._attach_log_handler()
         self._setup_shortcuts()
         self._setup_dnd()
         self._switch_tab(curr_tab)
@@ -745,7 +764,7 @@ class BlicsaApp(ctk.CTk):
                             ctx = "\\n\\n---\\n".join(abstracts)
                             system_prompt += f"\\n\\n{t('blink.rag_contexto')}\\n{ctx}"
                 except Exception as ex:
-                    print(f"[Blink RAG] Error: {ex}")
+                    log.info(f"[Blink RAG] Error: {ex}")
             
             system_prompt = system_prompt[:4000]
             self._research_messages[0] = {"role": "system", "content": system_prompt}
@@ -1681,7 +1700,7 @@ class BlicsaApp(ctk.CTk):
             dfs = []
             for path, fmt in zip(self._file_paths, self._file_formats):
                 method_name = loaders_map.get(fmt, "load_scopus_csv")
-                print(f"[Blicsa] Carregando {Path(path).name} ({fmt}) ...")
+                log.info(f"[Blicsa] Carregando {Path(path).name} ({fmt}) ...")
                 parser = BibliometricParser(path)
                 df = getattr(parser, method_name)()
                 dfs.append(df)
@@ -1690,9 +1709,9 @@ class BlicsaApp(ctk.CTk):
                 raise ValueError("Nenhum arquivo carregado.")
             combined = dfs[0] if len(dfs) == 1 else BibliometricParser.merge(*dfs)
             if len(dfs) > 1:
-                print(f"[OK] Combinados: {len(combined)} registros únicos.\n")
+                log.info(f"[OK] Combinados: {len(combined)} registros únicos.\n")
             self._dataframe = combined
-            print(f"[OK] Total: {len(combined)} registros.\n")
+            log.info(f"[OK] Total: {len(combined)} registros.\n")
             self._refresh_candidate_counts()
             
             # Auto-populate year filter range
@@ -1711,7 +1730,7 @@ class BlicsaApp(ctk.CTk):
             self.after(0, self._set_idle, f"{len(combined)} registros carregados")
             self.after(0, lambda: self._switch_tab("viz"))
         except Exception as exc:
-            print(f"[ERRO] {exc}\n")
+            log.info(f"[ERRO] {exc}\n")
             self.after(0, self._set_idle, "Erro ao carregar")
             self.after(0, lambda e=exc: messagebox.showerror("Erro ao carregar", str(e)))
 
@@ -1966,7 +1985,7 @@ class BlicsaApp(ctk.CTk):
                         n = len(records)
                         if n == 1 or n % BATCH == 0:
                             if not _first_batch[0]:
-                                print(f"[feed] primeiro lote em {_time.perf_counter() - _t_start:.1f}s")
+                                log.info(f"[feed] primeiro lote em {_time.perf_counter() - _t_start:.1f}s")
                                 _first_batch[0] = True
                             push_batch()
                 except InterruptedError:
@@ -1980,7 +1999,7 @@ class BlicsaApp(ctk.CTk):
                         n = len(records)
                         if n == 1 or n % BATCH == 0:
                             if not _first_batch[0]:
-                                print(f"[feed] primeiro lote em {_time.perf_counter() - _t_start:.1f}s")
+                                log.info(f"[feed] primeiro lote em {_time.perf_counter() - _t_start:.1f}s")
                                 _first_batch[0] = True
                             push_batch()
 
@@ -2049,7 +2068,7 @@ class BlicsaApp(ctk.CTk):
                 trail += f" · filtrados por idioma: {lang_filtered_total}"
             if net_error_info:
                 trail += f" · ⚠ interrompido ({net_error_info[0]}, página {net_error_info[1]}) por erro de rede — resultados parciais"
-            print(f"[Search] {trail}")
+            log.info(f"[Search] {trail}")
             
             # Show SearchFeedView for import review
             # DECISÃO DE PRODUTO: importar NÃO deduplica (importar 2x é permitido);
@@ -2180,7 +2199,7 @@ class BlicsaApp(ctk.CTk):
             self.after(0, finalize)
 
         except Exception as e:
-            print(f"[Search Error] {e}")
+            log.info(f"[Search Error] {e}")
             self.after(0, self._set_idle, "Erro na busca")
             self.after(0, lambda e_msg=str(e): messagebox.showerror("Erro na busca", f"Ocorreu um erro ao buscar:\n{e_msg}"))
 
@@ -2197,7 +2216,7 @@ class BlicsaApp(ctk.CTk):
                 text_color=("gray10", "white"),
             )
             self._refresh_candidate_counts()
-            print(f"[Thesaurus] {len(self._thesaurus)} mapeamentos carregados.\n")
+            log.info(f"[Thesaurus] {len(self._thesaurus)} mapeamentos carregados.\n")
         except Exception as exc:
             messagebox.showerror("Erro ao carregar thesaurus", str(exc))
 
@@ -2282,7 +2301,7 @@ class BlicsaApp(ctk.CTk):
     def _mapping_worker(self, allowed_terms: set[str] | None):
         self.after(0, self._set_busy, "Gerando rede…")
         try:
-            print("[Blicsa Engine] Calculando rede...")
+            log.info("[Blicsa Engine] Calculando rede...")
 
             # Apply year filter
             df = self._dataframe.copy()
@@ -2296,7 +2315,7 @@ class BlicsaApp(ctk.CTk):
             if yr_max is not None:
                 df = df[df["year"] <= yr_max]
             if yr_min or yr_max:
-                print(f"[Filtro] Período {yr_min or '?'} – {yr_max or '?'}: {len(df)} registros\n")
+                log.info(f"[Filtro] Período {yr_min or '?'} – {yr_max or '?'}: {len(df)} registros\n")
 
             # Extra stop words
             extra_sw_raw = self._extra_sw_var.get().strip()
@@ -2316,7 +2335,7 @@ class BlicsaApp(ctk.CTk):
                     )
                     passing = sum(1 for n in counts.values() if n >= self._min_occ_var.get())
                     max_nodes = max(1, int(passing * pct / 100))
-                    print(f"[Top {pct}%] → {max_nodes} nós selecionados\n")
+                    log.info(f"[Top {pct}%] → {max_nodes} nós selecionados\n")
                 except ValueError:
                     pass
 
@@ -2361,14 +2380,14 @@ class BlicsaApp(ctk.CTk):
                 isolated = list(nx.isolates(gen.G))
                 if isolated:
                     gen.G.remove_nodes_from(isolated)
-                    print(f"[Pruning] {len(isolated)} nó(s) isolado(s) removido(s)\n")
+                    log.info(f"[Pruning] {len(isolated)} nó(s) isolado(s) removido(s)\n")
             if self._prune_largest_var.get() and not nx.is_connected(gen.G):
                 largest = max(nx.connected_components(gen.G), key=len)
                 remove  = [n for n in gen.G.nodes() if n not in largest]
                 gen.G.remove_nodes_from(remove)
-                print(f"[Pruning] Mantendo maior componente: {len(largest)} nós\n")
+                log.info(f"[Pruning] Mantendo maior componente: {len(largest)} nós\n")
 
-            print("[FA2] Calculando layout ForceAtlas2...")
+            log.info("[FA2] Calculando layout ForceAtlas2...")
             iters   = self._fa2_iter_var.get()
             linlog  = self._linlog_var.get()
             self._positions = compute_fa2_layout(gen.G, iterations=iters, linlog=linlog)
@@ -2387,7 +2406,7 @@ class BlicsaApp(ctk.CTk):
             import webbrowser
             url = f"http://127.0.0.1:{self._local_server_port}/assets/map_template.html"
             webbrowser.open(url)
-            print("[OK] Mapas prontos.\n")
+            log.info("[OK] Mapas prontos.\n")
 
             self.after(0, self._update_stats, stats)
             if getattr(self, '_tv_analises', None):
@@ -2399,7 +2418,7 @@ class BlicsaApp(ctk.CTk):
                 self._show_ai_modal = False
                 self.after(200, lambda: threading.Thread(target=self._trigger_map_ai_insights, daemon=True).start())
         except Exception as exc:
-            print(f"[ERRO] {exc}\n")
+            log.info(f"[ERRO] {exc}\n")
             self.after(0, self._set_idle, "Erro")
             self.after(0, lambda e=exc: messagebox.showerror("Erro", str(e)))
 
@@ -2551,7 +2570,7 @@ class BlicsaApp(ctk.CTk):
             path = str(OUTPUT_DIR / out_name)
             
             fig.write_html(path, include_plotlyjs="cdn")
-            print(f"[Plotly] Interativo salvo → {path}\n")
+            log.info(f"[Plotly] Interativo salvo → {path}\n")
             
             self._open_in_webview("Blicsa - Visualização Interativa", path)
         except Exception as exc:
@@ -2575,7 +2594,7 @@ class BlicsaApp(ctk.CTk):
             import time
             sankey_path = str(OUTPUT_DIR / f"blicsa_sankey_{int(time.time())}.html")
             fig.write_html(sankey_path, include_plotlyjs="cdn")
-            print(f"[Sankey] Diagrama salvo → {sankey_path}\n")
+            log.info(f"[Sankey] Diagrama salvo → {sankey_path}\n")
             self._open_in_webview("Blicsa - Sankey", sankey_path)
             if hasattr(self, '_refresh_gallery'): self._refresh_gallery()
             
@@ -2594,7 +2613,7 @@ class BlicsaApp(ctk.CTk):
             import time
             timeline_path = str(OUTPUT_DIR / f"blicsa_linha_tempo_{int(time.time())}.html")
             fig.write_html(timeline_path, include_plotlyjs="cdn")
-            print(f"[Linha do Tempo] Salva → {timeline_path}\n")
+            log.info(f"[Linha do Tempo] Salva → {timeline_path}\n")
             self._open_in_webview("Blicsa - Linha do Tempo", timeline_path)
             if hasattr(self, '_refresh_gallery'): self._refresh_gallery()
         except Exception as exc:
@@ -2635,7 +2654,7 @@ class BlicsaApp(ctk.CTk):
             import time
             thematic_path = str(OUTPUT_DIR / f"blicsa_mapa_tematico_{int(time.time())}.html")
             fig.write_html(thematic_path, include_plotlyjs="cdn")
-            print(f"[Mapa Temático] Salvo → {thematic_path}\n")
+            log.info(f"[Mapa Temático] Salvo → {thematic_path}\n")
             self._open_in_webview("Blicsa - Mapa Temático", thematic_path)
             if hasattr(self, '_refresh_gallery'): self._refresh_gallery()
             
@@ -2652,7 +2671,7 @@ class BlicsaApp(ctk.CTk):
             import time
             hist_path = str(OUTPUT_DIR / f"blicsa_historiografia_{int(time.time())}.html")
             fig.write_html(hist_path, include_plotlyjs="cdn")
-            print(f"[Historiografia] Salva → {hist_path}\n")
+            log.info(f"[Historiografia] Salva → {hist_path}\n")
             self._open_in_webview("Blicsa - Historiografia", hist_path)
             if hasattr(self, '_refresh_gallery'): self._refresh_gallery()
             
@@ -2763,7 +2782,7 @@ class BlicsaApp(ctk.CTk):
         if self._dataframe is None:
             return
         try:
-            print("[IA] Coletando sumário do mapa e de autores seminais...")
+            log.info("[IA] Coletando sumário do mapa e de autores seminais...")
             df = self._dataframe
             
             # 1. Seminal authors summary
@@ -2875,14 +2894,14 @@ class BlicsaApp(ctk.CTk):
             self.after(0, _start_streaming)
             
         except Exception as exc:
-            print(f"[ERRO IA] {exc}\n")
+            log.info(f"[ERRO IA] {exc}\n")
 
     def _trigger_corpus_ai_insights(self):
         if self._dataframe is None or self._dataframe.empty:
             return
             
         try:
-            print("[IA] Analisando o corpus selecionado...")
+            log.info("[IA] Analisando o corpus selecionado...")
             df = self._dataframe
             
             # Prepare context
@@ -2983,11 +3002,11 @@ class BlicsaApp(ctk.CTk):
             self.after(0, _start_streaming)
             
         except Exception as exc:
-            print(f"[ERRO IA Corpus] {exc}\n")
+            log.info(f"[ERRO IA Corpus] {exc}\n")
 
     def _trigger_import_ai_assistant(self):
         try:
-            print("[IA] Analisando os parâmetros de busca...")
+            log.info("[IA] Analisando os parâmetros de busca...")
             
             query = self._search_query_entry.get().strip()
             if not query:
@@ -3072,7 +3091,7 @@ class BlicsaApp(ctk.CTk):
             self.after(0, _start_streaming)
             
         except Exception as exc:
-            print(f"[ERRO IA Assistente Busca] {exc}\n")
+            log.info(f"[ERRO IA Assistente Busca] {exc}\n")
 
 
     def _show_seminal_insights(self, text: str):
@@ -3242,7 +3261,7 @@ class BlicsaApp(ctk.CTk):
                     f.write("\n".join(content_lines))
                 created_count += 1
             except Exception as e:
-                print(f"[ERRO ao gravar arquivo {txt_filename}] {e}")
+                log.info(f"[ERRO ao gravar arquivo {txt_filename}] {e}")
                 
         # 4. Finalização na main thread do Tkinter
         def _done():
@@ -3374,7 +3393,7 @@ class BlicsaApp(ctk.CTk):
         if path := filedialog.asksaveasfilename(
                 defaultextension=".csv", filetypes=[("CSV", "*.csv")]):
             gen.export_rankings_csv(path)
-            print(f"[Export] Nós → {path}")
+            log.info(f"[Export] Nós → {path}")
 
     def _export_edges_csv(self):
         if not (gen := self._require_gen()):
@@ -3382,7 +3401,7 @@ class BlicsaApp(ctk.CTk):
         if path := filedialog.asksaveasfilename(
                 defaultextension=".csv", filetypes=[("CSV", "*.csv")]):
             gen.export_edges_csv(path)
-            print(f"[Export] Arestas → {path}")
+            log.info(f"[Export] Arestas → {path}")
 
     def _export_df_csv(self):
         if self._dataframe is None:
@@ -3391,7 +3410,7 @@ class BlicsaApp(ctk.CTk):
         if path := filedialog.asksaveasfilename(
                 defaultextension=".csv", filetypes=[("CSV", "*.csv")]):
             self._dataframe.to_csv(path, index=False, encoding="utf-8-sig")
-            print(f"[Export] DataFrame → {path}")
+            log.info(f"[Export] DataFrame → {path}")
 
     def _export_clusters_txt(self):
         if not (gen := self._require_gen()):
@@ -3405,7 +3424,7 @@ class BlicsaApp(ctk.CTk):
                         f"{c['size']} nós  |  {c['color']}\n"
                         f"  Top nós: {', '.join(c['top_nodes'])}\n\n"
                     )
-            print(f"[Export] Clusters → {path}")
+            log.info(f"[Export] Clusters → {path}")
 
     def _export_plotly_html(self):
         if not Path(PLOTLY_PATH).exists():
@@ -3415,7 +3434,7 @@ class BlicsaApp(ctk.CTk):
                 defaultextension=".html", filetypes=[("HTML", "*.html")]):
             import shutil
             shutil.copy(PLOTLY_PATH, path)
-            print(f"[Export] Plotly HTML → {path}")
+            log.info(f"[Export] Plotly HTML → {path}")
 
     def _export_pyvis_html(self):
         if not Path(MAP_PATH).exists():
@@ -3425,7 +3444,7 @@ class BlicsaApp(ctk.CTk):
                 defaultextension=".html", filetypes=[("HTML", "*.html")]):
             import shutil
             shutil.copy(MAP_PATH, path)
-            print(f"[Export] PyVis HTML → {path}")
+            log.info(f"[Export] PyVis HTML → {path}")
 
     def _export_png(self):
         if self._map_canvas is None:
@@ -3457,7 +3476,7 @@ class BlicsaApp(ctk.CTk):
         if path := filedialog.asksaveasfilename(
                 defaultextension=".xlsx", filetypes=[("Excel", "*.xlsx")]):
             gen.export_excel(path, df_raw=self._dataframe)
-            print(f"[Export] Excel → {path}\n")
+            log.info(f"[Export] Excel → {path}\n")
 
     def _export_gml(self):
         if not (gen := self._require_gen()):
@@ -3465,7 +3484,7 @@ class BlicsaApp(ctk.CTk):
         if path := filedialog.asksaveasfilename(
                 defaultextension=".gml", filetypes=[("GML", "*.gml")]):
             gen.export_gml(path)
-            print(f"[Export] GML → {path}")
+            log.info(f"[Export] GML → {path}")
 
     def _export_gexf(self):
         if not (gen := self._require_gen()):
@@ -3473,7 +3492,7 @@ class BlicsaApp(ctk.CTk):
         if path := filedialog.asksaveasfilename(
                 defaultextension=".gexf", filetypes=[("GEXF", "*.gexf")]):
             gen.export_gexf(path)
-            print(f"[Export] GEXF → {path}\n")
+            log.info(f"[Export] GEXF → {path}\n")
 
     def _export_pajek(self):
         if not (gen := self._require_gen()):
@@ -3481,7 +3500,7 @@ class BlicsaApp(ctk.CTk):
         if path := filedialog.asksaveasfilename(
                 defaultextension=".net", filetypes=[("Pajek", "*.net")]):
             gen.export_pajek(path)
-            print(f"[Export] Pajek → {path}")
+            log.info(f"[Export] Pajek → {path}")
 
     def _export_json(self):
         if not (gen := self._require_gen()):
@@ -3489,7 +3508,7 @@ class BlicsaApp(ctk.CTk):
         if path := filedialog.asksaveasfilename(
                 defaultextension=".json", filetypes=[("JSON", "*.json")]):
             gen.export_json_topology(path, positions=self._positions)
-            print(f"[Export] JSON topologia → {path}")
+            log.info(f"[Export] JSON topologia → {path}")
 
     def _export_vosviewer(self):
         if not (gen := self._require_gen()):
@@ -3505,8 +3524,8 @@ class BlicsaApp(ctk.CTk):
         if net_path == map_path:
             net_path = map_path + "_network.txt"
         gen.export_vosviewer(map_path, net_path, positions=self._positions)
-        print(f"[Export] VOSviewer Map → {map_path}")
-        print(f"[Export] VOSviewer Network → {net_path}")
+        log.info(f"[Export] VOSviewer Map → {map_path}")
+        log.info(f"[Export] VOSviewer Network → {net_path}")
         messagebox.showinfo("Exportação Concluída", f"Arquivos do VOSviewer exportados com sucesso!\n\nMapa: {map_path}\nRede: {net_path}")
 
     def _save_project_gui(self):
@@ -3670,14 +3689,14 @@ class BlicsaApp(ctk.CTk):
         if self._dataframe is None or self._dataframe.empty:
             messagebox.showwarning("Sem dados", "Carregue um corpus primeiro.")
             return
-        print("[Dedup] Procurando duplicatas…")
+        log.info("[Dedup] Procurando duplicatas…")
         df    = self._dataframe
         dupes = find_duplicates(df, title_threshold=0.93)
         if not dupes:
             messagebox.showinfo("Blicsa", t("dedup.none"))
-            print("[Dedup] Nenhuma duplicata.\n")
+            log.info("[Dedup] Nenhuma duplicata.\n")
             return
-        print(f"[Dedup] {len(dupes)} par(es) encontrado(s).\n")
+        log.info(f"[Dedup] {len(dupes)} par(es) encontrado(s).\n")
         DedupPreviewDialog(self, df, dupes, self._apply_dedup)
 
     def _apply_dedup(self, dupes: list):
@@ -3697,7 +3716,7 @@ class BlicsaApp(ctk.CTk):
         msg = t("dedup.removed", k=removed, x=by.get("doi", 0),
                 y=by.get("title", 0), z=by.get("author_year", 0))
         self._last_dedup_msg = msg
-        print(f"[Dedup] {msg} Base: {len(self._dataframe)} registros.\n")
+        log.info(f"[Dedup] {msg} Base: {len(self._dataframe)} registros.\n")
         self._generator = None
         self.after(0, self._update_stats_tab)
         self.after(0, self._refresh_corpus_tab)
@@ -3783,7 +3802,7 @@ class BlicsaApp(ctk.CTk):
                     defaultextension=".png", filetypes=[("PNG", "*.png"), ("SVG", "*.svg")])
                 if path:
                     fig.savefig(path, dpi=200, bbox_inches="tight", facecolor="#0d0d1f")
-                    print(f"[Word Cloud] Salva → {path}\n")
+                    log.info(f"[Word Cloud] Salva → {path}\n")
 
             ctk.CTkButton(
                 win, text="💾  Salvar", height=34,
@@ -3837,17 +3856,17 @@ class BlicsaApp(ctk.CTk):
     def _label_clusters_worker(self):
         try:
             self.after(0, self._set_busy, "IA nomeando clusters…")
-            print("[IA] Nomeando clusters com IA...")
+            log.info("[IA] Nomeando clusters com IA...")
             analyst = self._get_ai_analyst()
             report = self._generator.get_cluster_report()
             labels = analyst.label_clusters(report, context=self._field_var.get())
             self._cluster_labels = labels
 
             self.after(0, self._set_idle, f"{len(labels)} clusters nomeados")
-            print(f"[IA] {len(labels)} clusters nomeados.\n")
+            log.info(f"[IA] {len(labels)} clusters nomeados.\n")
         except Exception as exc:
             self.after(0, self._set_idle, "Erro ao nomear clusters")
-            print(f"[ERRO labeling] {exc}\n")
+            log.info(f"[ERRO labeling] {exc}\n")
             self.after(0, lambda e=exc: messagebox.showerror("Erro IA", f"Erro ao nomear clusters com IA:\n{e}"))
 
     # ── Config save / load ─────────────────────────────────────────────
@@ -3878,7 +3897,7 @@ class BlicsaApp(ctk.CTk):
         }
         with open(path, "w", encoding="utf-8") as f:
             json.dump(config, f, indent=2, ensure_ascii=False)
-        print(f"[Config] Salvo → {path}\n")
+        log.info(f"[Config] Salvo → {path}\n")
 
     def _load_config(self):
         path = filedialog.askopenfilename(
@@ -3914,7 +3933,7 @@ class BlicsaApp(ctk.CTk):
             if (v := config.get(key)) is not None:
                 var.set(str(v))
         self._update_thresh_label()
-        print(f"[Config] Carregado ← {path}\n")
+        log.info(f"[Config] Carregado ← {path}\n")
 
     def _build_tab_stats(self) -> ctk.CTkFrame:
         frame = self._tab()
