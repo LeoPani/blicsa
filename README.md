@@ -8,7 +8,7 @@ Maps scientific literature into interactive networks to reveal research fronts, 
 ![Python](https://img.shields.io/badge/Python-3.11%2B-blue)
 ![License](https://img.shields.io/badge/License-MIT-green)
 ![Platform](https://img.shields.io/badge/Platform-macOS%20%7C%20Windows%20%7C%20Linux-lightgrey)
-[![CI](https://github.com/LeoPani/PyBibliomics/actions/workflows/ci.yml/badge.svg)](https://github.com/LeoPani/PyBibliomics/actions/workflows/ci.yml)
+[![CI](https://github.com/LeoPani/blicsa/actions/workflows/ci.yml/badge.svg)](https://github.com/LeoPani/blicsa/actions/workflows/ci.yml)
 
 ---
 
@@ -93,10 +93,10 @@ Pre-compiled binaries are published automatically via GitHub Actions on every ta
 
 | Platform | Download | Notes |
 |----------|----------|-------|
-| **Windows** | [`Blicsa_Setup.exe`](https://github.com/LeoPani/PyBibliomics/releases/latest) | Recommended — includes installer |
-| **Windows** | [`Blicsa-windows-portable.zip`](https://github.com/LeoPani/PyBibliomics/releases/latest) | Portable, extract and run |
-| **macOS** | [`Blicsa.dmg`](https://github.com/LeoPani/PyBibliomics/releases/latest) | Open and drag to Applications |
-| **Linux** | [`Blicsa-x86_64.AppImage`](https://github.com/LeoPani/PyBibliomics/releases/latest) | `chmod +x Blicsa-x86_64.AppImage` then run |
+| **Windows** | [`Blicsa_Setup.exe`](https://github.com/LeoPani/blicsa/releases/latest) | Recommended — includes installer |
+| **Windows** | [`Blicsa-windows-portable.zip`](https://github.com/LeoPani/blicsa/releases/latest) | Portable, extract and run |
+| **macOS** | [`Blicsa.dmg`](https://github.com/LeoPani/blicsa/releases/latest) | Open and drag to Applications |
+| **Linux** | [`Blicsa-x86_64.AppImage`](https://github.com/LeoPani/blicsa/releases/latest) | `chmod +x Blicsa-x86_64.AppImage` then run |
 
 Download `CHECKSUMS.txt` alongside your file to verify integrity:
 
@@ -114,8 +114,8 @@ sha256sum -c CHECKSUMS.txt
 To run directly from source code:
 
 ```bash
-git clone https://github.com/LeoPani/PyBibliomics.git
-cd PyBibliomics
+git clone https://github.com/LeoPani/blicsa.git
+cd blicsa
 pip install -r requirements.txt
 python main.py
 ```
@@ -138,7 +138,7 @@ python main.py
 ## Project Structure
 
 ```
-PyBibliomics/
+blicsa/
 ├── main.py                  # CustomTkinter GUI wrapper
 ├── Blicsa.spec              # PyInstaller spec file for multi-target packaging
 ├── core/

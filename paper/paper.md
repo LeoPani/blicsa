@@ -19,7 +19,7 @@ bibliography: paper.bib
 
 # Summary
 
-`Blicsa` (PyBibliomics) is a desktop application written in Python using CustomTkinter that facilitates bibliometric and scientometric analysis. It enables researchers to import, merge, and deduplicate scientific literature records from sources like Scopus, Web of Science, PubMed, OpenAlex, and Crossref.
+`Blicsa` (repository: [LeoPani/blicsa](https://github.com/LeoPani/blicsa)) is a desktop application written in Python using CustomTkinter that facilitates bibliometric and scientometric analysis. It enables researchers to import, merge, and deduplicate scientific literature records from sources like Scopus, Web of Science, PubMed, OpenAlex, and Crossref.
 
 # Statement of Need
 
