@@ -109,5 +109,20 @@
   "dedup.apply": "Aplicar",
   "dedup.cancel": "Cancelar",
   "dedup.removed": "Removidos {k} duplicados ({x} por DOI, {y} por título, {z} por autor+ano).",
-  "dedup.none": "Nenhuma duplicata encontrada."
+  "dedup.none": "Nenhuma duplicata encontrada.",
+  "fields.title": "Busca por campo (OpenAlex)",
+  "fields.add": "+ campo",
+  "fields.placeholder": "termo…",
+  "fields.all": "Tudo",
+  "fields.field_title": "Título",
+  "fields.author": "Autor",
+  "fields.abstract": "Abstract",
+  "preview.button": "👁 Prévia",
+  "preview.openalex_only": "A prévia rápida está disponível apenas para o OpenAlex.",
+  "preview.loading": "Consultando…",
+  "preview.count": "Encontrados {total} · mostrando {frm}–{to} · nada baixado ainda",
+  "preview.empty": "Nenhum resultado.",
+  "preview.page": "pág {page}/{max}",
+  "preview.harvest": "Colher com limite atual",
+  "preview.close": "Fechar"
 }

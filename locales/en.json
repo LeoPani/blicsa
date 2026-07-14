@@ -109,5 +109,20 @@
   "dedup.apply": "Apply",
   "dedup.cancel": "Cancel",
   "dedup.removed": "Removed {k} duplicates ({x} by DOI, {y} by title, {z} by author+year).",
-  "dedup.none": "No duplicates found."
+  "dedup.none": "No duplicates found.",
+  "fields.title": "Field search (OpenAlex)",
+  "fields.add": "+ field",
+  "fields.placeholder": "term…",
+  "fields.all": "All",
+  "fields.field_title": "Title",
+  "fields.author": "Author",
+  "fields.abstract": "Abstract",
+  "preview.button": "👁 Preview",
+  "preview.openalex_only": "Quick preview is available for OpenAlex only.",
+  "preview.loading": "Querying…",
+  "preview.count": "Found {total} · showing {frm}–{to} · nothing downloaded yet",
+  "preview.empty": "No results.",
+  "preview.page": "page {page}/{max}",
+  "preview.harvest": "Harvest with current limit",
+  "preview.close": "Close"
 }

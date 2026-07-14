@@ -904,6 +904,7 @@ class BlicsaApp(ctk.CTk):
         self._search_unlimited_chk.pack(side="left", padx=4)
         
         self._btn(act_sf, "⚙ Avançada", self._open_query_builder, height=30).pack(side="left", padx=4)
+        self._btn(act_sf, t("preview.button"), self._run_preview, height=30, color=INK, hover=INK_HOV).pack(side="left", padx=4)
         self._btn(act_sf, "🔍 Buscar", self._on_gui_search, height=30, color=RED, hover=RED_HOV).pack(side="left", padx=4)
         self._btn(act_sf, "✨ Blink", self._trigger_import_ai_assistant, height=30, color=YELLOW, hover=YELLOW_HOV).pack(side="left", padx=4)
         
@@ -944,6 +945,26 @@ class BlicsaApp(ctk.CTk):
         self._search_sort = ctk.CTkOptionMenu(filter_f, variable=self._search_sort_var, fg_color=WHITE_CARD, text_color=INK, button_color=WHITE_CARD, button_hover_color=CARD2_BG,
                                               values=["Relevância", "Mais citados", "Mais recentes"], width=130)
         self._search_sort.pack(side="left", padx=4)
+
+        # ── Busca avançada por campo (cherry-pick do redesign estilo Scopus;
+        # só OpenAlex suporta busca por campo via _oa_filter) ──
+        self._FIELD_OPTIONS = {t("fields.all"): "all", t("fields.field_title"): "title",
+                               t("fields.author"): "author", t("fields.abstract"): "abstract"}
+        ff = ctk.CTkFrame(scard, fg_color="transparent")
+        ff.grid(row=6, column=0, columnspan=2, padx=16, pady=(2, 12), sticky="ew")
+        ff.grid_columnconfigure(0, weight=1)
+        ctk.CTkLabel(ff, text=t("fields.title"), font=ctk.CTkFont(size=12, weight="bold"),
+                     text_color=INK).grid(row=0, column=0, sticky="w")
+        self._field_rows_frame = ctk.CTkFrame(ff, fg_color="transparent")
+        self._field_rows_frame.grid(row=1, column=0, sticky="ew")
+        self._field_rows_frame.grid_columnconfigure(1, weight=1)
+        self._field_rows = []
+        self._add_field_row()
+        self._add_field_row()
+        ctk.CTkButton(ff, text=t("fields.add"), width=90, height=26, corner_radius=0,
+                      fg_color=WHITE_CARD, text_color=INK, hover_color=CARD2_BG,
+                      border_width=1, border_color=INK,
+                      command=self._add_field_row).grid(row=2, column=0, sticky="w", pady=(2, 0))
 
         # File Import Hero Zone (Bottom)
         fcard = self._card(frame, 1)
@@ -1741,20 +1762,8 @@ class BlicsaApp(ctk.CTk):
             self._search_cancel_btn.pack_forget()
 
     def _on_gui_search(self):
-        typed_query = self._search_query_entry.get().strip()
         provider = self._search_provider_var.get()
-
-        # --- BLICSA TRANSLATOR (não-destrutivo: o campo do usuário fica intacto) ---
-        query = typed_query
-        if typed_query and not typed_query.startswith('"') and "(" not in typed_query:
-            if provider == "openalex":
-                query = f'"{typed_query}"'
-            elif provider == "pubmed":
-                query = f'{typed_query}[Title/Abstract]'
-        if query != typed_query:
-            self._interpreted_lbl.configure(text=t("search.interpreted", query=query))
-        else:
-            self._interpreted_lbl.configure(text="")
+        query = self._effective_query()
 
         # --- DIÁRIO DE PESQUISA ---
         import os, json, datetime
@@ -1785,27 +1794,16 @@ class BlicsaApp(ctk.CTk):
         with open(diary_path, "w", encoding="utf-8") as df:
             json.dump(diary, df, indent=2, ensure_ascii=False)
 
-        if not query:
+        fields = self._collect_fields() if provider == "openalex" else []
+        if not query and not fields:
             messagebox.showwarning("Campo vazio", "Por favor, digite um termo de busca.")
             return
 
-        # Limite: default 1000, configurável até 10000; Ilimitado = sentinela grande.
-        UNLIMITED, DEFAULT_LIMIT, MAX_LIMIT = 10_000_000, 1000, 10_000
-        if self._search_unlimited_var.get():
-            max_results = UNLIMITED
-        else:
-            try:
-                max_results = int(self._search_max_entry.get().strip() or str(DEFAULT_LIMIT))
-            except ValueError:
-                max_results = DEFAULT_LIMIT
-            if max_results < 1:
-                max_results = DEFAULT_LIMIT
-            if max_results > MAX_LIMIT:
-                max_results = MAX_LIMIT
-                self._search_max_entry.delete(0, "end")
-                self._search_max_entry.insert(0, str(MAX_LIMIT))
-            
+        max_results = self._current_limit()
+
         filters = {}
+        if fields:
+            filters["fields"] = fields
         if self._search_year_start.get().strip(): filters["year_start"] = self._search_year_start.get().strip()
         if self._search_year_end.get().strip(): filters["year_end"] = self._search_year_end.get().strip()
         
@@ -1834,6 +1832,181 @@ class BlicsaApp(ctk.CTk):
             n = self._count_for_provider(provider, query, filters)
             self.after(0, lambda: self._search_after_count(n, query, provider, max_results, filters))
         threading.Thread(target=_count_worker, daemon=True).start()
+
+    def _effective_query(self) -> str:
+        """BLICSA TRANSLATOR não-destrutivo: o campo do usuário fica intacto;
+        a query interpretada aparece no label 'Interpretado como:'."""
+        typed = self._search_query_entry.get().strip()
+        provider = self._search_provider_var.get()
+        query = typed
+        if typed and not typed.startswith('"') and "(" not in typed:
+            if provider == "openalex":
+                query = f'"{typed}"'
+            elif provider == "pubmed":
+                query = f'{typed}[Title/Abstract]'
+        if query != typed:
+            self._interpreted_lbl.configure(text=t("search.interpreted", query=query))
+        else:
+            self._interpreted_lbl.configure(text="")
+        return query
+
+    def _current_limit(self) -> int:
+        """Limite da colheita: default 1000, teto 10000, Ilimitado = sentinela."""
+        UNLIMITED, DEFAULT_LIMIT, MAX_LIMIT = 10_000_000, 1000, 10_000
+        if self._search_unlimited_var.get():
+            return UNLIMITED
+        try:
+            n = int(self._search_max_entry.get().strip() or str(DEFAULT_LIMIT))
+        except ValueError:
+            n = DEFAULT_LIMIT
+        if n < 1:
+            n = DEFAULT_LIMIT
+        if n > MAX_LIMIT:
+            n = MAX_LIMIT
+            self._search_max_entry.delete(0, "end")
+            self._search_max_entry.insert(0, str(MAX_LIMIT))
+        return n
+
+    # ── Busca por campo + prévia paginada (cherry-pick estilo Scopus) ──
+    def _add_field_row(self):
+        i = len(self._field_rows)
+        fvar = ctk.StringVar(value=list(self._FIELD_OPTIONS)[0] if i == 0 else t("fields.field_title"))
+        menu = ctk.CTkOptionMenu(self._field_rows_frame, variable=fvar, width=110, corner_radius=0,
+                                 fg_color=WHITE_CARD, text_color=INK, button_color=WHITE_CARD,
+                                 button_hover_color=CARD2_BG, values=list(self._FIELD_OPTIONS))
+        menu.grid(row=i, column=0, padx=(0, 6), pady=2, sticky="w")
+        ent = ctk.CTkEntry(self._field_rows_frame, placeholder_text=t("fields.placeholder"),
+                           placeholder_text_color=MUTED, fg_color=WHITE_CARD, text_color=INK, height=30)
+        ent.grid(row=i, column=1, pady=2, sticky="ew")
+        self._field_rows.append((fvar, ent))
+
+    def _collect_fields(self) -> list:
+        out = []
+        for fvar, ent in getattr(self, "_field_rows", []):
+            v = ent.get().strip()
+            if v:
+                out.append((self._FIELD_OPTIONS.get(fvar.get(), "all"), v))
+        return out
+
+    def _run_preview(self, page: int = 1):
+        """Páginas rápidas via OpenAlexProvider.browse(): consulta UMA página
+        server-side (nada é baixado em massa)."""
+        if self._search_provider_var.get() != "openalex":
+            messagebox.showinfo("Blicsa", t("preview.openalex_only"))
+            return
+        query = self._effective_query()
+        fields = self._collect_fields()
+        if not query and not fields:
+            messagebox.showwarning("Campo vazio", "Por favor, digite um termo de busca.")
+            return
+        filters = {}
+        if fields:
+            filters["fields"] = fields
+        if self._search_year_start.get().strip(): filters["year_start"] = self._search_year_start.get().strip()
+        if self._search_year_end.get().strip(): filters["year_end"] = self._search_year_end.get().strip()
+        if self._search_type_var.get() != "Todos": filters["type"] = self._search_type_var.get()
+        if self._search_lang_var.get() != "Todos": filters["language"] = self._search_lang_var.get()
+        if self._search_oa_var.get(): filters["is_oa"] = True
+        filters["sort"] = {"Relevância": "relevance", "Mais citados": "citations",
+                           "Mais recentes": "date"}.get(self._search_sort_var.get(), "relevance")
+
+        self._preview_state = {"query": query, "filters": filters, "page": page, "per_page": 25}
+        self._ensure_preview_frame()
+        self._preview_count_lbl.configure(text=t("preview.loading"))
+
+        import threading
+        def worker():
+            from core.sources import OpenAlexProvider
+            err, recs, total = None, [], 0
+            try:
+                recs, total = OpenAlexProvider().browse(query, filters, page=page, per_page=25)
+            except Exception as e:
+                err = str(e)
+            self.after(0, lambda: self._render_preview(recs, total, err))
+        threading.Thread(target=worker, daemon=True).start()
+
+    def _ensure_preview_frame(self):
+        if getattr(self, "_preview_frame", None) is not None and self._preview_frame.winfo_exists():
+            self._preview_frame.grid()
+            self._preview_frame.tkraise()
+            return
+        parent = self._tabs["import"]
+        parent.grid_rowconfigure(1, weight=1)
+        pf = ctk.CTkFrame(parent, fg_color=CARD_BG, corner_radius=0, border_width=2, border_color=INK)
+        pf.grid(row=1, column=0, padx=24, pady=8, sticky="nsew")
+        pf.grid_columnconfigure(0, weight=1)
+        pf.grid_rowconfigure(1, weight=1)
+        self._preview_frame = pf
+
+        hdr = ctk.CTkFrame(pf, fg_color="transparent")
+        hdr.grid(row=0, column=0, sticky="ew", padx=12, pady=(10, 2))
+        self._preview_count_lbl = ctk.CTkLabel(hdr, text="", font=ctk.CTkFont(size=14, weight="bold"), text_color=INK)
+        self._preview_count_lbl.pack(side="left")
+        ctk.CTkButton(hdr, text=t("preview.close"), width=90, height=28, corner_radius=0,
+                      fg_color=WHITE_CARD, text_color=INK, hover_color=CARD2_BG,
+                      border_width=1, border_color=INK,
+                      command=lambda: self._preview_frame.grid_remove()).pack(side="right")
+
+        self._preview_list = ctk.CTkScrollableFrame(pf, fg_color="transparent")
+        self._preview_list.grid(row=1, column=0, sticky="nsew", padx=12, pady=4)
+        self._preview_list.grid_columnconfigure(0, weight=1)
+
+        bar = ctk.CTkFrame(pf, fg_color=INK, corner_radius=0, height=48)
+        bar.grid(row=2, column=0, sticky="ew")
+        bar.grid_propagate(False)
+        ctk.CTkButton(bar, text="◀", width=44, corner_radius=0, fg_color=WHITE_CARD, text_color=INK,
+                      command=lambda: self._preview_page_step(-1)).pack(side="left", padx=(12, 4), pady=8)
+        self._preview_page_lbl = ctk.CTkLabel(bar, text="—", text_color=WHITE_CARD,
+                                              font=ctk.CTkFont(size=13, weight="bold"))
+        self._preview_page_lbl.pack(side="left", padx=8)
+        ctk.CTkButton(bar, text="▶", width=44, corner_radius=0, fg_color=WHITE_CARD, text_color=INK,
+                      command=lambda: self._preview_page_step(1)).pack(side="left", padx=4)
+        self._preview_harvest_btn = ctk.CTkButton(
+            bar, text=t("preview.harvest"), corner_radius=0, fg_color=RED, hover_color=RED_HOV,
+            text_color=WHITE_CARD, font=ctk.CTkFont(weight="bold"),
+            command=self._harvest_from_preview)
+        self._preview_harvest_btn.pack(side="right", padx=12)
+
+    def _render_preview(self, recs, total, err):
+        st = getattr(self, "_preview_state", None)
+        if st is None or not self._preview_frame.winfo_exists():
+            return
+        for w in self._preview_list.winfo_children():
+            w.destroy()
+        if err:
+            self._preview_count_lbl.configure(text=f"Erro: {err}")
+            return
+        st["total"] = total
+        page, per_page = st["page"], st["per_page"]
+        if total:
+            frm = (page - 1) * per_page + 1
+            to = min(page * per_page, total)
+            self._preview_count_lbl.configure(text=t("preview.count", total=total, frm=frm, to=to))
+        else:
+            self._preview_count_lbl.configure(text=t("preview.empty"))
+        from ui.search_feed import ArticleCard
+        for i, r in enumerate(recs):
+            ArticleCard(self._preview_list, r, lambda *a, **k: None, i).pack(fill="x", pady=4)
+        max_page = max(1, (min(total, 10_000) + per_page - 1) // per_page)
+        self._preview_page_lbl.configure(text=t("preview.page", page=page, max=max_page))
+
+    def _preview_page_step(self, delta: int):
+        st = getattr(self, "_preview_state", None)
+        if not st:
+            return
+        new_page = st["page"] + delta
+        max_page = max(1, (min(st.get("total", 0), 10_000) + st["per_page"] - 1) // st["per_page"])
+        if 1 <= new_page <= max_page:
+            self._run_preview(page=new_page)
+
+    def _harvest_from_preview(self):
+        """Colhe o conjunto da prévia respeitando o LIMITE atual da UI
+        (diferente do redesign revertido, que baixava o total inteiro)."""
+        st = getattr(self, "_preview_state", None)
+        if not st or not st.get("total"):
+            return
+        self._preview_frame.grid_remove()
+        self.search_to_dataset(st["query"], "openalex", self._current_limit(), st["filters"])
 
     def _count_for_provider(self, provider, query, filters):
         """Contagem barata da base selecionada (fonte única). None se falhar."""

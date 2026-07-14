@@ -110,5 +110,20 @@
   "dedup.apply": "Appliquer",
   "dedup.cancel": "Annuler",
   "dedup.removed": "{k} doublons supprimés ({x} par DOI, {y} par titre, {z} par auteur+année).",
-  "dedup.none": "Aucun doublon trouvé."
+  "dedup.none": "Aucun doublon trouvé.",
+  "fields.title": "Recherche par champ (OpenAlex)",
+  "fields.add": "+ champ",
+  "fields.placeholder": "terme…",
+  "fields.all": "Tout",
+  "fields.field_title": "Titre",
+  "fields.author": "Auteur",
+  "fields.abstract": "Résumé",
+  "preview.button": "👁 Aperçu",
+  "preview.openalex_only": "L'aperçu rapide n'est disponible que pour OpenAlex.",
+  "preview.loading": "Consultation…",
+  "preview.count": "Trouvés {total} · affichage {frm}–{to} · rien téléchargé encore",
+  "preview.empty": "Aucun résultat.",
+  "preview.page": "page {page}/{max}",
+  "preview.harvest": "Récolter avec la limite actuelle",
+  "preview.close": "Fermer"
 }
