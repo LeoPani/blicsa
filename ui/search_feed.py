@@ -414,10 +414,11 @@ class SearchFeedView(ctk.CTkFrame):
         lang_options = ["Todos"] + [lang for lang, _ in Counter(languages).most_common()]
         ctk.CTkOptionMenu(self.sidebar, variable=self.lang_var, values=lang_options, command=self._apply_filters, corner_radius=0).pack(fill="x", pady=4)
         
-        # Opções de Importação
+        # Opções de Importação — dedup desligada por padrão: adicione cada base ao corpus
+        # e deduplique depois (botão "Deduplicar" na Coletar).
         ctk.CTkLabel(self.sidebar, text="Importação", font=ctk.CTkFont(weight="bold")).pack(anchor="w", pady=(16, 0))
-        self.dedup_var = ctk.BooleanVar(value=True)
-        ctk.CTkCheckBox(self.sidebar, text="Fuzzy Deduplicate", variable=self.dedup_var, corner_radius=0).pack(anchor="w", pady=4)
+        self.dedup_var = ctk.BooleanVar(value=False)
+        ctk.CTkCheckBox(self.sidebar, text="Deduplicar ao importar", variable=self.dedup_var, corner_radius=0).pack(anchor="w", pady=4)
         
     def _apply_filters(self, *args):
         if hasattr(self, "year_slider"):

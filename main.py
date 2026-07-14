@@ -161,6 +161,60 @@ class BlicsaApp(ctk.CTk):
         print(f"[HTTP Server] Started at http://127.0.0.1:{self._local_server_port} serving {OUTPUT_DIR}")
 
     # ── Skeleton ───────────────────────────────────────────────────────
+
+    def _build_welcome_screen(self):
+        from ui.design_tokens import WHITE_CARD, INK, BLUE, PAPER
+        from PIL import Image
+        import os
+        
+        self._welcome_frame = ctk.CTkFrame(self, fg_color=PAPER, corner_radius=0)
+        self._welcome_frame.place(relx=0, rely=0, relwidth=1, relheight=1)
+        
+        center = ctk.CTkFrame(self._welcome_frame, fg_color="transparent")
+        center.place(relx=0.5, rely=0.5, anchor="center")
+        
+        try:
+            logo_img = ctk.CTkImage(light_image=Image.open("assets/branding/blicsa-logo-vertical.png"), size=(180, 180))
+            ctk.CTkLabel(center, image=logo_img, text="").pack(pady=(0, 20))
+        except:
+            ctk.CTkLabel(center, text="Blicsa", font=ctk.CTkFont(size=56, weight="bold"), text_color=INK).pack(pady=(0, 20))
+            
+        ctk.CTkLabel(center, text="Bem-vindo! Inicie uma nova jornada de pesquisa ou continue de onde parou.", 
+                     font=ctk.CTkFont(size=18), text_color="#666666").pack(pady=(0, 40))
+                     
+        cards_frame = ctk.CTkFrame(center, fg_color="transparent")
+        cards_frame.pack()
+        
+        def new_proj():
+            dialog = ctk.CTkInputDialog(text="Digite o nome do novo projeto (Pesquisa):", title="Novo Projeto")
+            proj_name = dialog.get_input()
+            if proj_name and proj_name.strip():
+                proj_name = proj_name.strip()
+                projects_dir = os.path.expanduser("~/Blicsa/projects")
+                os.makedirs(projects_dir, exist_ok=True)
+                path = os.path.join(projects_dir, f"{proj_name}.blicsa")
+                
+                self._current_project_path = path
+                self._project_banner_label.configure(text=f"Projeto Atual: {proj_name}")
+                self._welcome_frame.place_forget()
+                self._switch_tab("import")
+                print(f"[Sistema] Projeto {proj_name} criado/selecionado.")
+            
+        def load_proj():
+            self._welcome_frame.place_forget()
+            self._switch_tab("projects")
+            
+        c1 = ctk.CTkButton(cards_frame, text="✨\n\nComeçar\nNova Pesquisa", font=ctk.CTkFont(size=24, weight="bold"), 
+                           width=260, height=260, fg_color=BLUE, hover_color="#153a7a", corner_radius=20,
+                           command=new_proj)
+        c1.grid(row=0, column=0, padx=30)
+        
+        c2 = ctk.CTkButton(cards_frame, text="📂\n\nCarregar\nPesquisa", font=ctk.CTkFont(size=24, weight="bold"), 
+                           width=260, height=260, fg_color=WHITE_CARD, text_color=INK, hover_color="#E5E5E5", 
+                           border_width=2, border_color=INK, corner_radius=20,
+                           command=load_proj)
+        c2.grid(row=0, column=1, padx=30)
+
     def _build_layout(self):
         self.grid_columnconfigure(1, weight=1)
         self.grid_rowconfigure(0, weight=1)
@@ -168,8 +222,21 @@ class BlicsaApp(ctk.CTk):
 
         self._content = ctk.CTkFrame(self, fg_color=CONTENT_BG, corner_radius=0)
         self._content.grid(row=0, column=1, sticky="nsew")
+        
         self._content.grid_columnconfigure(0, weight=1)
-        self._content.grid_rowconfigure(0, weight=1)
+        self._content.grid_rowconfigure(1, weight=1)
+        
+        # Banner
+        from ui.design_tokens import BLUE
+        self._project_banner = ctk.CTkFrame(self._content, fg_color=BLUE, corner_radius=0, height=30)
+        self._project_banner.grid(row=0, column=0, sticky="ew")
+        self._project_banner_label = ctk.CTkLabel(self._project_banner, text="Projeto Atual: Nenhum projeto selecionado", text_color="white", font=ctk.CTkFont(weight="bold", size=13))
+        self._project_banner_label.pack(pady=4)
+
+        self._tabs_container = ctk.CTkFrame(self._content, fg_color="transparent")
+        self._tabs_container.grid(row=1, column=0, sticky="nsew")
+        self._tabs_container.grid_columnconfigure(0, weight=1)
+        self._tabs_container.grid_rowconfigure(0, weight=1)
 
         self._tabs: dict[str, ctk.CTkFrame] = {
             "home":    self._build_tab_home(),
@@ -183,6 +250,8 @@ class BlicsaApp(ctk.CTk):
             "export":  self._build_tab_export(),
         }
         self._switch_tab("home")
+        
+        self._build_welcome_screen()
 
     def _build_sidebar(self):
         sb = ctk.CTkFrame(self, width=220, fg_color=SIDEBAR_BG, corner_radius=0)
@@ -542,7 +611,7 @@ class BlicsaApp(ctk.CTk):
 
     # ── UI helpers ─────────────────────────────────────────────────────
     def _tab(self) -> ctk.CTkFrame:
-        f = ctk.CTkFrame(self._content, fg_color=CONTENT_BG)
+        f = ctk.CTkFrame(getattr(self, "_tabs_container", self._content), fg_color=CONTENT_BG)
         f.grid_columnconfigure(0, weight=1)
         return f
 
@@ -777,7 +846,7 @@ class BlicsaApp(ctk.CTk):
 
     def _build_tab_projects(self) -> ctk.CTkFrame:
         from ui.projects_view import ProjectsView
-        frame = ctk.CTkFrame(self._content, fg_color="transparent")
+        frame = ctk.CTkFrame(getattr(self, "_tabs_container", self._content), fg_color="transparent")
         
         def on_open_project(path):
             self.after(0, lambda: self._load_project_file(path))
@@ -1660,6 +1729,49 @@ class BlicsaApp(ctk.CTk):
 
     def _on_gui_search(self):
         query = self._search_query_entry.get().strip()
+        provider = self._search_provider_var.get()
+        
+        # --- BLICSA TRANSLATOR ---
+        translated_query = query
+        if provider == "openalex":
+            translated_query = f'"{query}"'
+        elif provider == "pubmed":
+            translated_query = f'{query}[Title/Abstract]'
+        
+        if translated_query != query:
+            self._search_query_entry.delete(0, 'end')
+            self._search_query_entry.insert(0, translated_query)
+            query = translated_query
+            
+        # --- DIÁRIO DE PESQUISA ---
+        import os, json, datetime
+        from pathlib import Path
+        proj_name = "Pesquisa_Atual"
+        if hasattr(self, '_current_project_path') and getattr(self, '_current_project_path', None):
+            proj_name = Path(self._current_project_path).stem
+            
+        diary_dir = os.path.expanduser(f"~/Blicsa/pesquisas/{proj_name}")
+        os.makedirs(diary_dir, exist_ok=True)
+        diary_path = os.path.join(diary_dir, "diary.json")
+        
+        diary = {"strings_usadas": [], "blink_usage": 0}
+        if os.path.exists(diary_path):
+            try:
+                with open(diary_path, "r", encoding="utf-8") as df:
+                    diary = json.load(df)
+            except:
+                pass
+                
+        diary["strings_usadas"].append({
+            "query": query,
+            "base": provider,
+            "timestamp": datetime.datetime.now().isoformat()
+        })
+        diary["blink_usage"] = diary.get("blink_usage", 0) + 1
+        
+        with open(diary_path, "w", encoding="utf-8") as df:
+            json.dump(diary, df, indent=2, ensure_ascii=False)
+
         if not query:
             messagebox.showwarning("Campo vazio", "Por favor, digite um termo de busca.")
             return
