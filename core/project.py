@@ -1,12 +1,157 @@
 import json
 import zipfile
 import gzip
+import logging
 import os
+import re
 import time
+import unicodedata
+from datetime import datetime
+from pathlib import Path
+
 import pandas as pd
 import networkx as nx
 
+logger = logging.getLogger("blicsa.project")
+
 CURRENT_MANIFEST_VERSION = "1.0"
+
+# ── Projeto = PASTA (~/Blicsa/projects/<slug>/) ─────────────────────────────
+#   project.blicsa   snapshot salvo (formato ZIP atual, intocado)
+#   backlog.jsonl    APPEND-ONLY, uma linha JSON por ação (fora do ZIP de
+#                    propósito: reescrever ZIP a cada ação convida corrupção)
+#   searches/        JSON bruto de cada busca (search_<ts>.json) p/ reuso offline
+#   exports/         saídas geradas (mapas, CSV, GML, XLSX)
+
+PROJECTS_DIR = Path.home() / "Blicsa" / "projects"
+
+BACKLOG_ACTIONS = ("search", "import", "dedup", "corpus_add", "analysis",
+                   "export", "map", "extension_add")
+
+
+def slugify(name: str) -> str:
+    """Nome legível → slug de pasta (ascii, minúsculo, hífens)."""
+    s = unicodedata.normalize("NFKD", str(name)).encode("ascii", "ignore").decode("ascii")
+    s = re.sub(r"[^a-zA-Z0-9]+", "-", s).strip("-").lower()
+    return s or "projeto"
+
+
+def project_dir(slug: str, projects_dir=None) -> Path:
+    return Path(projects_dir or PROJECTS_DIR) / slug
+
+
+def _unique_slug(name: str, base: Path) -> str:
+    slug = slugify(name)
+    candidate, n = slug, 2
+    while (base / candidate).exists():
+        candidate = f"{slug}-{n}"
+        n += 1
+    return candidate
+
+
+def _scaffold(d: Path):
+    (d / "searches").mkdir(parents=True, exist_ok=True)
+    (d / "exports").mkdir(parents=True, exist_ok=True)
+    (d / "backlog.jsonl").touch()
+
+
+def create_project(name: str, projects_dir=None) -> str:
+    """Cria a pasta do projeto com snapshot vazio + backlog. Retorna o slug."""
+    base = Path(projects_dir or PROJECTS_DIR)
+    base.mkdir(parents=True, exist_ok=True)
+    slug = _unique_slug(name, base)
+    d = base / slug
+    _scaffold(d)
+    save_blicsa_project(str(d / "project.blicsa"), df=None,
+                        config={"name": name}, positions=None, G=None,
+                        cluster_labels=None)
+    return slug
+
+
+def open_project(slug: str, projects_dir=None) -> dict:
+    """Abre <slug>/project.blicsa e devolve o estado + backlog + caminhos."""
+    d = project_dir(slug, projects_dir)
+    data = load_blicsa_project(str(d / "project.blicsa"))
+    data["slug"] = slug
+    data["path"] = str(d)
+    data["backlog"] = load_backlog(slug, projects_dir)
+    return data
+
+
+def append_backlog(slug: str, action: str, detail: dict, projects_dir=None) -> dict:
+    """Acrescenta UMA linha ao backlog.jsonl (append-only, nunca reescreve)."""
+    d = project_dir(slug, projects_dir)
+    _scaffold(d)  # tolera projetos migrados sem subpastas
+    entry = {"ts": datetime.now().isoformat(timespec="seconds"),
+             "action": action, "detail": detail or {}}
+    with open(d / "backlog.jsonl", "a", encoding="utf-8") as f:
+        f.write(json.dumps(entry, ensure_ascii=False) + "\n")
+    return entry
+
+
+def load_backlog(slug: str, projects_dir=None) -> list:
+    """Lê o backlog inteiro; linha corrompida é PULADA com warning (as demais
+    continuam legíveis — resiliência do append-only)."""
+    path = project_dir(slug, projects_dir) / "backlog.jsonl"
+    entries = []
+    if not path.exists():
+        return entries
+    with open(path, "r", encoding="utf-8") as f:
+        for n, line in enumerate(f, start=1):
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                entries.append(json.loads(line))
+            except Exception:
+                logger.warning(f"[Backlog] linha {n} corrompida em {path} — pulada")
+    return entries
+
+
+def save_search_raw(slug: str, records: list, projects_dir=None) -> str:
+    """Grava o JSON bruto de uma busca em searches/search_<ts>.json.
+    Retorna o caminho RELATIVO à pasta do projeto (vai no backlog)."""
+    d = project_dir(slug, projects_dir)
+    _scaffold(d)
+    rel = f"searches/search_{int(time.time())}.json"
+    with open(d / rel, "w", encoding="utf-8") as f:
+        json.dump(records, f, ensure_ascii=False)
+    return rel
+
+
+def load_search_raw(slug: str, rel_path: str, projects_dir=None) -> list:
+    """Carrega os resultados salvos de uma busca (local-first, sem rede)."""
+    with open(project_dir(slug, projects_dir) / rel_path, "r", encoding="utf-8") as f:
+        return json.load(f)
+
+
+def migrate_loose_projects(projects_dir=None) -> list:
+    """MIGRAÇÃO SUAVE: cada *.blicsa solto em projects/ vira uma pasta
+    <slug>/project.blicsa (arquivo preservado via move). Retorna slugs criados."""
+    base = Path(projects_dir or PROJECTS_DIR)
+    migrated = []
+    if not base.exists():
+        return migrated
+    for f in sorted(base.glob("*.blicsa")):
+        if not f.is_file():
+            continue
+        slug = _unique_slug(f.stem, base)
+        d = base / slug
+        _scaffold(d)
+        f.rename(d / "project.blicsa")
+        migrated.append(slug)
+        logger.info(f"[Projects] migrado: {f.name} -> {slug}/project.blicsa")
+    return migrated
+
+
+def list_projects(projects_dir=None) -> list:
+    """Slugs das pastas de projeto existentes (com project.blicsa), mais recente 1º."""
+    base = Path(projects_dir or PROJECTS_DIR)
+    if not base.exists():
+        return []
+    dirs = [d for d in base.iterdir() if d.is_dir() and (d / "project.blicsa").exists()]
+    dirs.sort(key=lambda d: (d / "project.blicsa").stat().st_mtime, reverse=True)
+    return [d.name for d in dirs]
 
 def save_blicsa_project(
     path: str,
