@@ -122,7 +122,19 @@ class BlicsaApp(ctk.CTk):
         self._year_max_var = ctk.StringVar(value="")
         self._extra_sw_var = ctk.StringVar(value="")
         self._plotly_mode_var = ctk.StringVar(value="cluster")
-        self._api_key_var = ctk.StringVar(value=os.environ.get("AI_API_KEY", os.environ.get("GROQ_API_KEY", "")))
+        from core.settings import get_api_key, settings_path
+        log.info(f"[Settings] usando {settings_path()}")
+        self._api_key_var = ctk.StringVar(value=get_api_key())
+        # persiste no keyring com debounce (a cada edição no campo dos Ajustes)
+        self._api_key_save_job = None
+        def _schedule_key_save(*_):
+            if self._api_key_save_job:
+                self.after_cancel(self._api_key_save_job)
+            def _do():
+                from core.settings import set_api_key
+                set_api_key(self._api_key_var.get())
+            self._api_key_save_job = self.after(900, _do)
+        self._api_key_var.trace_add("write", _schedule_key_save)
         self._ai_provider_var = ctk.StringVar(value=os.environ.get("AI_PROVIDER", "groq"))
         self._ai_base_url_var = ctk.StringVar(value=os.environ.get("AI_BASE_URL", "https://api.groq.com/openai/v1"))
         self._ai_model_var = ctk.StringVar(value=os.environ.get("AI_MODEL", "llama-3.3-70b-versatile"))
@@ -475,12 +487,9 @@ class BlicsaApp(ctk.CTk):
     
     def blink_status(self):
         try:
-            settings_path = os.path.join(os.path.dirname(__file__), ".blicsa_settings.json")
-            if os.path.exists(settings_path):
-                import json
-                s = json.load(open(settings_path))
-                if s.get("reduce_animations"): return
-        except: pass
+            from core.settings import get_settings
+            if get_settings().get("reduce_animations"): return
+        except Exception: pass
         if hasattr(self, '_status_square'):
             orig_h = self._status_square.winfo_height()
             self._status_square.configure(height=2)
@@ -507,23 +516,14 @@ class BlicsaApp(ctk.CTk):
         
         tk.Label(content, text=t("menu_settings"), font=("Arial", 16, "bold"), bg="#F6F4EE", fg="#141414").pack(pady=(20, 10))
         
-        # Animations toggle
-        import os, json
-        s_path = os.path.join(os.path.dirname(__file__), ".blicsa_settings.json")
-        reduce = False
-        if os.path.exists(s_path):
-            try: reduce = json.load(open(s_path)).get("reduce_animations", False)
-            except: pass
-            
+        # Animations toggle (settings no user_config_dir via core.settings)
+        from core.settings import get_settings, update_settings
+        reduce = bool(get_settings().get("reduce_animations", False))
+
         import customtkinter as ctk
         var = ctk.BooleanVar(value=reduce)
         def toggle():
-            s = {}
-            if os.path.exists(s_path):
-                try: s = json.load(open(s_path))
-                except: pass
-            s["reduce_animations"] = var.get()
-            json.dump(s, open(s_path, "w"))
+            update_settings(reduce_animations=var.get())
             
         chk = ctk.CTkCheckBox(content, text=t("reduce_animations"), variable=var, command=toggle, text_color="#141414", fg_color="#DF3117", hover_color="#B82813", corner_radius=0)
         chk.pack(pady=10)
@@ -5098,14 +5098,8 @@ if __name__ == "__main__":
         if not frames: return
         
         # Check settings
-        import os, json
-        s_path = os.path.join(os.path.dirname(__file__), ".blicsa_settings.json")
-        reduce = False
-        if os.path.exists(s_path):
-            try:
-                s = json.load(open(s_path))
-                reduce = s.get("reduce_animations", False)
-            except: pass
+        from core.settings import get_settings
+        reduce = bool(get_settings().get("reduce_animations", False))
             
         if reduce:
             lbl.config(image=frames[-1])

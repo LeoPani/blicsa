@@ -8,12 +8,16 @@ _fallback_translations: Dict[str, str] = {}
 _current_lang = "en"
 
 def get_system_language() -> str:
+    """locale.getlocale() (getdefaultlocale foi deprecado) → env LANG → "en"."""
     try:
-        lang, _ = locale.getdefaultlocale()
+        lang, _ = locale.getlocale()
         if lang:
             return lang
     except Exception:
         pass
+    env_lang = os.environ.get("LANG", "")
+    if env_lang:
+        return env_lang.split(".")[0].split("@")[0]
     return "en"
 
 def _load_dict(path: str) -> dict:
@@ -35,11 +39,9 @@ def load_locales(lang_code: str = None):
     _fallback_translations = _load_dict(en_path)
     
     if not lang_code:
-        # Load from settings if available
-        settings_path = os.path.join(base_dir, ".blicsa_settings.json")
-        if os.path.exists(settings_path):
-            s = _load_dict(settings_path)
-            lang_code = s.get("lang")
+        # Load from settings if available (user_config_dir via core.settings)
+        from core.settings import get_settings
+        lang_code = get_settings().get("lang")
             
         if not lang_code:
             # Português (pt_BR) é o idioma padrão do Blicsa.
@@ -71,13 +73,8 @@ def get_lang() -> str:
 
 def set_lang(lang_code: str):
     load_locales(lang_code)
-    # Save to settings
-    base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-    settings_path = os.path.join(base_dir, ".blicsa_settings.json")
-    s = _load_dict(settings_path)
-    s["lang"] = lang_code
-    with open(settings_path, "w", encoding="utf-8") as f:
-        json.dump(s, f, indent=2)
+    from core.settings import update_settings
+    update_settings(lang=lang_code)
 
 # Automatically load on import
 load_locales()
