@@ -8,7 +8,7 @@ _fallback_translations: Dict[str, str] = {}
 _current_lang = "en"
 
 def get_system_language() -> str:
-    """locale.getlocale() (getdefaultlocale foi deprecado) → env LANG → "en"."""
+    """locale.getlocale() (o antigo helper foi deprecado) → env LANG → "en"."""
     try:
         lang, _ = locale.getlocale()
         if lang:
