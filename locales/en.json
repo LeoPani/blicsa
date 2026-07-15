@@ -148,5 +148,8 @@
   "history.action_analysis": "Analysis",
   "history.action_export": "Export",
   "history.action_map": "Map",
-  "history.action_extension_add": "Extension"
+  "history.action_extension_add": "Extension",
+  "ai.error_title": "⚠ AI request failed",
+  "ai.error_body": "The assistant could not respond (network, key or quota). This is a system error — not an assistant answer.",
+  "ai.retry": "Try again"
 }

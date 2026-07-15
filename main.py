@@ -36,7 +36,7 @@ from core.parsers import BibliometricParser, find_duplicates
 from core.matrix_builders import NetworkGenerator, CLUSTER_PALETTE
 from core.visualizer import compute_fa2_layout, build_plotly_map, build_plotly_density, export_plotly_html, export_figure_image, build_thematic_map, build_historiograph
 from core.nlp import load_thesaurus
-from ai.client import GroqBibliometricAnalyst
+from ai.client import GroqBibliometricAnalyst, AIClientError
 
 from ui.design_tokens import SIDEBAR_BG, CONTENT_BG, CARD_BG, CARD2_BG, ACCENT, ACCENT_HOV, TEXT_MUTED, MUTED, BLUE, YELLOW, RED, INK, PAPER, RED_HOV, RED_HOVER, WHITE_CARD, INK_HOV, BLUE_HOV, YELLOW_HOV
 from ui.styles import get_color, TextboxLogHandler
@@ -901,10 +901,17 @@ class BlicsaApp(ctk.CTk):
                         self.after(0, update_chunk)
                     
                     self._research_messages.append({"role": "assistant", "content": full_response})
+                except AIClientError as ex:
+                    def err_ui(e=ex):
+                        if indicator_row.winfo_exists(): indicator_row.destroy()
+                        self._add_ai_error_row(
+                            self._research_chat_history_main, detail=str(e),
+                            retry_cb=lambda: threading.Thread(target=worker, daemon=True).start())
+                    self.after(0, err_ui)
                 except Exception as ex:
-                    if indicator_row.winfo_exists(): indicator_row.destroy()
-                    def err_ui():
-                        self._add_blink_message("assistant", f"{t('blink.erro')} {ex}")
+                    def err_ui(e=ex):
+                        if indicator_row.winfo_exists(): indicator_row.destroy()
+                        self._add_ai_error_row(self._research_chat_history_main, detail=str(e))
                     self.after(0, err_ui)
             threading.Thread(target=worker, daemon=True).start()
             
@@ -1943,6 +1950,62 @@ class BlicsaApp(ctk.CTk):
         messagebox.showinfo("Importação", f"{len(df_selected)} registros importados para o corpus com sucesso.")
         self._switch_tab("corpus")
 
+    # ── Estado de erro de IA (item 3 do passo 4) ──────────────────────────
+    def _add_ai_error_row(self, container, retry_cb=None, detail=""):
+        """Erro REAL de IA: plano chapado no vermelho do design system, canto
+        reto, sem parecer resposta do assistente. Retry onde fizer sentido."""
+        row = ctk.CTkFrame(container, fg_color="transparent")
+        row.pack(fill="x", pady=5)
+        panel = ctk.CTkFrame(row, fg_color=RED, corner_radius=0)
+        panel.pack(fill="x", padx=10)
+        ctk.CTkLabel(panel, text=t("ai.error_title"), font=ctk.CTkFont(size=13, weight="bold"),
+                     text_color="#FFFFFF", anchor="w").pack(anchor="w", padx=14, pady=(10, 0))
+        body = t("ai.error_body") + (f"\n{detail}" if detail else "")
+        ctk.CTkLabel(panel, text=body, font=ctk.CTkFont(size=12), text_color="#FFFFFF",
+                     anchor="w", justify="left", wraplength=620).pack(anchor="w", padx=14, pady=(2, 10))
+        if retry_cb:
+            ctk.CTkButton(panel, text=t("ai.retry"), corner_radius=0, fg_color="#FFFFFF",
+                          text_color=INK, hover_color="#E5E5E5", width=130, height=28,
+                          command=lambda: (row.destroy(), retry_cb())
+                          ).pack(anchor="w", padx=14, pady=(0, 12))
+        return row
+
+    def _show_insights(self, text: str):
+        """Insights de IA num diálogo (corrige chamada a método INEXISTENTE:
+        Sankey/Temático/Historiografia quebravam mesmo com a IA ok)."""
+        dlg = ctk.CTkToplevel(self)
+        dlg.title("Blicsa — Insights de IA")
+        dlg.geometry("720x560")
+        dlg.configure(fg_color=CONTENT_BG)
+        box = ctk.CTkTextbox(dlg, wrap="word", fg_color=WHITE_CARD, text_color=INK,
+                             corner_radius=0, border_width=2, border_color=INK)
+        box.pack(fill="both", expand=True, padx=16, pady=16)
+        from ui.components import insert_markdown
+        insert_markdown(box, text)
+        box.configure(state="disabled")
+
+    def _show_ai_error_dialog(self, detail: str = "", retry_cb=None):
+        """Erro de IA em diálogo: plano chapado vermelho, canto reto, retry."""
+        dlg = ctk.CTkToplevel(self)
+        dlg.title("Blicsa")
+        dlg.geometry("560x260")
+        dlg.configure(fg_color=RED)
+        ctk.CTkLabel(dlg, text=t("ai.error_title"), font=ctk.CTkFont(size=16, weight="bold"),
+                     text_color="#FFFFFF").pack(anchor="w", padx=20, pady=(20, 4))
+        ctk.CTkLabel(dlg, text=t("ai.error_body") + (f"\n\n{detail}" if detail else ""),
+                     font=ctk.CTkFont(size=12), text_color="#FFFFFF", justify="left",
+                     wraplength=500).pack(anchor="w", padx=20, pady=(0, 12))
+        btns = ctk.CTkFrame(dlg, fg_color="transparent")
+        btns.pack(fill="x", padx=20, pady=(0, 20))
+        if retry_cb:
+            ctk.CTkButton(btns, text=t("ai.retry"), corner_radius=0, fg_color="#FFFFFF",
+                          text_color=INK, hover_color="#E5E5E5", width=140, height=32,
+                          command=lambda: (dlg.destroy(), retry_cb())).pack(side="left")
+        ctk.CTkButton(btns, text=t("dedup.cancel"), corner_radius=0, fg_color="transparent",
+                      text_color="#FFFFFF", border_width=2, border_color="#FFFFFF",
+                      hover_color="#B82813", width=120, height=32,
+                      command=dlg.destroy).pack(side="right")
+
     # ── Aba Histórico: linha do tempo do backlog do projeto ───────────────
     _HIST_ICONS = {"search": "🔍", "import": "📥", "dedup": "🧹", "corpus_add": "➕",
                    "analysis": "📊", "export": "📤", "map": "🗺", "extension_add": "🧩"}
@@ -2596,7 +2659,13 @@ class BlicsaApp(ctk.CTk):
                             full_response += chunk
                             self.after(0, lambda r=full_response: _set_out(r))
                     except Exception as ex:
-                        self.after(0, lambda e=ex: _set_out(f"Erro: {e}"))
+                        def _set_err(e=ex):
+                            if out.winfo_exists():
+                                out.configure(state="normal", fg_color=RED, text_color="#FFFFFF")
+                                out.delete("1.0", "end")
+                                out.insert("1.0", f'{t("ai.error_title")}\n\n{t("ai.error_body")}\n{e}')
+                                out.configure(state="disabled")
+                        self.after(0, _set_err)
                 threading.Thread(target=_stream_worker_ai, daemon=True).start()
                 
             # Liga os callbacks reais aos lambdas do feed (criado em begin_feed).
@@ -3172,6 +3241,11 @@ class BlicsaApp(ctk.CTk):
             result = analyst.generate_sankey_insights(summary)
             self.after(0, self._show_insights, result)
             self.after(0, self._set_idle, "Insights Sankey prontos")
+        except AIClientError as exc:
+            self.after(0, self._set_idle, "Erro IA")
+            import threading
+            self.after(0, lambda e=exc: self._show_ai_error_dialog(
+                str(e), retry_cb=lambda: threading.Thread(target=self._ai_sankey_worker, daemon=True).start()))
         except Exception as exc:
             self.after(0, self._set_idle, "Erro IA")
             self.after(0, lambda e=exc: messagebox.showerror("Erro IA", f"Erro ao analisar Sankey:\n{e}"))
@@ -3196,6 +3270,11 @@ class BlicsaApp(ctk.CTk):
             result = analyst.generate_thematic_insights(summary)
             self.after(0, self._show_insights, result)
             self.after(0, self._set_idle, "Insights Temáticos prontos")
+        except AIClientError as exc:
+            self.after(0, self._set_idle, "Erro IA")
+            import threading
+            self.after(0, lambda e=exc: self._show_ai_error_dialog(
+                str(e), retry_cb=lambda: threading.Thread(target=self._ai_thematic_worker, daemon=True).start()))
         except Exception as exc:
             self.after(0, self._set_idle, "Erro IA")
             self.after(0, lambda e=exc: messagebox.showerror("Erro IA", f"Erro ao analisar Mapa Temático:\n{e}"))
@@ -3218,6 +3297,11 @@ class BlicsaApp(ctk.CTk):
             result = analyst.generate_historiograph_insights(summary)
             self.after(0, self._show_insights, result)
             self.after(0, self._set_idle, "Insights Historiografia prontos")
+        except AIClientError as exc:
+            self.after(0, self._set_idle, "Erro IA")
+            import threading
+            self.after(0, lambda e=exc: self._show_ai_error_dialog(
+                str(e), retry_cb=lambda: threading.Thread(target=self._ai_historiograph_worker, daemon=True).start()))
         except Exception as exc:
             self.after(0, self._set_idle, "Erro IA")
             self.after(0, lambda e=exc: messagebox.showerror("Erro IA", f"Erro ao analisar Historiografia:\n{e}"))
@@ -3331,8 +3415,12 @@ class BlicsaApp(ctk.CTk):
                         
                         self._research_messages.append({"role": "assistant", "content": full_response})
                     except Exception as ex:
-                        if indicator_row.winfo_exists(): indicator_row.destroy()
-                        self.after(0, lambda e=ex: self._add_blink_message("assistant", f"Erro: {e}"))
+                        def _err_row(e=ex):
+                            if indicator_row.winfo_exists(): indicator_row.destroy()
+                            self._add_ai_error_row(
+                                self._research_chat_history_main, detail=str(e),
+                                retry_cb=lambda: threading.Thread(target=_stream_worker, daemon=True).start())
+                        self.after(0, _err_row)
                 threading.Thread(target=_stream_worker, daemon=True).start()
                 
             self.after(0, _start_streaming)
@@ -3439,8 +3527,12 @@ class BlicsaApp(ctk.CTk):
                         
                         self._research_messages.append({"role": "assistant", "content": full_response})
                     except Exception as ex:
-                        if indicator_row.winfo_exists(): indicator_row.destroy()
-                        self.after(0, lambda e=ex: self._add_blink_message("assistant", f"Erro: {e}"))
+                        def _err_row(e=ex):
+                            if indicator_row.winfo_exists(): indicator_row.destroy()
+                            self._add_ai_error_row(
+                                self._research_chat_history_main, detail=str(e),
+                                retry_cb=lambda: threading.Thread(target=_stream_worker, daemon=True).start())
+                        self.after(0, _err_row)
                 threading.Thread(target=_stream_worker, daemon=True).start()
                 
             self.after(0, _start_streaming)
@@ -3528,8 +3620,12 @@ class BlicsaApp(ctk.CTk):
                         
                         self._research_messages.append({"role": "assistant", "content": full_response})
                     except Exception as ex:
-                        if indicator_row.winfo_exists(): indicator_row.destroy()
-                        self.after(0, lambda e=ex: self._add_blink_message("assistant", f"Erro: {e}"))
+                        def _err_row(e=ex):
+                            if indicator_row.winfo_exists(): indicator_row.destroy()
+                            self._add_ai_error_row(
+                                self._research_chat_history_main, detail=str(e),
+                                retry_cb=lambda: threading.Thread(target=_stream_worker, daemon=True).start())
+                        self.after(0, _err_row)
                 threading.Thread(target=_stream_worker, daemon=True).start()
                 
             self.after(0, _start_streaming)
@@ -4331,7 +4427,12 @@ class BlicsaApp(ctk.CTk):
         except Exception as exc:
             self.after(0, self._set_idle, "Erro ao nomear clusters")
             log.info(f"[ERRO labeling] {exc}\n")
-            self.after(0, lambda e=exc: messagebox.showerror("Erro IA", f"Erro ao nomear clusters com IA:\n{e}"))
+            if isinstance(exc, AIClientError):
+                import threading
+                self.after(0, lambda e=exc: self._show_ai_error_dialog(
+                    str(e), retry_cb=lambda: threading.Thread(target=self._label_clusters_worker, daemon=True).start()))
+            else:
+                self.after(0, lambda e=exc: messagebox.showerror("Erro IA", f"Erro ao nomear clusters com IA:\n{e}"))
 
     # ── Config save / load ─────────────────────────────────────────────
     def _save_config(self):

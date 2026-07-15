@@ -5,6 +5,11 @@ import urllib.request
 import urllib.error
 import time
 
+
+class AIClientError(Exception):
+    """Falha REAL na chamada de IA (rede, auth, quota). PROIBIDO devolver
+    string de erro como se fosse conteúdo: quem chama decide como exibir."""
+
 def call_openai_chat(
     base_url: str,
     api_key: str,
@@ -59,7 +64,7 @@ def call_openai_chat_history(
     
     retries = 3
     delay = 1.0
-    while retries > 0:
+    while True:
         try:
             with urllib.request.urlopen(req, timeout=timeout) as resp:
                 resp_data = json.loads(resp.read().decode("utf-8"))
@@ -67,10 +72,9 @@ def call_openai_chat_history(
         except Exception as e:
             retries -= 1
             if retries == 0:
-                return f"Erro na requisição: {e}"
+                raise AIClientError(f"Falha na requisição de IA após 3 tentativas: {e}") from e
             time.sleep(delay)
             delay *= 2
-    return "Erro ao obter resposta da IA."
 
 
 class AIAnalyst:
@@ -82,12 +86,12 @@ class AIAnalyst:
 
     def chat_history(self, messages: list[dict], temperature: float = 0.7) -> str:
         if not self.api_key:
-            return 'Erro: API Key não configurada nos Ajustes.'
+            raise AIClientError("API Key não configurada nos Ajustes.")
         return call_openai_chat_history(self.base_url, self.api_key, self.model, messages, temperature)
 
     def _chat(self, system: str, user: str, temperature: float = 0.3) -> str:
         if not self.api_key:
-            return "Erro: API Key não configurada nos Ajustes."
+            raise AIClientError("API Key não configurada nos Ajustes.")
         return call_openai_chat(
             base_url=self.base_url,
             api_key=self.api_key,
@@ -99,9 +103,8 @@ class AIAnalyst:
 
     def chat_history_stream(self, messages: list[dict], temperature: float = 0.7):
         if not self.api_key:
-            yield "Erro: API Key não configurada nos Ajustes."
-            return
-            
+            raise AIClientError("API Key não configurada nos Ajustes.")
+
         payload = {
             "model": self.model,
             "messages": messages,
@@ -136,8 +139,12 @@ class AIAnalyst:
                                     yield delta["content"]
                         except json.JSONDecodeError:
                             continue
+        except AIClientError:
+            raise
         except Exception as e:
-            yield f"\nErro na requisição: {e}"
+            # Erro no MEIO do stream também levanta; o chamador decide o que
+            # fazer com o parcial já recebido.
+            raise AIClientError(f"Falha no streaming de IA: {e}") from e
 
     def generate_insights(
         self,

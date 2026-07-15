@@ -149,5 +149,8 @@
   "history.action_analysis": "Analyse",
   "history.action_export": "Export",
   "history.action_map": "Carte",
-  "history.action_extension_add": "Extension"
+  "history.action_extension_add": "Extension",
+  "ai.error_title": "⚠ Échec de la requête IA",
+  "ai.error_body": "L'assistant n'a pas pu répondre (réseau, clé ou quota). Ceci est une erreur système — pas une réponse de l'assistant.",
+  "ai.retry": "Réessayer"
 }

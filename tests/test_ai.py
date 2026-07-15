@@ -4,7 +4,7 @@ import urllib.error
 import io
 import json
 
-from ai.client import call_openai_chat, AIAnalyst
+from ai.client import call_openai_chat, AIAnalyst, AIClientError
 
 class TestAIClient(unittest.TestCase):
 
@@ -83,6 +83,52 @@ class TestAIClient(unittest.TestCase):
         log_output = mock_stdout.getvalue()
         self.assertNotIn("very_long_secret_key", log_output)
         self.assertIn("gsk_ve...2345", log_output)
+
+    # ── Passo 4 item 3: erro REAL levanta AIClientError (nunca string) ──
+    @patch('urllib.request.urlopen')
+    def test_chat_raises_aiclienterror_after_retries(self, mock_urlopen):
+        mock_urlopen.side_effect = urllib.error.URLError("connection refused")
+        with patch('time.sleep'):
+            with self.assertRaises(AIClientError) as cm:
+                call_openai_chat(base_url="https://api.openai.com/v1", api_key="sk-key",
+                                 model="gpt-4o", system_prompt="s", user_prompt="u")
+        self.assertNotIsInstance(cm.exception.args[0], bytes)
+        # PROIBIDO: nenhum retorno-string de erro
+        self.assertIn("3 tentativas", str(cm.exception))
+
+    @patch('urllib.request.urlopen')
+    def test_stream_raises_aiclienterror_on_request_failure(self, mock_urlopen):
+        mock_urlopen.side_effect = urllib.error.URLError("no route to host")
+        analyst = AIAnalyst(api_key="sk-key")
+        with self.assertRaises(AIClientError):
+            list(analyst.chat_history_stream([{"role": "user", "content": "oi"}]))
+
+    @patch('urllib.request.urlopen')
+    def test_stream_raises_mid_stream_keeping_partial(self, mock_urlopen):
+        """Erro no MEIO do stream levanta; o chamador decide o que fazer com o parcial."""
+        def chunks():
+            yield b'data: {"choices": [{"delta": {"content": "parcial "}}]}\n'
+            raise ConnectionResetError("stream morreu")
+        mock_response = MagicMock()
+        mock_response.__enter__.return_value = iter(chunks())
+        mock_urlopen.return_value = mock_response
+
+        analyst = AIAnalyst(api_key="sk-key")
+        received = []
+        with self.assertRaises(AIClientError):
+            for c in analyst.chat_history_stream([{"role": "user", "content": "oi"}]):
+                received.append(c)
+        self.assertEqual(received, ["parcial "], "parcial já entregue fica com o chamador")
+
+    def test_no_api_key_raises_in_all_three_paths(self):
+        with patch.dict('os.environ', {}, clear=True):
+            analyst = AIAnalyst(api_key=None)
+            with self.assertRaises(AIClientError):
+                analyst.chat_history([{"role": "user", "content": "x"}])
+            with self.assertRaises(AIClientError):
+                analyst._chat("s", "u")
+            with self.assertRaises(AIClientError):
+                list(analyst.chat_history_stream([{"role": "user", "content": "x"}]))
 
     def test_ai_analyst_presets(self):
         analyst = AIAnalyst(api_key="gsk_test", base_url="https://api.groq.com/openai/v1", model="llama-3.3-70b-versatile")

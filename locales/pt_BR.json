@@ -148,5 +148,8 @@
   "history.action_analysis": "Análise",
   "history.action_export": "Exportação",
   "history.action_map": "Mapa",
-  "history.action_extension_add": "Extensão"
+  "history.action_extension_add": "Extensão",
+  "ai.error_title": "⚠ Falha na requisição de IA",
+  "ai.error_body": "O assistente não conseguiu responder (rede, chave ou cota). Isto é um erro do sistema — não é uma resposta do assistente.",
+  "ai.retry": "Tentar de novo"
 }
