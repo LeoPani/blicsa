@@ -124,6 +124,47 @@ def test_find_duplicates_only_on_explicit_action(monkeypatch):
         app.destroy()
 
 
+# ── (item 0 do passo 3) índice único após imports múltiplos + dedup exata ──
+def test_import_twice_unique_index_and_exact_dedup(monkeypatch):
+    ctk = pytest.importorskip("customtkinter")
+    import main as blicsa_main
+    monkeypatch.setattr(blicsa_main.messagebox, "showinfo", lambda *a, **k: None)
+
+    def fake_search(self, query, filters=None, max_results=100, progress_cb=None, cancel_event=None):
+        self.stop_reason, self.stop_error, self.pages_fetched = "atingiu limite", False, 1
+        yield from [_rec(i) for i in range(6)]
+    monkeypatch.setattr("core.sources.openalex.OpenAlexProvider.search", fake_search)
+
+    try:
+        app = blicsa_main.BlicsaApp()
+    except Exception:
+        pytest.skip("sem display para inicializar Tk")
+    try:
+        app.withdraw()
+        import threading
+        app._search_worker("x", "openalex", 100, {}, threading.Event())
+        app.update()
+        recs = [_rec(i) for i in range(6)]
+        app._feed_cbs["import"](recs, False)
+        app.update()
+        app._feed_cbs["import"](recs, False)
+        app.update()
+        # find_duplicates opera por índice: índice duplicado corromperia a dedup.
+        assert app._dataframe.index.is_unique, "índice do corpus repetiu após imports múltiplos"
+        assert len(app._dataframe) == 12
+
+        from core.parsers import find_duplicates
+        dupes = find_duplicates(app._dataframe, title_threshold=0.93)
+        # 6 registros duplicados exatamente 1x cada → exatamente 6 pares, todos por DOI.
+        assert len(dupes) == 6, f"esperava 6 pares, veio {len(dupes)}"
+        assert all(r.startswith("DOI") for _, _, r in dupes)
+        app._apply_dedup(dupes)
+        assert len(app._dataframe) == 6, "dedup deveria remover exatamente os 6 repetidos"
+        assert app._dataframe.index.is_unique
+    finally:
+        app.destroy()
+
+
 # ── (iv) HTTP server confinado ao diretório dedicado ────────────────────────
 def _http_code(port, path):
     try:
