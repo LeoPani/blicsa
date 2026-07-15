@@ -137,6 +137,88 @@ class BlicsaApp(ctk.CTk):
         self._setup_dnd()
         self._setup_shortcuts()
 
+    # ── Projeto ativo (passo 3: tudo vive numa pasta de projeto) ──────────
+    def _open_project_slug(self, slug: str):
+        """Abre projeto pelo card (corrige o antigo _load_project_file inexistente)."""
+        self._set_busy("Carregando projeto...")
+        try:
+            self._set_active_project(slug)
+            self._set_idle("Projeto carregado")
+            has_corpus = self._dataframe is not None and not getattr(self._dataframe, "empty", True)
+            self._switch_tab("corpus" if has_corpus else "import")
+        except Exception as e:
+            self._set_idle("Erro ao carregar projeto")
+            messagebox.showerror("Erro ao carregar", str(e))
+
+    def _create_project_flow(self):
+        dialog = ctk.CTkInputDialog(text="Digite o nome do novo projeto (Pesquisa):", title="Novo Projeto")
+        proj_name = dialog.get_input()
+        if not (proj_name and proj_name.strip()):
+            return
+        from core.project import create_project
+        slug = create_project(proj_name.strip())
+        log.info(f"[Sistema] Projeto '{proj_name.strip()}' criado ({slug}).")
+        self._set_active_project(slug)
+        self._switch_tab("import")
+
+    def _set_active_project(self, slug: str):
+        """Abre o projeto (pasta): restaura corpus + config + histórico."""
+        from core.project import open_project
+        data = open_project(slug)
+        self._active_project = slug
+        self._active_project_name = data.get("config", {}).get("name", slug)
+        self._current_project_path = os.path.join(data["path"], "project.blicsa")
+        self._restore_project_data(data)
+        self._update_project_banner()
+        if hasattr(self, "_hist_frame"):
+            self._refresh_hist_tab()
+        log.info(f"[Sistema] Projeto '{self._active_project_name}' aberto "
+                 f"({len(data.get('backlog', []))} eventos no histórico).")
+
+    def _update_project_banner(self):
+        if not hasattr(self, "_project_banner_label"):
+            return
+        name = getattr(self, "_active_project_name", None)
+        if name:
+            self._project_banner_label.configure(text=t("project.banner", name=name))
+            self._project_banner_warn.pack_forget()
+            self._banner_new_btn.pack_forget()
+            self._banner_open_btn.pack_forget()
+        else:
+            self._project_banner_label.configure(text=t("project.none"))
+            self._project_banner_warn.pack(side="left", padx=8)
+            self._banner_new_btn.pack(side="right", padx=(4, 16), pady=4)
+            self._banner_open_btn.pack(side="right", padx=4, pady=4)
+
+    def _backlog(self, action: str, detail: dict):
+        """Grava no backlog do projeto ativo; sem projeto, não grava (fluxo avulso)."""
+        slug = getattr(self, "_active_project", None)
+        if not slug:
+            return
+        try:
+            from core.project import append_backlog
+            append_backlog(slug, action, detail)
+        except Exception as e:
+            log.info(f"[Backlog] falha ao gravar ({action}): {e}")
+
+    def _record_export(self, formato: str, src_path, action: str = "export"):
+        """Copia a saída para <projeto>/exports/ e registra no backlog."""
+        slug = getattr(self, "_active_project", None)
+        if not slug:
+            return
+        try:
+            import shutil
+            from core.project import project_dir
+            src = Path(src_path)
+            dest_dir = project_dir(slug) / "exports"
+            dest_dir.mkdir(parents=True, exist_ok=True)
+            rel = f"exports/{src.name}"
+            if src.exists():
+                shutil.copy2(src, dest_dir / src.name)
+            self._backlog(action, {"formato": formato, "caminho_relativo": rel})
+        except Exception as e:
+            log.info(f"[Backlog] falha ao registrar export: {e}")
+
     def _attach_log_handler(self):
         """Item 6: o log box é alimentado por logging.Handler — sys.stdout e
         sys.stderr ficam intactos (tracebacks continuam no terminal)."""
@@ -191,20 +273,9 @@ class BlicsaApp(ctk.CTk):
         cards_frame.pack()
         
         def new_proj():
-            dialog = ctk.CTkInputDialog(text="Digite o nome do novo projeto (Pesquisa):", title="Novo Projeto")
-            proj_name = dialog.get_input()
-            if proj_name and proj_name.strip():
-                proj_name = proj_name.strip()
-                projects_dir = os.path.expanduser("~/Blicsa/projects")
-                os.makedirs(projects_dir, exist_ok=True)
-                path = os.path.join(projects_dir, f"{proj_name}.blicsa")
-                
-                self._current_project_path = path
-                self._project_banner_label.configure(text=f"Projeto Atual: {proj_name}")
-                self._welcome_frame.place_forget()
-                self._switch_tab("import")
-                log.info(f"[Sistema] Projeto {proj_name} criado/selecionado.")
-            
+            self._welcome_frame.place_forget()
+            self._create_project_flow()
+
         def load_proj():
             self._welcome_frame.place_forget()
             self._switch_tab("projects")
@@ -231,12 +302,23 @@ class BlicsaApp(ctk.CTk):
         self._content.grid_columnconfigure(0, weight=1)
         self._content.grid_rowconfigure(1, weight=1)
         
-        # Banner
+        # Banner "Projeto Atual" — sempre visível; sem projeto mostra o aviso do
+        # fluxo avulso + criar/abrir rápido (canto reto, sem sombra).
         from ui.design_tokens import BLUE
-        self._project_banner = ctk.CTkFrame(self._content, fg_color=BLUE, corner_radius=0, height=30)
+        self._project_banner = ctk.CTkFrame(self._content, fg_color=BLUE, corner_radius=0, height=34)
         self._project_banner.grid(row=0, column=0, sticky="ew")
-        self._project_banner_label = ctk.CTkLabel(self._project_banner, text="Projeto Atual: Nenhum projeto selecionado", text_color="white", font=ctk.CTkFont(weight="bold", size=13))
-        self._project_banner_label.pack(pady=4)
+        self._project_banner_label = ctk.CTkLabel(self._project_banner, text="", text_color="white", font=ctk.CTkFont(weight="bold", size=13))
+        self._project_banner_label.pack(side="left", padx=(16, 8), pady=4)
+        self._project_banner_warn = ctk.CTkLabel(self._project_banner, text=t("project.none_warning"),
+                                                 text_color="#CFE0FF", font=ctk.CTkFont(size=12))
+        self._banner_open_btn = ctk.CTkButton(self._project_banner, text=t("project.open_quick"), height=22,
+                                              width=110, corner_radius=0, fg_color="transparent", text_color="#FFFFFF",
+                                              border_width=1, border_color="#FFFFFF", hover_color="#153a7a",
+                                              command=lambda: self._switch_tab("projects"))
+        self._banner_new_btn = ctk.CTkButton(self._project_banner, text=t("project.create_quick"), height=22,
+                                             width=110, corner_radius=0, fg_color=WHITE_CARD, text_color=INK,
+                                             hover_color="#E5E5E5", command=self._create_project_flow)
+        self._update_project_banner()
 
         self._tabs_container = ctk.CTkFrame(self._content, fg_color="transparent")
         self._tabs_container.grid(row=1, column=0, sticky="nsew")
@@ -251,6 +333,7 @@ class BlicsaApp(ctk.CTk):
             "corpus":  self._build_tab_corpus(),
             "stats":   self._build_tab_stats(),
             "analises": self._build_tab_analises(),
+            "hist":     self._build_tab_hist(),
             "galeria":  self._build_tab_gallery(),
             "export":  self._build_tab_export(),
         }
@@ -263,7 +346,7 @@ class BlicsaApp(ctk.CTk):
         sb.grid(row=0, column=0, sticky="nsew")
         sb.grid_propagate(False)
         sb.grid_columnconfigure(0, weight=1)
-        sb.grid_rowconfigure(10, weight=1)
+        sb.grid_rowconfigure(11, weight=1)
 
         try:
             from PIL import Image
@@ -286,6 +369,7 @@ class BlicsaApp(ctk.CTk):
             ("corpus",   "stack",   "Corpus"),
             ("stats",    "chart",   "Estatísticas"),
             ("analises", "chart",   "Análises"),
+            ("hist",     "stack",   t("history.title")),
             ("galeria",  "stack",   "Galeria"),
             ("export",   "export",  "Exportar"),
         ], start=1):
@@ -320,21 +404,21 @@ class BlicsaApp(ctk.CTk):
 
         # Corpus Badge at bottom of sidebar
         self._corpus_badge = ctk.CTkLabel(sb, text="Nenhum corpus", text_color=MUTED, font=ctk.CTkFont(size=11))
-        self._corpus_badge.grid(row=9, column=0, padx=16, pady=(10, 5), sticky="sw")
+        self._corpus_badge.grid(row=10, column=0, padx=16, pady=(10, 5), sticky="sw")
         
         try:
             gear_img = ctk.CTkImage(light_image=Image.open("assets/icons/gear.png"), size=(16, 16))
         except: gear_img = None
         self._settings_btn = ctk.CTkButton(sb, text=" Configurações" if gear_img else "⚙️ Configurações", image=gear_img, anchor="w", font=ctk.CTkFont(size=11), fg_color="transparent", hover_color="#e0e0e0", text_color=INK, corner_radius=0, height=32, border_width=1, border_color=INK, command=self._show_settings)
-        self._settings_btn.grid(row=11, column=0, padx=16, pady=(0, 10), sticky="ew")
+        self._settings_btn.grid(row=12, column=0, padx=16, pady=(0, 10), sticky="ew")
 
         self._status_square = ctk.CTkFrame(sb, width=10, height=10, fg_color=BLUE, corner_radius=0)
-        self._status_square.grid(row=12, column=0, padx=(16, 0), pady=(0, 2), sticky="sw")
+        self._status_square.grid(row=13, column=0, padx=(16, 0), pady=(0, 2), sticky="sw")
         self._status_lbl = ctk.CTkLabel(
             sb, text="", font=ctk.CTkFont(size=10),
             text_color=TEXT_MUTED, anchor="w",
         )
-        self._status_lbl.grid(row=12, column=0, padx=(32, 16), pady=(0, 2), sticky="sew")
+        self._status_lbl.grid(row=13, column=0, padx=(32, 16), pady=(0, 2), sticky="sew")
 
         self._progress_bar = ctk.CTkProgressBar(sb, mode="indeterminate", height=5, progress_color=YELLOW, fg_color=PAPER, border_width=1, border_color=INK, corner_radius=0)
         self._progress_bar.grid(row=13, column=0, padx=16, pady=(0, 8), sticky="sew")
@@ -550,6 +634,8 @@ class BlicsaApp(ctk.CTk):
         if tab_key in self._tabs:
             if tab_key == "corpus":
                 self._refresh_corpus_tab()
+            elif tab_key == "hist":
+                self._refresh_hist_tab()
             self._tabs[tab_key].grid(row=0, column=0, sticky="nsew")
         
         for k, btn in self._nav_btns.items():
@@ -851,10 +937,11 @@ class BlicsaApp(ctk.CTk):
         from ui.projects_view import ProjectsView
         frame = ctk.CTkFrame(getattr(self, "_tabs_container", self._content), fg_color="transparent")
         
-        def on_open_project(path):
-            self.after(0, lambda: self._load_project_file(path))
-            
-        self._projects_view = ProjectsView(frame, on_open_project)
+        def on_open_project(slug):
+            self.after(0, lambda: self._open_project_slug(slug))
+
+        self._projects_view = ProjectsView(frame, on_open_project,
+                                           on_new_project=self._create_project_flow)
         self._projects_view.pack(fill="both", expand=True)
         return frame
         
@@ -1144,6 +1231,7 @@ class BlicsaApp(ctk.CTk):
             path = f"reports/blicsa_mapa_{int(time.time())}.html"
             with open(path, "w", encoding="utf-8") as f:
                 f.write(template)
+            self._record_export("html", path, action="map")
                 
             messagebox.showinfo("Sucesso", f"Mapa salvo na galeria!\nVerifique a aba Galeria.")
             self._refresh_gallery()
@@ -1555,6 +1643,9 @@ class BlicsaApp(ctk.CTk):
                     self._dataframe.to_excel(p, index=False)
                     files_saved.append(p)
                     
+                for p in files_saved:
+                    self._record_export(Path(p).suffix.lstrip("."), p)
+
                 if files_saved:
                     msg = "Arquivos exportados com sucesso!\n" + "\n".join(files_saved)
                     messagebox.showinfo("Exportação Concluída", msg)
@@ -1773,34 +1864,14 @@ class BlicsaApp(ctk.CTk):
         provider = self._search_provider_var.get()
         query = self._effective_query()
 
-        # --- DIÁRIO DE PESQUISA ---
+        # --- DIÁRIO DE PESQUISA (LEGADO): só no fluxo avulso, sem projeto ativo;
+        # com projeto, tudo vai para o backlog.jsonl da pasta do projeto. ---
         import os, json, datetime
         from pathlib import Path
-        proj_name = "Pesquisa_Atual"
-        if hasattr(self, '_current_project_path') and getattr(self, '_current_project_path', None):
-            proj_name = Path(self._current_project_path).stem
-            
-        diary_dir = os.path.expanduser(f"~/Blicsa/pesquisas/{proj_name}")
-        os.makedirs(diary_dir, exist_ok=True)
-        diary_path = os.path.join(diary_dir, "diary.json")
-        
-        diary = {"strings_usadas": [], "blink_usage": 0}
-        if os.path.exists(diary_path):
-            try:
-                with open(diary_path, "r", encoding="utf-8") as df:
-                    diary = json.load(df)
-            except:
-                pass
-                
-        diary["strings_usadas"].append({
-            "query": query,
-            "base": provider,
-            "timestamp": datetime.datetime.now().isoformat()
-        })
-        diary["blink_usage"] = diary.get("blink_usage", 0) + 1
-        
-        with open(diary_path, "w", encoding="utf-8") as df:
-            json.dump(diary, df, indent=2, ensure_ascii=False)
+        if getattr(self, "_active_project", None):
+            pass  # backlog do projeto registra a busca no _search_worker
+        else:
+            self._legacy_diary(query, provider)
 
         fields = self._collect_fields() if provider == "openalex" else []
         if not query and not fields:
@@ -1841,10 +1912,201 @@ class BlicsaApp(ctk.CTk):
             self.after(0, lambda: self._search_after_count(n, query, provider, max_results, filters))
         threading.Thread(target=_count_worker, daemon=True).start()
 
+    def _on_feed_import(self, selected_records, fuzzy_dedup=False):
+        """Importa a seleção do feed para o corpus.
+        DECISÃO DE PRODUTO: importar NÃO deduplica (importar 2x é permitido —
+        a dedup é ação explícita no Corpus); registra no backlog do projeto."""
+        if not selected_records:
+            self._switch_tab("home")
+            return
+        df_selected = pd.DataFrame(selected_records)
+        if self._dataframe is not None and not self._dataframe.empty:
+            # concat puro (sem drop_duplicates do merge)
+            combined = pd.concat([self._dataframe, df_selected], ignore_index=True)
+        else:
+            combined = df_selected
+
+        self._dataframe = combined
+        self._refresh_candidate_counts()
+
+        if "year" in combined.columns:
+            valid_years = combined["year"].dropna()
+            valid_years = valid_years[valid_years > 0]
+            if not valid_years.empty:
+                self._year_min_var.set(str(int(valid_years.min())))
+                self._year_max_var.set(str(int(valid_years.max())))
+
+        self._backlog("import", {"registros": int(len(df_selected)),
+                                 "total_corpus": int(len(combined))})
+        self._update_stats_tab()
+        self._set_idle(f"{len(df_selected)} registros adicionados")
+        messagebox.showinfo("Importação", f"{len(df_selected)} registros importados para o corpus com sucesso.")
+        self._switch_tab("corpus")
+
+    # ── Aba Histórico: linha do tempo do backlog do projeto ───────────────
+    _HIST_ICONS = {"search": "🔍", "import": "📥", "dedup": "🧹", "corpus_add": "➕",
+                   "analysis": "📊", "export": "📤", "map": "🗺", "extension_add": "🧩"}
+
+    def _build_tab_hist(self) -> ctk.CTkFrame:
+        frame = self._tab()
+        frame.grid_rowconfigure(1, weight=1)
+        hdr = ctk.CTkFrame(frame, fg_color=WHITE_CARD, corner_radius=0, border_width=2, border_color=INK, height=60)
+        hdr.grid(row=0, column=0, sticky="ew", padx=24, pady=16)
+        hdr.pack_propagate(False)
+        ctk.CTkLabel(hdr, text=t("history.title"), font=ctk.CTkFont(size=20, weight="bold"),
+                     text_color=INK).pack(side="left", padx=16)
+        self._hist_sub_lbl = ctk.CTkLabel(hdr, text="", font=ctk.CTkFont(size=12), text_color=MUTED)
+        self._hist_sub_lbl.pack(side="left", padx=8)
+        self._hist_frame = ctk.CTkScrollableFrame(frame, fg_color="transparent")
+        self._hist_frame.grid(row=1, column=0, sticky="nsew", padx=24, pady=(0, 16))
+        self._hist_frame.grid_columnconfigure(0, weight=1)
+        return frame
+
+    def _hist_entry_summary(self, entry) -> str:
+        d = entry.get("detail", {}) or {}
+        a = entry.get("action", "?")
+        if a == "search":
+            return (f'{d.get("provider", "?")} · "{d.get("query", "")}" · '
+                    f'{d.get("encontrados", "?")} encontrados / {d.get("baixados", "?")} baixados · '
+                    f'{d.get("stop_reason", "")}')
+        if a == "import":
+            return f'{d.get("registros", "?")} registros → corpus com {d.get("total_corpus", "?")}'
+        if a == "dedup":
+            status = t("dedup.apply") if d.get("aplicado") else t("dedup.cancel")
+            return (f'{d.get("pares", "?")} pares · {d.get("por_doi", 0)} DOI · '
+                    f'{d.get("por_titulo", 0)} título · {d.get("por_autor_ano", 0)} autor+ano · {status}')
+        if a == "analysis":
+            return (f'{d.get("tipo", "?")} · {d.get("nos", "?")} nós · '
+                    f'{d.get("arestas", "?")} arestas · {d.get("clusters", "?")} clusters')
+        if a in ("export", "map"):
+            return f'{d.get("formato", "?")} → {d.get("caminho_relativo", "")}'
+        return json.dumps(d, ensure_ascii=False)[:120]
+
+    def _refresh_hist_tab(self):
+        if not hasattr(self, "_hist_frame"):
+            return
+        for w in self._hist_frame.winfo_children():
+            w.destroy()
+        slug = getattr(self, "_active_project", None)
+        if not slug:
+            self._hist_sub_lbl.configure(text="")
+            ctk.CTkLabel(self._hist_frame, text=t("project.none_warning"),
+                         font=ctk.CTkFont(size=14), text_color=MUTED).pack(pady=40)
+            return
+        from core.project import load_backlog
+        entries = load_backlog(slug)
+        self._hist_sub_lbl.configure(text=t("history.subtitle", name=self._active_project_name,
+                                            n=len(entries)))
+        if not entries:
+            ctk.CTkLabel(self._hist_frame, text=t("history.empty"),
+                         font=ctk.CTkFont(size=14), text_color=MUTED).pack(pady=40)
+            return
+        for i, entry in enumerate(reversed(entries)):
+            row = ctk.CTkFrame(self._hist_frame, fg_color=WHITE_CARD, corner_radius=0,
+                               border_width=2, border_color=INK)
+            row.pack(fill="x", pady=4, padx=4)
+            row.grid_columnconfigure(2, weight=1)
+            icon = self._HIST_ICONS.get(entry.get("action"), "•")
+            ctk.CTkLabel(row, text=icon, font=ctk.CTkFont(size=20), width=44).grid(
+                row=0, column=0, rowspan=2, padx=(8, 4), pady=8)
+            ctk.CTkLabel(row, text=t(f'history.action_{entry.get("action", "search")}'),
+                         font=ctk.CTkFont(size=13, weight="bold"), text_color=INK,
+                         anchor="w").grid(row=0, column=1, sticky="w", padx=4, pady=(8, 0))
+            ctk.CTkLabel(row, text=str(entry.get("ts", ""))[:19].replace("T", " "),
+                         font=ctk.CTkFont(size=11), text_color=MUTED).grid(
+                row=0, column=3, sticky="e", padx=12, pady=(8, 0))
+            ctk.CTkLabel(row, text=self._hist_entry_summary(entry), font=ctk.CTkFont(size=12),
+                         text_color="#555555", anchor="w", justify="left", wraplength=760).grid(
+                row=1, column=1, columnspan=2, sticky="w", padx=4, pady=(0, 8))
+            if entry.get("action") == "search":
+                btns = ctk.CTkFrame(row, fg_color="transparent")
+                btns.grid(row=1, column=3, sticky="e", padx=8, pady=(0, 8))
+                ctk.CTkButton(btns, text=t("history.rerun"), width=110, height=26, corner_radius=0,
+                              fg_color=WHITE_CARD, text_color=INK, hover_color=CARD2_BG,
+                              border_width=1, border_color=INK,
+                              command=lambda e=entry: self._rerun_search_entry(e)).pack(side="left", padx=4)
+                if entry.get("detail", {}).get("arquivo"):
+                    ctk.CTkButton(btns, text=t("history.reload"), width=150, height=26, corner_radius=0,
+                                  fg_color=INK, text_color=WHITE_CARD, hover_color=INK_HOV,
+                                  command=lambda e=entry: self._reload_search_entry(e)).pack(side="left", padx=4)
+
+    def _rerun_search_entry(self, entry):
+        """Remonta query + filtros da busca antiga na Coletar (não dispara sozinho)."""
+        d = entry.get("detail", {}) or {}
+        prov = str(d.get("provider", "openalex")).lower()
+        seg_label = {"openalex": "OpenAlex", "crossref": "Crossref", "pubmed": "PubMed"}.get(prov, "OpenAlex")
+        self._provider_seg.set(seg_label)
+        self._search_provider_var.set(prov)
+        self._search_query_entry.delete(0, "end")
+        self._search_query_entry.insert(0, d.get("query", ""))
+        f = d.get("filters", {}) or {}
+        for entry_w, key in [(self._search_year_start, "year_start"), (self._search_year_end, "year_end")]:
+            entry_w.delete(0, "end")
+            if f.get(key):
+                entry_w.insert(0, str(f[key]))
+        self._search_type_var.set(f.get("type", "Todos"))
+        self._search_lang_var.set(f.get("language", "Todos"))
+        self._search_oa_var.set(bool(f.get("is_oa", False)))
+        self._switch_tab("import")
+
+    def _reload_search_entry(self, entry):
+        """LOCAL-FIRST: repopula o feed com o JSON bruto salvo da busca — sem rede."""
+        slug = getattr(self, "_active_project", None)
+        rel = (entry.get("detail", {}) or {}).get("arquivo")
+        if not slug or not rel:
+            return
+        from core.project import load_search_raw
+        try:
+            recs = load_search_raw(slug, rel)
+        except Exception as e:
+            messagebox.showerror("Blicsa", str(e))
+            return
+        from ui.search_feed import SearchFeedView
+        review_tab = self._tabs["review"]
+        for w in review_tab.winfo_children():
+            w.destroy()
+        fv = SearchFeedView(review_tab, self._on_feed_import,
+                            lambda: self._switch_tab("hist"))
+        fv.pack(fill="both", expand=True)
+        fv.load_results(recs, t("history.reloaded", n=len(recs)))
+        self.search_feed_view = fv
+        self._switch_tab("review")
+        log.info(f"[Histórico] recarregado offline: {rel} ({len(recs)} registros)")
+
+    def _legacy_diary(self, query, provider):
+        import os, json, datetime
+        proj_name = "Pesquisa_Atual"
+        if hasattr(self, '_current_project_path') and getattr(self, '_current_project_path', None):
+            proj_name = Path(self._current_project_path).stem
+            
+        diary_dir = os.path.expanduser(f"~/Blicsa/pesquisas/{proj_name}")
+        os.makedirs(diary_dir, exist_ok=True)
+        diary_path = os.path.join(diary_dir, "diary.json")
+        
+        diary = {"strings_usadas": [], "blink_usage": 0}
+        if os.path.exists(diary_path):
+            try:
+                with open(diary_path, "r", encoding="utf-8") as df:
+                    diary = json.load(df)
+            except:
+                pass
+                
+        diary["strings_usadas"].append({
+            "query": query,
+            "base": provider,
+            "timestamp": datetime.datetime.now().isoformat()
+        })
+        diary["blink_usage"] = diary.get("blink_usage", 0) + 1
+        
+        with open(diary_path, "w", encoding="utf-8") as df:
+            json.dump(diary, df, indent=2, ensure_ascii=False)
+
+
     def _effective_query(self) -> str:
         """BLICSA TRANSLATOR não-destrutivo: o campo do usuário fica intacto;
         a query interpretada aparece no label 'Interpretado como:'."""
         typed = self._search_query_entry.get().strip()
+        self._last_typed_query = typed
         provider = self._search_provider_var.get()
         query = typed
         if typed and not typed.startswith('"') and "(" not in typed:
@@ -2251,39 +2513,28 @@ class BlicsaApp(ctk.CTk):
                 trail += f" · ⚠ interrompido ({net_error_info[0]}, página {net_error_info[1]}) por erro de rede — resultados parciais"
             log.info(f"[Search] {trail}")
             self.after(0, lambda tr=trail: self._search_trail_lbl.configure(text=tr))
+
+            # Backlog do projeto ativo: linha 'search' + JSON bruto p/ reuso offline.
+            if getattr(self, "_active_project", None):
+                try:
+                    from core.project import save_search_raw
+                    rel = save_search_raw(self._active_project, df.to_dict("records"))
+                    self._backlog("search", {
+                        "provider": provider_name,
+                        "query": getattr(self, "_last_typed_query", "") or query,
+                        "query_interpretada": query,
+                        "filters": {k: v for k, v in (filters or {}).items() if k != "fields"} |
+                                   ({"fields": list(map(list, filters["fields"]))} if (filters or {}).get("fields") else {}),
+                        "encontrados": int(max(total_found_sum, baixados)),
+                        "baixados": int(baixados),
+                        "stop_reason": stop_reason,
+                        "arquivo": rel})
+                except Exception as e:
+                    log.info(f"[Backlog] falha ao registrar busca: {e}")
             
             # Show SearchFeedView for import review
-            # DECISÃO DE PRODUTO: importar NÃO deduplica (importar 2x é permitido);
-            # a dedup é ação explícita no Corpus.
-            def on_import_confirm(selected_records, fuzzy_dedup=False):
-                if not selected_records:
-                    self._switch_tab("home")
-                    return
-                df_selected = pd.DataFrame(selected_records)
-                if self._dataframe is not None and not self._dataframe.empty:
-                    # concat puro (sem drop_duplicates do merge): importar o mesmo
-                    # conjunto 2x é permitido — a dedup existe para limpar depois.
-                    combined = pd.concat([self._dataframe, df_selected], ignore_index=True)
-                else:
-                    combined = df_selected
+            on_import_confirm = self._on_feed_import
 
-                self._dataframe = combined
-                self._refresh_candidate_counts()
-                
-                if "year" in combined.columns:
-                    valid_years = combined["year"].dropna()
-                    valid_years = valid_years[valid_years > 0]
-                    if not valid_years.empty:
-                        ymin = int(valid_years.min())
-                        ymax = int(valid_years.max())
-                        self._year_min_var.set(str(ymin))
-                        self._year_max_var.set(str(ymax))
-                        
-                self._update_stats_tab()
-                self._set_idle(f"{len(df_selected)} registros adicionados")
-                messagebox.showinfo("Importação", f"{len(df_selected)} registros importados para o corpus com sucesso.")
-                self._switch_tab("corpus")
-                
             def on_cancel():
                 # Cancela a colheita em andamento (cancel_event) E volta para a Coletar.
                 self._cancel_search()
@@ -2576,6 +2827,17 @@ class BlicsaApp(ctk.CTk):
 
             stats = gen.get_summary_stats()
             mode  = self._viz_mode_var.get()
+
+            # Backlog: análise gerada (coocorrência etc.) no projeto ativo.
+            self._backlog("analysis", {
+                "tipo": self._map_type_var.get(),
+                "params": {"field": self._field_var.get(),
+                           "counting": self._counting_var.get(),
+                           "min_occ": self._min_occ_var.get(),
+                           "cluster_algorithm": self._cluster_alg_var.get()},
+                "nos": stats.get("total_nodes", 0),
+                "arestas": stats.get("total_edges", 0),
+                "clusters": stats.get("num_clusters", 0)})
             plotly_color = self._plotly_mode_var.get()
 
             gen.export_to_html(MAP_PATH)
@@ -3592,6 +3854,7 @@ class BlicsaApp(ctk.CTk):
         if path := filedialog.asksaveasfilename(
                 defaultextension=".csv", filetypes=[("CSV", "*.csv")]):
             self._dataframe.to_csv(path, index=False, encoding="utf-8-sig")
+            self._record_export("csv", path)
             log.info(f"[Export] DataFrame → {path}")
 
     def _export_clusters_txt(self):
@@ -3712,20 +3975,26 @@ class BlicsaApp(ctk.CTk):
 
     def _save_project_gui(self):
         import os
-        proj_dir = getattr(self, "_projects_dir_var", ctk.StringVar(value=os.path.expanduser("~/Blicsa/projects"))).get()
-        os.makedirs(proj_dir, exist_ok=True)
-        path = filedialog.asksaveasfilename(
-            initialdir=proj_dir,
-            defaultextension=".blicsa",
-            filetypes=[("Projeto Blicsa", "*.blicsa")],
-            title="Salvar Projeto Blicsa",
-        )
+        # Projeto ativo: snapshot vai direto para <projeto>/project.blicsa
+        # (atualiza o manifest) e ganha registro no backlog.
+        if getattr(self, "_active_project", None):
+            path = self._current_project_path
+        else:
+            proj_dir = getattr(self, "_projects_dir_var", ctk.StringVar(value=os.path.expanduser("~/Blicsa/projects"))).get()
+            os.makedirs(proj_dir, exist_ok=True)
+            path = filedialog.asksaveasfilename(
+                initialdir=proj_dir,
+                defaultextension=".blicsa",
+                filetypes=[("Projeto Blicsa", "*.blicsa")],
+                title="Salvar Projeto Blicsa",
+            )
         if not path:
             return
         self._set_busy("Salvando projeto...")
         try:
             from core.project import save_blicsa_project
             config = {
+                "name":         getattr(self, "_active_project_name", None) or Path(path).stem,
                 "map_type":     self._map_type_var.get(),
                 "field":        self._field_var.get(),
                 "counting":     self._counting_var.get(),
@@ -3765,6 +4034,7 @@ class BlicsaApp(ctk.CTk):
             if thumbnail_path and os.path.exists(thumbnail_path):
                 os.remove(thumbnail_path)
                 
+            self._backlog("export", {"formato": "blicsa", "caminho_relativo": "project.blicsa"})
             self._set_idle(f"Projeto salvo: {Path(path).name}")
             messagebox.showinfo("Sucesso", "Projeto salvo com sucesso!")
             
@@ -3785,63 +4055,63 @@ class BlicsaApp(ctk.CTk):
         self._set_busy("Carregando projeto...")
         try:
             from core.project import load_blicsa_project
-            from core.matrix_builders import NetworkGenerator
-            
             project_data = load_blicsa_project(path)
-            
-            # 1. Restore configuration
-            config = project_data.get("config", {})
-            setters: list[tuple] = [
-                ("map_type",      self._map_type_var,  "set"),
-                ("field",         self._field_var,      "set"),
-                ("counting",      self._counting_var,   "set"),
-                ("assoc_strength",self._assoc_var,      "set"),
-                ("min_occ",       self._min_occ_var,    "set"),
-                ("fa2_iter",      self._fa2_iter_var,   "set"),
-                ("linlog",        self._linlog_var,      "set"),
-                ("viz_mode",      self._viz_mode_var,   "set"),
-                ("plotly_mode",   self._plotly_mode_var,"set"),
-                ("cluster_algorithm", self._cluster_alg_var, "set"),
-                ("cluster_resolution", self._cluster_res_var, "set"),
-            ]
-            for key, var, _ in setters:
-                if (v := config.get(key)) is not None:
-                    var.set(v)
-            for key, var in [
-                ("max_nodes", self._max_nodes_var),
-                ("max_pct",   self._max_pct_var),
-                ("year_min",  self._year_min_var),
-                ("year_max",  self._year_max_var),
-                ("extra_sw",  self._extra_sw_var),
-            ]:
-                if (v := config.get(key)) is not None:
-                    var.set(str(v))
-                    
-            # 2. Restore dataset
-            self._dataframe = project_data.get("df")
-            
-            # 3. Restore layout and generator
-            self._positions = project_data.get("positions", {})
-            self._cluster_labels = project_data.get("cluster_labels", {})
-            
-            G = project_data.get("G")
-            if G is not None:
-                self._generator = NetworkGenerator(self._dataframe)
-                self._generator.G = G
-                self._generator.clustering_algorithm = self._cluster_alg_var.get()
-                self._generator.clustering_resolution = self._cluster_res_var.get()
-                
-            self._refresh_candidate_counts()
-            self._update_stats_tab()
+            self._restore_project_data(project_data)
             self._set_idle("Projeto carregado com sucesso")
-            
             if self._dataframe is not None and not self._dataframe.empty:
                 self.after(0, lambda: self._switch_tab("viz"))
-                
             messagebox.showinfo("Sucesso", "Projeto carregado com sucesso!")
         except Exception as e:
             self._set_idle("Erro ao carregar projeto")
             messagebox.showerror("Erro ao carregar", str(e))
+
+    def _restore_project_data(self, project_data: dict):
+        """Restaura config + corpus + layout/grafo a partir de um projeto carregado."""
+        from core.matrix_builders import NetworkGenerator
+        # 1. Restore configuration
+        config = project_data.get("config", {})
+        setters: list[tuple] = [
+            ("map_type",      self._map_type_var,  "set"),
+            ("field",         self._field_var,      "set"),
+            ("counting",      self._counting_var,   "set"),
+            ("assoc_strength",self._assoc_var,      "set"),
+            ("min_occ",       self._min_occ_var,    "set"),
+            ("fa2_iter",      self._fa2_iter_var,   "set"),
+            ("linlog",        self._linlog_var,      "set"),
+            ("viz_mode",      self._viz_mode_var,   "set"),
+            ("plotly_mode",   self._plotly_mode_var,"set"),
+            ("cluster_algorithm", self._cluster_alg_var, "set"),
+            ("cluster_resolution", self._cluster_res_var, "set"),
+        ]
+        for key, var, _ in setters:
+            if (v := config.get(key)) is not None:
+                var.set(v)
+        for key, var in [
+            ("max_nodes", self._max_nodes_var),
+            ("max_pct",   self._max_pct_var),
+            ("year_min",  self._year_min_var),
+            ("year_max",  self._year_max_var),
+            ("extra_sw",  self._extra_sw_var),
+        ]:
+            if (v := config.get(key)) is not None:
+                var.set(str(v))
+                
+        # 2. Restore dataset
+        self._dataframe = project_data.get("df")
+        
+        # 3. Restore layout and generator
+        self._positions = project_data.get("positions", {})
+        self._cluster_labels = project_data.get("cluster_labels", {})
+        
+        G = project_data.get("G")
+        if G is not None:
+            self._generator = NetworkGenerator(self._dataframe)
+            self._generator.G = G
+            self._generator.clustering_algorithm = self._cluster_alg_var.get()
+            self._generator.clustering_resolution = self._cluster_res_var.get()
+            
+        self._refresh_candidate_counts()
+        self._update_stats_tab()
 
     def _get_ai_analyst(self):
         from ai.client import GroqBibliometricAnalyst
@@ -3879,7 +4149,15 @@ class BlicsaApp(ctk.CTk):
             log.info("[Dedup] Nenhuma duplicata.\n")
             return
         log.info(f"[Dedup] {len(dupes)} par(es) encontrado(s).\n")
-        DedupPreviewDialog(self, df, dupes, self._apply_dedup)
+
+        def on_cancel(pares=len(dupes)):
+            from collections import Counter
+            by = Counter(classify_dedup_reason(r) for _, _, r in dupes)
+            self._backlog("dedup", {"pares": pares, "por_doi": by.get("doi", 0),
+                                    "por_titulo": by.get("title", 0),
+                                    "por_autor_ano": by.get("author_year", 0),
+                                    "aplicado": False})
+        DedupPreviewDialog(self, df, dupes, self._apply_dedup, on_cancel=on_cancel)
 
     def _apply_dedup(self, dupes: list):
         """Aplica a remoção dos pares confirmados e informa o resultado por motivo."""
@@ -3898,6 +4176,10 @@ class BlicsaApp(ctk.CTk):
         msg = t("dedup.removed", k=removed, x=by.get("doi", 0),
                 y=by.get("title", 0), z=by.get("author_year", 0))
         self._last_dedup_msg = msg
+        self._backlog("dedup", {"pares": len(dupes), "por_doi": by.get("doi", 0),
+                                "por_titulo": by.get("title", 0),
+                                "por_autor_ano": by.get("author_year", 0),
+                                "aplicado": True})
         log.info(f"[Dedup] {msg} Base: {len(self._dataframe)} registros.\n")
         self._generator = None
         self.after(0, self._update_stats_tab)

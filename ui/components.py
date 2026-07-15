@@ -90,7 +90,7 @@ class DedupPreviewDialog(ctk.CTkToplevel):
     (título A × título B + motivo) e botões Aplicar / Cancelar.
     Neoplasticista: canto reto, sem sombra, sem gradiente."""
 
-    def __init__(self, parent, df, dupes: list[tuple[int, int, str]], on_apply):
+    def __init__(self, parent, df, dupes: list[tuple[int, int, str]], on_apply, on_cancel=None):
         from core.i18n import t
         super().__init__(parent)
         self.title("Blicsa")
@@ -101,6 +101,7 @@ class DedupPreviewDialog(ctk.CTkToplevel):
 
         self._dupes = dupes            # [(keep_idx, remove_idx, reason)]
         self._on_apply = on_apply
+        self._on_cancel = on_cancel
 
         by = Counter(classify_dedup_reason(r) for _, _, r in dupes)
 
@@ -139,12 +140,17 @@ class DedupPreviewDialog(ctk.CTkToplevel):
         foot.grid(row=3, column=0, sticky="ew", padx=24, pady=(8, 20))
         ctk.CTkButton(foot, text=t("dedup.cancel"), width=120, height=38, corner_radius=0,
                       fg_color="#FFFFFF", text_color=INK, hover_color=CARD2_BG,
-                      border_width=2, border_color=INK, command=self.destroy
+                      border_width=2, border_color=INK, command=self._cancel
                       ).pack(side="right", padx=(8, 0))
         ctk.CTkButton(foot, text=t("dedup.apply"), width=160, height=38, corner_radius=0,
                       fg_color="#DF3117", hover_color=RED_HOV, text_color="#FFFFFF",
                       font=ctk.CTkFont(size=13, weight="bold"), command=self._apply
                       ).pack(side="right")
+
+    def _cancel(self):
+        self.destroy()
+        if self._on_cancel:
+            self._on_cancel()
 
     def _apply(self):
         dupes = self._dupes
