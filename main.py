@@ -83,6 +83,8 @@ class BlicsaApp(ctk.CTk):
     """
     def __init__(self):
         super().__init__()
+        # Console em INFO desde o início (o handler do log box entra após o layout).
+        logging.basicConfig(level=logging.INFO, format="%(message)s")
         self.title("Blicsa — Inteligência Bibliométrica")
         self.geometry("1380x880")
         self.minsize(1100, 700)
