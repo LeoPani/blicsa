@@ -1,5 +1,7 @@
 import sys
 import logging
+# Console em INFO desde o IMPORT: a migracao de settings roda ao importar core.i18n.
+logging.basicConfig(level=logging.INFO, format="%(message)s")
 import os
 
 __version__ = "1.1.0-beta"
@@ -83,8 +85,6 @@ class BlicsaApp(ctk.CTk):
     """
     def __init__(self):
         super().__init__()
-        # Console em INFO desde o início (o handler do log box entra após o layout).
-        logging.basicConfig(level=logging.INFO, format="%(message)s")
         self.title("Blicsa — Inteligência Bibliométrica")
         self.geometry("1380x880")
         self.minsize(1100, 700)

@@ -26,7 +26,14 @@ def prepare_serve_dir(app_root, serve_dir=None) -> Path:
     for name in STATIC_ASSETS:
         src = Path(app_root) / "assets" / name
         if src.exists():
-            shutil.copy2(src, serve_dir / "assets" / name)
+            dest = serve_dir / "assets" / name
+            # Num app instalado o código é somente-leitura: shutil.copy2 copiaria
+            # esse bit read-only para o destino e a próxima cópia falharia. Usamos
+            # copyfile (não copia permissões) e garantimos destino gravável.
+            if dest.exists():
+                dest.chmod(0o644)
+            shutil.copyfile(src, dest)
+            dest.chmod(0o644)
     return serve_dir
 
 
