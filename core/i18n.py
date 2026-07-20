@@ -67,6 +67,24 @@ def t(key: str, **kwargs) -> str:
             pass
     return val
 
+# Chaves que o mapa Sigma (assets/map.js) consome. O Python resolve estas no
+# idioma ativo e entrega ao JS (i18n.json no .serve ou window.BLICSA_I18N inline).
+MAP_I18N_KEYS = (
+    "map_empty",
+    "map_title",
+    "map_search_placeholder",
+    "map_reset",
+    "map_export_png",
+    "map_clusters",
+    "map_cluster_item",
+)
+
+
+def get_map_i18n() -> Dict[str, str]:
+    """Strings do mapa Sigma no idioma ativo, para o JS ler com fallback en."""
+    return {key: t(key) for key in MAP_I18N_KEYS}
+
+
 def get_lang() -> str:
     """Código de idioma atualmente carregado (ex.: 'pt_BR', 'en', 'fr')."""
     return _current_lang

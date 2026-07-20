@@ -18,6 +18,20 @@ DEFAULT_SERVE_DIR = Path.home() / "Blicsa" / ".serve"
 STATIC_ASSETS = ("map_template.html", "map_template_empty.html", "map.js", "graph_empty.json")
 
 
+def _copy_writable(src: Path, dest: Path) -> None:
+    """Copia src→dest garantindo destino gravável.
+
+    Num app instalado o código é somente-leitura: shutil.copy2 copiaria esse bit
+    read-only para o destino e a próxima cópia falharia. Usamos copyfile (não
+    copia permissões) e forçamos 0o644 no destino.
+    """
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    if dest.exists():
+        dest.chmod(0o644)
+    shutil.copyfile(src, dest)
+    dest.chmod(0o644)
+
+
 def prepare_serve_dir(app_root, serve_dir=None) -> Path:
     """Cria o diretório dedicado e copia só os estáticos do webview."""
     serve_dir = Path(serve_dir or DEFAULT_SERVE_DIR)
@@ -26,14 +40,16 @@ def prepare_serve_dir(app_root, serve_dir=None) -> Path:
     for name in STATIC_ASSETS:
         src = Path(app_root) / "assets" / name
         if src.exists():
-            dest = serve_dir / "assets" / name
-            # Num app instalado o código é somente-leitura: shutil.copy2 copiaria
-            # esse bit read-only para o destino e a próxima cópia falharia. Usamos
-            # copyfile (não copia permissões) e garantimos destino gravável.
-            if dest.exists():
-                dest.chmod(0o644)
-            shutil.copyfile(src, dest)
-            dest.chmod(0o644)
+            _copy_writable(src, serve_dir / "assets" / name)
+
+    # Vendors locais (graphology + sigma). Sem eles o mapa Sigma não renderiza
+    # offline — são a espinha do local-first deste passo.
+    vendor_src = Path(app_root) / "assets" / "vendor"
+    if vendor_src.is_dir():
+        for src in sorted(vendor_src.iterdir()):
+            if src.is_file():
+                _copy_writable(src, serve_dir / "assets" / "vendor" / src.name)
+
     return serve_dir
 
 

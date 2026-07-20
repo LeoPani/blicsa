@@ -1214,16 +1214,19 @@ class BlicsaApp(ctk.CTk):
             
             html_template_path = str(OUTPUT_DIR / "assets" / "map_template.html")
             js_path = str(OUTPUT_DIR / "assets" / "map.js")
-            
+            vendor_path = str(OUTPUT_DIR / "assets" / "vendor" / "blicsa-vendor.min.js")
+
             with open(html_template_path, "r", encoding="utf-8") as f:
                 template = f.read()
             with open(js_path, "r", encoding="utf-8") as f:
                 map_js = f.read()
+            with open(vendor_path, "r", encoding="utf-8") as f:
+                vendor_js = f.read()
             with open(sigma_path, "r", encoding="utf-8") as f:
                 graph_json = f.read()
-                
+
             os.remove(sigma_path)
-            
+
             # Replace fetch with inline data robustly
             map_js = re.sub(
                 r'const response = await fetch\("graph\.json"\);.*?data = await response\.json\(\);',
@@ -1231,10 +1234,18 @@ class BlicsaApp(ctk.CTk):
                 map_js,
                 flags=re.DOTALL
             )
-            
-            # Inject inline script
-            template = template.replace('<script type="module" src="map.js"></script>', f'<script type="module">\n{map_js}\n</script>')
-            
+
+            # HTML da galeria é 100% autossuficiente e offline: vendors e i18n
+            # do idioma ativo embutidos inline (nenhum fetch/URL externa).
+            from core.i18n import get_map_i18n
+            i18n_json = json.dumps(get_map_i18n(), ensure_ascii=False)
+            template = template.replace(
+                '<script src="vendor/blicsa-vendor.min.js"></script>',
+                f'<script>\n{vendor_js}\n</script>')
+            template = template.replace(
+                '<script src="map.js"></script>',
+                f'<script>\nwindow.BLICSA_I18N = {i18n_json};\n{map_js}\n</script>')
+
             path = f"reports/blicsa_mapa_{int(time.time())}.html"
             with open(path, "w", encoding="utf-8") as f:
                 f.write(template)
@@ -2915,7 +2926,14 @@ class BlicsaApp(ctk.CTk):
             # graph.json vai para o diretório SERVIDO (nunca a raiz do repo).
             sigma_path = str(self._serve_dir / "assets" / "graph.json")
             export_sigma_json(gen.G, self._positions, sigma_path)
-            
+
+            # i18n.json ao lado: strings do mapa no idioma ativo (map.js lê com
+            # fallback en). Assim nada de texto PT fica hardcoded no JS.
+            from core.i18n import get_map_i18n
+            i18n_path = self._serve_dir / "assets" / "i18n.json"
+            with open(i18n_path, "w", encoding="utf-8") as f:
+                json.dump(get_map_i18n(), f, ensure_ascii=False)
+
             import webbrowser
             url = f"http://127.0.0.1:{self._local_server_port}/assets/map_template.html"
             webbrowser.open(url)
@@ -3082,7 +3100,7 @@ class BlicsaApp(ctk.CTk):
             out_name = f"blicsa_mapa_{map_type}_{int(time.time())}.html"
             path = str(OUTPUT_DIR / out_name)
             
-            fig.write_html(path, include_plotlyjs="cdn")
+            fig.write_html(path, include_plotlyjs=True)
             log.info(f"[Plotly] Interativo salvo → {path}\n")
             
             self._open_in_webview("Blicsa - Visualização Interativa", path)
@@ -3106,7 +3124,7 @@ class BlicsaApp(ctk.CTk):
             
             import time
             sankey_path = str(OUTPUT_DIR / f"blicsa_sankey_{int(time.time())}.html")
-            fig.write_html(sankey_path, include_plotlyjs="cdn")
+            fig.write_html(sankey_path, include_plotlyjs=True)
             log.info(f"[Sankey] Diagrama salvo → {sankey_path}\n")
             self._open_in_webview("Blicsa - Sankey", sankey_path)
             if hasattr(self, '_refresh_gallery'): self._refresh_gallery()
@@ -3125,7 +3143,7 @@ class BlicsaApp(ctk.CTk):
             
             import time
             timeline_path = str(OUTPUT_DIR / f"blicsa_linha_tempo_{int(time.time())}.html")
-            fig.write_html(timeline_path, include_plotlyjs="cdn")
+            fig.write_html(timeline_path, include_plotlyjs=True)
             log.info(f"[Linha do Tempo] Salva → {timeline_path}\n")
             self._open_in_webview("Blicsa - Linha do Tempo", timeline_path)
             if hasattr(self, '_refresh_gallery'): self._refresh_gallery()
@@ -3166,7 +3184,7 @@ class BlicsaApp(ctk.CTk):
             fig = build_thematic_map(self._generator.G)
             import time
             thematic_path = str(OUTPUT_DIR / f"blicsa_mapa_tematico_{int(time.time())}.html")
-            fig.write_html(thematic_path, include_plotlyjs="cdn")
+            fig.write_html(thematic_path, include_plotlyjs=True)
             log.info(f"[Mapa Temático] Salvo → {thematic_path}\n")
             self._open_in_webview("Blicsa - Mapa Temático", thematic_path)
             if hasattr(self, '_refresh_gallery'): self._refresh_gallery()
@@ -3183,7 +3201,7 @@ class BlicsaApp(ctk.CTk):
             fig = build_historiograph(self._dataframe)
             import time
             hist_path = str(OUTPUT_DIR / f"blicsa_historiografia_{int(time.time())}.html")
-            fig.write_html(hist_path, include_plotlyjs="cdn")
+            fig.write_html(hist_path, include_plotlyjs=True)
             log.info(f"[Historiografia] Salva → {hist_path}\n")
             self._open_in_webview("Blicsa - Historiografia", hist_path)
             if hasattr(self, '_refresh_gallery'): self._refresh_gallery()

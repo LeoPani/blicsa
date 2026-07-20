@@ -5,6 +5,7 @@ import plotly.graph_objects as go
 from fa2_modified import ForceAtlas2
 
 from .matrix_builders import CLUSTER_PALETTE
+from .i18n import t
 
 DARK_BG    = "#ffffff"
 PAPER_BG   = "#f8f9fa"
@@ -38,10 +39,12 @@ def compute_fa2_layout(G: nx.Graph, iterations: int = 500, linlog: bool = False)
 def build_plotly_map(
     G: nx.Graph,
     positions: dict,
-    title: str = "Blicsa — Mapeamento Bibliométrico",
+    title: str = None,
     color_mode: str = "cluster",
     df=None,
 ) -> go.Figure:
+    if title is None:
+        title = t("viz_title_map")
     PAPER = "#F6F4EE"
     INK = "#141414"
     CLUSTER_PALETTE = ["#DF3117", "#1E4DA0", "#F5BE00", "#141414", "#7A9E7E", "#B65CA2", "#5CB0B8", "#C97B2D"]
@@ -105,7 +108,7 @@ def build_plotly_map(
     hover_texts = []
     for n in nodes:
         occur = G.nodes[n].get("occurrence", G.nodes[n].get("weight", 0))
-        hover_texts.append(f"{n}<br>Cluster: {partition.get(n,0)}<br>Occurrences: {occur}")
+        hover_texts.append(f"{n}<br>{t('viz_hover_cluster')}: {partition.get(n,0)}<br>{t('viz_hover_occurrences')}: {occur}")
     
     traces.append(go.Scatter(
         x=xs,
@@ -166,7 +169,7 @@ def build_plotly_map(
         degrees = [G.degree(n, weight="weight") for n in nodes]
         node_colors = degrees
         colorbar_cfg = dict(
-            title="Grau ponderado",
+            title=t("viz_axis_weighted_degree"),
             tickfont=dict(color=TEXT_COLOR),
             titlefont=dict(color=TEXT_COLOR),
         )
@@ -177,7 +180,7 @@ def build_plotly_map(
         if valid_yrs:
             node_colors = yrs
             colorbar_cfg = dict(
-                title="Ano médio",
+                title=t("viz_axis_avg_year"),
                 tickfont=dict(color=TEXT_COLOR),
                 titlefont=dict(color=TEXT_COLOR),
             )
@@ -216,15 +219,15 @@ def build_plotly_map(
     if use_colorscale:
         hover = [
             f"<b>{nodes[i]}</b><br>"
-            f"Cluster: {partition.get(nodes[i], 0)}<br>"
-            f"Grau: {G.degree(nodes[i], weight='weight'):.1f}<br>"
-            f"Ano médio: {year_means.get(nodes[i], '—')}"
+            f"{t('viz_hover_cluster')}: {partition.get(nodes[i], 0)}<br>"
+            f"{t('viz_hover_degree')}: {G.degree(nodes[i], weight='weight'):.1f}<br>"
+            f"{t('viz_hover_avg_year')}: {year_means.get(nodes[i], '—')}"
             for i in range(len(nodes))
         ]
         traces.append(go.Scatter(
             x=xs, y=ys,
             mode="markers+text",
-            name="Nós",
+            name=t("viz_trace_nodes"),
             showlegend=False,
             text=[nodes[i] if node_px[i] > 16 else "" for i in range(len(nodes))],
             textposition="top center",
@@ -248,10 +251,10 @@ def build_plotly_map(
             color = CLUSTER_PALETTE[clust % len(CLUSTER_PALETTE)]
             hover = [
                 f"<b>{nodes[i]}</b><br>"
-                f"Cluster: {clust}<br>"
-                f"Grau: {G.degree(nodes[i], weight='weight'):.1f}<br>"
-                f"Ocorrências: {G.nodes[nodes[i]].get('occurrence', '—')}<br>"
-                f"Ano médio: {year_means.get(nodes[i], '—')}"
+                f"{t('viz_hover_cluster')}: {clust}<br>"
+                f"{t('viz_hover_degree')}: {G.degree(nodes[i], weight='weight'):.1f}<br>"
+                f"{t('viz_hover_occurrences')}: {G.nodes[nodes[i]].get('occurrence', '—')}<br>"
+                f"{t('viz_hover_avg_year')}: {year_means.get(nodes[i], '—')}"
                 for i in mask
             ]
             show = clust not in legend_added
@@ -260,7 +263,7 @@ def build_plotly_map(
                 x=[xs[i] for i in mask],
                 y=[ys[i] for i in mask],
                 mode="markers+text",
-                name=f"Cluster {clust}",
+                name=t("viz_cluster_label", n=clust),
                 legendgroup=f"cluster_{clust}",
                 showlegend=show,
                 text=[nodes[i] if node_px[i] > 16 else "" for i in mask],
@@ -312,7 +315,7 @@ def build_plotly_map(
 def export_plotly_html(fig: go.Figure, path: str):
     fig.write_html(
         path,
-        include_plotlyjs="cdn",
+        include_plotlyjs=True,
         config={
             "scrollZoom": True,
             "displaylogo": False,
@@ -324,9 +327,11 @@ def export_plotly_html(fig: go.Figure, path: str):
 def build_plotly_density(
     G: nx.Graph,
     positions: dict,
-    title: str = "Blicsa — Mapa de Densidade",
+    title: str = None,
 ) -> go.Figure:
     """Plotly contour density view weighted by node occurrence."""
+    if title is None:
+        title = t("viz_title_density")
     if not positions:
         return go.Figure()
 
@@ -344,9 +349,9 @@ def build_plotly_density(
         showscale=True,
         line=dict(width=0),
         opacity=0.85,
-        name="Densidade",
+        name=t("viz_trace_density"),
         colorbar=dict(
-            title="Intensidade",
+            title=t("viz_axis_intensity"),
             titlefont=dict(color=TEXT_COLOR),
             tickfont=dict(color=TEXT_COLOR),
         ),
@@ -402,7 +407,7 @@ def build_sankey_diagram(df, field1="authors", field2="keywords", field3="source
     
     if not rel1 and not rel2:
         fig = go.Figure()
-        fig.update_layout(title="Sem dados de fluxo para gerar Sankey")
+        fig.update_layout(title=t("viz_no_sankey"))
         return fig
         
     def get_top_items(relations, idx, top_n):
@@ -463,14 +468,17 @@ def build_sankey_diagram(df, field1="authors", field2="keywords", field3="source
     )])
     
     label_map = {
-        "authors": "Autores",
-        "keywords": "Palavras-chave",
-        "source": "Fontes (Journals)",
-        "year": "Ano"
+        "authors": t("viz_sankey_field_authors"),
+        "keywords": t("viz_sankey_field_keywords"),
+        "source": t("viz_sankey_field_source"),
+        "year": t("viz_axis_year"),
     }
-    
+
     fig.update_layout(
-        title_text=f"Três Campos: {label_map.get(field1, field1)} → {label_map.get(field2, field2)} → {label_map.get(field3, field3)}",
+        title_text=t("viz_sankey_title",
+                     f1=label_map.get(field1, field1),
+                     f2=label_map.get(field2, field2),
+                     f3=label_map.get(field3, field3)),
         font_size=11,
         paper_bgcolor=PAPER_BG,
         plot_bgcolor=DARK_BG,
@@ -481,7 +489,7 @@ def build_sankey_diagram(df, field1="authors", field2="keywords", field3="source
     return fig
 
 
-def build_timeline_view(G: nx.Graph, pos: dict, title: str = "Blicsa — Visualização em Linha do Tempo") -> go.Figure:
+def build_timeline_view(G: nx.Graph, pos: dict, title: str = None) -> go.Figure:
     """
     Creates a timeline layout of the network where:
       - X-axis = Average publication year of the term
@@ -489,7 +497,9 @@ def build_timeline_view(G: nx.Graph, pos: dict, title: str = "Blicsa — Visuali
     Draws horizontal cluster guides and connecting lines for top edges.
     """
     import plotly.graph_objects as go
-    
+    if title is None:
+        title = t("viz_title_timeline")
+
     nodes = list(G.nodes())
     if not nodes:
         return go.Figure()
@@ -501,7 +511,7 @@ def build_timeline_view(G: nx.Graph, pos: dict, title: str = "Blicsa — Visuali
     nodes_with_year = [n for n in G.nodes() if year_means.get(n, 0) > 0]
     if not nodes_with_year:
         fig = go.Figure()
-        fig.update_layout(title="Sem dados de ano médio para gerar Linha do Tempo")
+        fig.update_layout(title=t("viz_no_timeline"))
         return fig
         
     xs = [year_means[n] for n in nodes_with_year]
@@ -565,14 +575,14 @@ def build_timeline_view(G: nx.Graph, pos: dict, title: str = "Blicsa — Visuali
         
         color = CLUSTER_PALETTE[c % len(CLUSTER_PALETTE)]
         hover_text = [
-            f"<b>{n}</b><br>Ano Médio: {year_means[n]:.2f}<br>Ocorrências: {G.nodes[n].get('occurrence', '—')}"
+            f"<b>{n}</b><br>{t('viz_hover_avg_year')}: {year_means[n]:.2f}<br>{t('viz_hover_occurrences')}: {G.nodes[n].get('occurrence', '—')}"
             for n in cluster_nodes
         ]
-        
+
         fig.add_trace(go.Scatter(
             x=c_xs, y=c_ys,
             mode="markers+text",
-            name=f"Cluster {c}",
+            name=t("viz_cluster_label", n=c),
             text=[n if raw_sizes.get(n, 10) > max_sz * 0.4 else "" for n in cluster_nodes],
             textposition="top center",
             textfont=dict(size=9, color=TEXT_COLOR),
@@ -598,17 +608,17 @@ def build_timeline_view(G: nx.Graph, pos: dict, title: str = "Blicsa — Visuali
         plot_bgcolor=DARK_BG,
         font=dict(color=TEXT_COLOR, family="Inter, sans-serif"),
         xaxis=dict(
-            title="Ano Médio de Publicação",
+            title=t("viz_axis_avg_pub_year"),
             showgrid=True,
             gridcolor="rgba(148, 163, 184, 0.15)",
             tickmode="linear",
             dtick=1
         ),
         yaxis=dict(
-            title="ID do Cluster (Grupo Louvain)",
+            title=t("viz_axis_cluster_id"),
             showgrid=False,
             tickvals=clusters,
-            ticktext=[f"Cluster {c}" for c in clusters]
+            ticktext=[t("viz_cluster_label", n=c) for c in clusters]
         ),
         hovermode="closest",
         height=750,
@@ -617,18 +627,20 @@ def build_timeline_view(G: nx.Graph, pos: dict, title: str = "Blicsa — Visuali
     return fig
 
 
-def build_thematic_map(G: nx.Graph, title: str = "Blicsa — Mapa Temático (Diagrama Estratégico)") -> go.Figure:
+def build_thematic_map(G: nx.Graph, title: str = None) -> go.Figure:
     """
     Computes Callon Centrality & Density for each Louvain cluster and plots them
     on a 2D scatter plot divided into 4 strategic quadrants.
     """
     import plotly.graph_objects as go
     import numpy as np
-    
+    if title is None:
+        title = t("viz_title_thematic")
+
     partition = nx.get_node_attributes(G, "group")
     if not partition:
         fig = go.Figure()
-        fig.update_layout(title="Sem dados de clusters para gerar o Mapa Temático")
+        fig.update_layout(title=t("viz_no_thematic"))
         return fig
         
     clusters: dict[int, list[str]] = {}
@@ -686,18 +698,18 @@ def build_thematic_map(G: nx.Graph, title: str = "Blicsa — Mapa Temático (Dia
         c = d["cluster"]
         color = CLUSTER_PALETTE[c % len(CLUSTER_PALETTE)]
         hover = (
-            f"<b>Cluster {c}</b><br>"
-            f"Nós: {d['size']}<br>"
-            f"Centralidade: {d['centrality']:.2f}<br>"
-            f"Densidade: {d['density']:.4f}<br>"
-            f"Termos: {', '.join(d['top_nodes'])}"
+            f"<b>{t('viz_cluster_label', n=c)}</b><br>"
+            f"{t('viz_hover_nodes')}: {d['size']}<br>"
+            f"{t('viz_hover_centrality')}: {d['centrality']:.2f}<br>"
+            f"{t('viz_hover_density')}: {d['density']:.4f}<br>"
+            f"{t('viz_hover_terms')}: {', '.join(d['top_nodes'])}"
         )
-        
+
         fig.add_trace(go.Scatter(
             x=[d["centrality"]],
             y=[d["density"]],
             mode="markers+text",
-            name=f"Cluster {c}",
+            name=t("viz_cluster_label", n=c),
             text=[f"C{c}: {d['top_nodes'][0]}"],
             textposition="top center",
             hovertext=[hover],
@@ -724,10 +736,10 @@ def build_thematic_map(G: nx.Graph, title: str = "Blicsa — Mapa Temático (Dia
             borderwidth=1, borderpad=4
         )
         
-    add_quad_label(x_min + (med_cent - x_min)*0.5, y_max - (y_max - med_dens)*0.1, "<b>Temas Especializados</b> (Niche)")
-    add_quad_label(max_cent - (max_cent - med_cent)*0.5, y_max - (y_max - med_dens)*0.1, "<b>Temas Motores</b> (Motor)")
-    add_quad_label(x_min + (med_cent - x_min)*0.5, y_min + (med_dens - y_min)*0.1, "<b>Temas Emergentes/Declínio</b>")
-    add_quad_label(max_cent - (max_cent - med_cent)*0.5, y_min + (med_dens - y_min)*0.1, "<b>Temas Básicos/Transversais</b>")
+    add_quad_label(x_min + (med_cent - x_min)*0.5, y_max - (y_max - med_dens)*0.1, t("viz_quad_niche"))
+    add_quad_label(max_cent - (max_cent - med_cent)*0.5, y_max - (y_max - med_dens)*0.1, t("viz_quad_motor"))
+    add_quad_label(x_min + (med_cent - x_min)*0.5, y_min + (med_dens - y_min)*0.1, t("viz_quad_emerging"))
+    add_quad_label(max_cent - (max_cent - med_cent)*0.5, y_min + (med_dens - y_min)*0.1, t("viz_quad_basic"))
     
     fig.update_layout(
         title=dict(
@@ -739,13 +751,13 @@ def build_thematic_map(G: nx.Graph, title: str = "Blicsa — Mapa Temático (Dia
         plot_bgcolor=DARK_BG,
         font=dict(color=TEXT_COLOR, family="Inter, sans-serif"),
         xaxis=dict(
-            title="Centralidade de Callon (Callon Centrality - relevância externa)",
+            title=t("viz_axis_callon_centrality"),
             showgrid=True,
             gridcolor="rgba(148, 163, 184, 0.15)",
             range=[x_min, x_max]
         ),
         yaxis=dict(
-            title="Densidade de Callon (Callon Density - maturidade interna)",
+            title=t("viz_axis_callon_density"),
             showgrid=True,
             gridcolor="rgba(148, 163, 184, 0.15)",
             range=[y_min, y_max]
@@ -757,7 +769,7 @@ def build_thematic_map(G: nx.Graph, title: str = "Blicsa — Mapa Temático (Dia
     return fig
 
 
-def build_historiograph(df, top_n: int = 25, title: str = "Blicsa — Historiografia de Citações Diretas") -> go.Figure:
+def build_historiograph(df, top_n: int = 25, title: str = None) -> go.Figure:
     """
     Constructs a directed graph of direct citations among the top-cited papers,
     arranged chronologically from left to right.
@@ -766,10 +778,12 @@ def build_historiograph(df, top_n: int = 25, title: str = "Blicsa — Historiogr
     import networkx as nx
     from collections import defaultdict
     import re
-    
+    if title is None:
+        title = t("viz_title_historiograph")
+
     if df is None or df.empty or "references" not in df.columns or "year" not in df.columns:
         fig = go.Figure()
-        fig.update_layout(title="Sem dados de referências/ano para gerar a Historiografia")
+        fig.update_layout(title=t("viz_no_historiograph"))
         return fig
         
     top_papers = df.sort_values(by="citations", ascending=False).head(top_n).copy()
@@ -862,8 +876,8 @@ def build_historiograph(df, top_n: int = 25, title: str = "Blicsa — Historiogr
     node_text = [H.nodes[u]["label"] for u in H.nodes()]
     node_hover = [
         f"<b>{H.nodes[u]['label']}</b><br>"
-        f"Citações: {H.nodes[u]['citations']}<br>"
-        f"Título: {H.nodes[u]['title']}"
+        f"{t('viz_hover_citations')}: {H.nodes[u]['citations']}<br>"
+        f"{t('viz_hover_title')}: {H.nodes[u]['title']}"
         for u in H.nodes()
     ]
     
@@ -883,7 +897,7 @@ def build_historiograph(df, top_n: int = 25, title: str = "Blicsa — Historiogr
             colorscale="Viridis",
             line=dict(color="rgba(255,255,255,1.0)", width=1.5),
             showscale=True,
-            colorbar=dict(title="Ano", thickness=15, x=1.05)
+            colorbar=dict(title=t("viz_axis_year"), thickness=15, x=1.05)
         ),
         showlegend=False
     ))
@@ -898,14 +912,14 @@ def build_historiograph(df, top_n: int = 25, title: str = "Blicsa — Historiogr
         plot_bgcolor=DARK_BG,
         font=dict(color=TEXT_COLOR, family="Inter, sans-serif"),
         xaxis=dict(
-            title="Ano de Publicação",
+            title=t("viz_axis_pub_year"),
             showgrid=True,
             gridcolor="rgba(148, 163, 184, 0.15)",
             tickmode="linear",
             dtick=1
         ),
         yaxis=dict(
-            title="Artigos no mesmo Ano",
+            title=t("viz_axis_articles_same_year"),
             showgrid=False,
             zeroline=False,
             showticklabels=False
