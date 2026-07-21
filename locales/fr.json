@@ -199,5 +199,17 @@
   "viz_sankey_field_authors": "Auteurs",
   "viz_sankey_field_keywords": "Mots-clés",
   "viz_sankey_field_source": "Sources (Revues)",
-  "viz_sankey_title": "Trois Champs : {f1} → {f2} → {f3}"
+  "viz_sankey_title": "Trois Champs : {f1} → {f2} → {f3}",
+  "ext_section": "Extension de navigateur",
+  "ext_instruction": "Collez ce jeton et le port dans les options de l'extension Blicsa (Chrome/Firefox).",
+  "ext_token": "Jeton d'appairage",
+  "ext_port": "Port",
+  "ext_copy": "Copier",
+  "ext_copied": "Copié !",
+  "ext_regenerate": "Régénérer le jeton",
+  "ext_regenerated": "Nouveau jeton généré — reconfigurez l'extension.",
+  "ext_added": "Enregistrement ajouté via l'extension ({count} dans le corpus)",
+  "ext_added_no_project": "Ajouté au corpus libre (aucun projet actif — ouvrez un projet pour l'enregistrer).",
+  "dedup.low_confidence": "faible confiance",
+  "dedup.select_hint": "Les paires cochées seront supprimées. Les correspondances auteur+année sont peu fiables et commencent décochées."
 }

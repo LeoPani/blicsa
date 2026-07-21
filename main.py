@@ -98,7 +98,8 @@ class BlicsaApp(ctk.CTk):
         self._positions: dict                    = {}
         
         self._start_local_server()
-        
+        self._start_bridge()  # servidor da extensão de navegador (token + porta)
+
         self._map_canvas: MapCanvas | None       = None
         self._thesaurus: dict[str, str]          = {}
         self._thesaurus_path: str | None         = None
@@ -148,6 +149,8 @@ class BlicsaApp(ctk.CTk):
         self._attach_log_handler()
         self._setup_dnd()
         self._setup_shortcuts()
+        # Fechar a janela para o servidor da extensão junto.
+        self.protocol("WM_DELETE_WINDOW", self._on_app_close)
 
     # ── Projeto ativo (passo 3: tudo vive numa pasta de projeto) ──────────
     def _open_project_slug(self, slug: str):
@@ -230,6 +233,155 @@ class BlicsaApp(ctk.CTk):
             self._backlog(action, {"formato": formato, "caminho_relativo": rel})
         except Exception as e:
             log.info(f"[Backlog] falha ao registrar export: {e}")
+
+    # ── Extensão de navegador (passo 7) ───────────────────────────────────
+    def _start_bridge(self):
+        """Sobe o BridgeServer (token Bearer, CORS restrito a extensões) numa
+        porta 8765-8768. Token persistente via settings; porta escolhida também
+        gravada (a extensão lê nas options)."""
+        import secrets
+        from core.settings import get_settings, update_settings
+        from core.bridge import BridgeServer
+
+        self._bridge_server = None
+        self._bridge_port = None
+
+        s = get_settings()
+        token = s.get("bridge_token")
+        if not token:
+            token = secrets.token_urlsafe(32)
+            update_settings(bridge_token=token)
+        self._bridge_token = token
+
+        for port in (8765, 8766, 8767, 8768):
+            srv = BridgeServer(token, port)
+            srv.set_callbacks(self._on_extension_add)
+            try:
+                srv.start()  # bind acontece aqui; porta ocupada → OSError
+            except OSError:
+                continue
+            self._bridge_server = srv
+            self._bridge_port = port
+            break
+
+        if self._bridge_port:
+            update_settings(bridge_port=self._bridge_port)
+            log.info(f"[Extensão] Bridge ativo em http://127.0.0.1:{self._bridge_port}")
+        else:
+            log.info("[Extensão] Nenhuma porta livre em 8765-8768; extensão indisponível.")
+
+    def _on_extension_add(self, record: dict) -> int:
+        """Callback do /api/add: adiciona o registro ao corpus ativo SEM dedup
+        automática (decisão de produto). Roda na thread do BridgeServer — só a
+        atualização da UI é marshaled para a main thread. Retorna a contagem nova."""
+        df_new = pd.DataFrame([record])
+        if self._dataframe is not None and not getattr(self._dataframe, "empty", True):
+            self._dataframe = pd.concat([self._dataframe, df_new], ignore_index=True)
+        else:
+            self._dataframe = df_new
+        new_count = int(len(self._dataframe))
+
+        detail = {
+            "doi": record.get("doi", "") or "",
+            "titulo": record.get("title", "") or "",
+            "origem_url": record.get("origin_url", "") or "",
+        }
+        has_project = bool(getattr(self, "_active_project", None))
+        if has_project:
+            self._backlog("extension_add", detail)
+        else:
+            # Sem projeto: corpus avulso + diário legado (mesmo comportamento do
+            # fluxo avulso), com o mesmo aviso persistente do banner.
+            self._extension_legacy_diary(detail)
+
+        log.info(f"[Extensão] +1 registro (DOI={detail['doi'] or '—'}); corpus={new_count}")
+        # O dado já está commitado acima; a atualização da UI é best-effort e
+        # nunca pode derrubar a resposta HTTP da extensão (200 mesmo se o
+        # agendamento no loop Tk falhar).
+        try:
+            self.after(0, self._after_extension_add, new_count, has_project)
+        except Exception:
+            pass
+        return new_count
+
+    def _after_extension_add(self, new_count: int, has_project: bool):
+        """Atualização de UI pós-adição (main thread)."""
+        try:
+            self._refresh_candidate_counts()
+        except Exception:
+            pass
+        try:
+            self._update_stats_tab()
+        except Exception:
+            pass
+        try:
+            if hasattr(self, "_refresh_corpus_tab"):
+                self._refresh_corpus_tab()
+        except Exception:
+            pass
+        if not has_project:
+            log.info(f"[Extensão] {t('ext_added_no_project')}")
+        self._set_idle(t("ext_added", count=new_count))
+
+    def _extension_legacy_diary(self, detail: dict):
+        """Registra a adição via extensão no diário legado (fluxo sem projeto)."""
+        import os, json as _json, datetime
+        proj_name = "Pesquisa_Atual"
+        if getattr(self, "_current_project_path", None):
+            proj_name = Path(self._current_project_path).stem
+        diary_dir = os.path.expanduser(f"~/Blicsa/pesquisas/{proj_name}")
+        os.makedirs(diary_dir, exist_ok=True)
+        diary_path = os.path.join(diary_dir, "diary.json")
+        diary = {"strings_usadas": [], "blink_usage": 0}
+        if os.path.exists(diary_path):
+            try:
+                with open(diary_path, "r", encoding="utf-8") as df:
+                    diary = _json.load(df)
+            except Exception:
+                pass
+        diary.setdefault("extension_adds", []).append({
+            **detail, "timestamp": datetime.datetime.now().isoformat()})
+        with open(diary_path, "w", encoding="utf-8") as df:
+            _json.dump(diary, df, indent=2, ensure_ascii=False)
+
+    def _regenerate_bridge_token(self):
+        """Gera um novo token, persiste e reinicia o bridge. A extensão precisa
+        ser reconfigurada com o novo token."""
+        import secrets
+        from core.settings import update_settings
+        new_token = secrets.token_urlsafe(32)
+        update_settings(bridge_token=new_token)
+        self._bridge_token = new_token
+        try:
+            if getattr(self, "_bridge_server", None):
+                self._bridge_server.stop()
+        except Exception:
+            pass
+        self._start_bridge()
+        if hasattr(self, "_ext_token_var"):
+            self._ext_token_var.set(self._bridge_token)
+        if hasattr(self, "_ext_port_lbl"):
+            self._ext_port_lbl.configure(text=str(self._bridge_port or "—"))
+        self._set_idle(t("ext_regenerated"))
+
+    def _copy_bridge_token(self):
+        try:
+            self.clipboard_clear()
+            self.clipboard_append(self._bridge_token or "")
+            if hasattr(self, "_ext_copy_btn"):
+                self._ext_copy_btn.configure(text=t("ext_copied"))
+                self.after(1500, lambda: self._ext_copy_btn.configure(text=t("ext_copy")))
+        except Exception:
+            pass
+
+    def _on_app_close(self):
+        """Fecha o app parando o servidor da extensão antes de destruir a janela."""
+        try:
+            if getattr(self, "_bridge_server", None):
+                self._bridge_server.stop()
+        except Exception:
+            pass
+        self.destroy()
 
     def _attach_log_handler(self):
         """Item 6: o log box é alimentado por logging.Handler — sys.stdout e
@@ -1542,6 +1694,33 @@ class BlicsaApp(ctk.CTk):
         
         ctk.CTkLabel(sc, text="Modelo da IA:", font=ctk.CTkFont(size=11, weight="bold")).pack(anchor="w", padx=10, pady=(4, 2))
         ctk.CTkEntry(sc, textvariable=self._ai_model_var, placeholder_text="Modelo", height=28, border_color=ACCENT).pack(fill="x", padx=10, pady=(0, 6))
+
+        # 13b. Extensão de navegador (passo 7)
+        ctk.CTkLabel(sc, text=t("ext_section"), font=ctk.CTkFont(size=12, weight="bold"),
+                     text_color=INK).pack(anchor="w", padx=10, pady=(10, 2))
+        ctk.CTkLabel(sc, text=t("ext_instruction"), font=ctk.CTkFont(size=10),
+                     text_color=TEXT_MUTED, justify="left", wraplength=280).pack(anchor="w", padx=10, pady=(0, 4))
+
+        ctk.CTkLabel(sc, text=t("ext_token"), font=ctk.CTkFont(size=11, weight="bold")).pack(anchor="w", padx=10, pady=(2, 2))
+        self._ext_token_var = ctk.StringVar(value=getattr(self, "_bridge_token", "") or "")
+        tok_row = ctk.CTkFrame(sc, fg_color="transparent")
+        tok_row.pack(fill="x", padx=10, pady=(0, 4))
+        ctk.CTkEntry(tok_row, textvariable=self._ext_token_var, state="readonly",
+                     height=28, border_color=ACCENT).pack(side="left", fill="x", expand=True)
+        self._ext_copy_btn = ctk.CTkButton(tok_row, text=t("ext_copy"), width=72, height=28,
+                     corner_radius=0, fg_color=ACCENT, hover_color=ACCENT_HOV,
+                     command=self._copy_bridge_token)
+        self._ext_copy_btn.pack(side="right", padx=(6, 0))
+
+        port_row = ctk.CTkFrame(sc, fg_color="transparent")
+        port_row.pack(fill="x", padx=10, pady=(0, 4))
+        ctk.CTkLabel(port_row, text=t("ext_port") + ":", font=ctk.CTkFont(size=11, weight="bold")).pack(side="left")
+        self._ext_port_lbl = ctk.CTkLabel(port_row, text=str(getattr(self, "_bridge_port", None) or "—"),
+                     font=ctk.CTkFont(size=11), text_color=INK)
+        self._ext_port_lbl.pack(side="left", padx=(6, 0))
+
+        self._btn(sc, t("ext_regenerate"), self._regenerate_bridge_token, height=28,
+                  color=INK, hover=INK_HOV).pack(fill="x", padx=10, pady=(2, 8))
 
         # 14. Network Pruning
         ctk.CTkLabel(sc, text="Pós-processamento:", font=ctk.CTkFont(size=11, weight="bold")).pack(anchor="w", padx=10, pady=(4, 2))
@@ -4274,9 +4453,15 @@ class BlicsaApp(ctk.CTk):
                                     "aplicado": False})
         DedupPreviewDialog(self, df, dupes, self._apply_dedup, on_cancel=on_cancel)
 
-    def _apply_dedup(self, dupes: list):
-        """Aplica a remoção dos pares confirmados e informa o resultado por motivo."""
+    def _apply_dedup(self, dupes: list, desmarcados: int = 0):
+        """Aplica a remoção só dos pares MARCADOS e informa o resultado por motivo.
+        `desmarcados` = pares que o usuário deixou desmarcados (não removidos)."""
         if not dupes:
+            if desmarcados:
+                # Tudo desmarcado: registra a revisão sem remoção.
+                self._backlog("dedup", {"pares": 0, "desmarcados": int(desmarcados),
+                                        "aplicado": True})
+                log.info(f"[Dedup] Nada removido ({desmarcados} par(es) desmarcado(s)).\n")
             return
         to_remove = {ri for _, ri, _ in dupes}
         from collections import Counter
@@ -4294,6 +4479,7 @@ class BlicsaApp(ctk.CTk):
         self._backlog("dedup", {"pares": len(dupes), "por_doi": by.get("doi", 0),
                                 "por_titulo": by.get("title", 0),
                                 "por_autor_ano": by.get("author_year", 0),
+                                "desmarcados": int(desmarcados),
                                 "aplicado": True})
         log.info(f"[Dedup] {msg} Base: {len(self._dataframe)} registros.\n")
         self._generator = None

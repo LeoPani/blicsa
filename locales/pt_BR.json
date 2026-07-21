@@ -198,5 +198,17 @@
   "viz_sankey_field_authors": "Autores",
   "viz_sankey_field_keywords": "Palavras-chave",
   "viz_sankey_field_source": "Fontes (Journals)",
-  "viz_sankey_title": "Três Campos: {f1} → {f2} → {f3}"
+  "viz_sankey_title": "Três Campos: {f1} → {f2} → {f3}",
+  "ext_section": "Extensão de navegador",
+  "ext_instruction": "Cole este token e a porta nas opções da extensão Blicsa (Chrome/Firefox).",
+  "ext_token": "Token de pareamento",
+  "ext_port": "Porta",
+  "ext_copy": "Copiar",
+  "ext_copied": "Copiado!",
+  "ext_regenerate": "Regenerar token",
+  "ext_regenerated": "Novo token gerado — reconfigure a extensão.",
+  "ext_added": "Registro adicionado via extensão ({count} no corpus)",
+  "ext_added_no_project": "Adicionado ao corpus avulso (sem projeto ativo — abra um projeto para salvar).",
+  "dedup.low_confidence": "baixa confiança",
+  "dedup.select_hint": "Pares marcados serão removidos. Correspondências por autor+ano são de baixa confiança e começam desmarcadas."
 }

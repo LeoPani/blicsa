@@ -62,6 +62,33 @@ class OpenAlexProvider(SearchProvider):
             "is_oa": bool(oa_info.get("is_oa", False)), "oa_url": str(oa_info.get("oa_url") or ""),
         }
 
+    def get_by_doi(self, doi: str, cancel_event=None) -> Optional[Dict[str, Any]]:
+        """Lookup EXATO de um registro pelo DOI, via endpoint canônico do OpenAlex
+        (/works/https://doi.org/{doi}), já normalizado por _normalize_work.
+        Retorna None se não achar. Não é a busca textual "doi:..." (que é errada:
+        vira full-text e pode trazer o paper errado ou nada)."""
+        raw = (doi or "").strip()
+        if not raw:
+            return None
+        # Normaliza qualquer forma para o DOI nu (10.xxxx/yyyy).
+        for prefix in ("https://doi.org/", "http://doi.org/",
+                       "https://dx.doi.org/", "http://dx.doi.org/", "doi:"):
+            if raw.lower().startswith(prefix):
+                raw = raw[len(prefix):]
+                break
+        raw = raw.strip().strip("/")
+        if not raw:
+            return None
+        url = f"https://api.openalex.org/works/https://doi.org/{raw}?mailto={self.mailto}"
+        try:
+            data = json.loads(self.fetch_url(url, cancel_event=cancel_event))
+        except Exception as e:
+            logger.warning(f"[OpenAlex] get_by_doi falhou para '{raw}': {e}")
+            return None
+        if not isinstance(data, dict) or not data.get("id"):
+            return None
+        return self._normalize_work(data)
+
     def count(self, query: str, filters: Optional[Dict[str, Any]] = None, cancel_event=None) -> int:
         """Total de resultados numa ÚNICA request barata (nada é baixado)."""
         params: Dict[str, Any] = {"per_page": 1, "mailto": self.mailto}

@@ -94,7 +94,7 @@ class DedupPreviewDialog(ctk.CTkToplevel):
         from core.i18n import t
         super().__init__(parent)
         self.title("Blicsa")
-        self.geometry("860x560")
+        self.geometry("860x600")
         self.minsize(700, 420)
         self.configure(fg_color=CONTENT_BG)
         self.grab_set()
@@ -102,10 +102,13 @@ class DedupPreviewDialog(ctk.CTkToplevel):
         self._dupes = dupes            # [(keep_idx, remove_idx, reason)]
         self._on_apply = on_apply
         self._on_cancel = on_cancel
+        # Um checkbox por par: marcado = será removido. Pares "autor+ano" são
+        # BAIXA CONFIANÇA → começam DESMARCADOS (decisão de produto).
+        self._pair_vars: list[tuple[ctk.BooleanVar, tuple]] = []
 
         by = Counter(classify_dedup_reason(r) for _, _, r in dupes)
 
-        self.grid_rowconfigure(2, weight=1)
+        self.grid_rowconfigure(3, weight=1)
         self.grid_columnconfigure(0, weight=1)
 
         ctk.CTkLabel(self, text=t("dedup.preview_title"),
@@ -114,30 +117,46 @@ class DedupPreviewDialog(ctk.CTkToplevel):
         ctk.CTkLabel(self, text=t("dedup.summary", n=len(dupes), doi=by.get("doi", 0),
                                   title=by.get("title", 0), ay=by.get("author_year", 0)),
                      font=ctk.CTkFont(size=13), text_color=INK
-                     ).grid(row=1, column=0, sticky="w", padx=24, pady=(0, 8))
+                     ).grid(row=1, column=0, sticky="w", padx=24, pady=(0, 2))
+        ctk.CTkLabel(self, text=t("dedup.select_hint"),
+                     font=ctk.CTkFont(size=11), text_color=TEXT_MUTED, justify="left"
+                     ).grid(row=2, column=0, sticky="w", padx=24, pady=(0, 8))
 
         sf = ctk.CTkScrollableFrame(self, fg_color="#FFFFFF", corner_radius=0,
                                     border_width=2, border_color=INK)
-        sf.grid(row=2, column=0, sticky="nsew", padx=24, pady=4)
-        sf.grid_columnconfigure(0, weight=1)
+        sf.grid(row=3, column=0, sticky="nsew", padx=24, pady=4)
+        sf.grid_columnconfigure(1, weight=1)
 
-        ctk.CTkLabel(sf, text=t("dedup.sample"), font=ctk.CTkFont(size=12, weight="bold"),
-                     text_color=TEXT_MUTED).grid(row=0, column=0, sticky="w", padx=10, pady=(8, 2))
-        for n, (ki, ri, reason) in enumerate(dupes[:10], start=1):
+        for n, (ki, ri, reason) in enumerate(dupes, start=1):
             ta = str(df.at[ki, "title"])[:80]
             tb = str(df.at[ri, "title"])[:80]
+            is_low = classify_dedup_reason(reason) == "author_year"
+            var = ctk.BooleanVar(value=not is_low)  # baixa confiança → desmarcado
+            self._pair_vars.append((var, (ki, ri, reason)))
+
             row_f = ctk.CTkFrame(sf, fg_color=CARD_BG if n % 2 else CARD2_BG, corner_radius=0)
-            row_f.grid(row=n, column=0, sticky="ew", padx=6, pady=2)
-            row_f.grid_columnconfigure(0, weight=1)
+            row_f.grid(row=n, column=0, columnspan=2, sticky="ew", padx=6, pady=2)
+            row_f.grid_columnconfigure(1, weight=1)
+            ctk.CTkCheckBox(row_f, text="", width=24, variable=var, corner_radius=0,
+                            fg_color=ACCENT, hover_color=ACCENT_HOV, border_color=INK
+                            ).grid(row=0, column=0, rowspan=2, sticky="n", padx=(8, 4), pady=6)
             ctk.CTkLabel(row_f, text=f"{ta}  ×  {tb}", anchor="w",
                          font=ctk.CTkFont(size=11), text_color=INK
-                         ).grid(row=0, column=0, sticky="w", padx=8, pady=(6, 0))
-            ctk.CTkLabel(row_f, text=reason, anchor="w",
+                         ).grid(row=0, column=1, sticky="w", padx=4, pady=(6, 0))
+            meta = ctk.CTkFrame(row_f, fg_color="transparent")
+            meta.grid(row=1, column=1, sticky="w", padx=4, pady=(0, 6))
+            ctk.CTkLabel(meta, text=reason, anchor="w",
                          font=ctk.CTkFont(size=10), text_color=TEXT_MUTED
-                         ).grid(row=1, column=0, sticky="w", padx=8, pady=(0, 6))
+                         ).pack(side="left")
+            if is_low:
+                # Marcador CHAPADO amarelo do design system (canto reto, sem sombra).
+                ctk.CTkLabel(meta, text=t("dedup.low_confidence"), fg_color=YELLOW,
+                             text_color=INK, corner_radius=0,
+                             font=ctk.CTkFont(size=9, weight="bold")
+                             ).pack(side="left", padx=(8, 0))
 
         foot = ctk.CTkFrame(self, fg_color="transparent")
-        foot.grid(row=3, column=0, sticky="ew", padx=24, pady=(8, 20))
+        foot.grid(row=4, column=0, sticky="ew", padx=24, pady=(8, 20))
         ctk.CTkButton(foot, text=t("dedup.cancel"), width=120, height=38, corner_radius=0,
                       fg_color="#FFFFFF", text_color=INK, hover_color=CARD2_BG,
                       border_width=2, border_color=INK, command=self._cancel
@@ -147,15 +166,20 @@ class DedupPreviewDialog(ctk.CTkToplevel):
                       font=ctk.CTkFont(size=13, weight="bold"), command=self._apply
                       ).pack(side="right")
 
+    def selected_pairs(self) -> list[tuple]:
+        """Pares marcados (que serão removidos)."""
+        return [pair for var, pair in self._pair_vars if var.get()]
+
     def _cancel(self):
         self.destroy()
         if self._on_cancel:
             self._on_cancel()
 
     def _apply(self):
-        dupes = self._dupes
+        applied = self.selected_pairs()
+        desmarcados = len(self._pair_vars) - len(applied)
         self.destroy()
-        self._on_apply(dupes)
+        self._on_apply(applied, desmarcados)
 
 
 def insert_markdown(textbox, text: str):

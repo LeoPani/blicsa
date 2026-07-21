@@ -198,5 +198,17 @@
   "viz_sankey_field_authors": "Authors",
   "viz_sankey_field_keywords": "Keywords",
   "viz_sankey_field_source": "Sources (Journals)",
-  "viz_sankey_title": "Three Fields: {f1} → {f2} → {f3}"
+  "viz_sankey_title": "Three Fields: {f1} → {f2} → {f3}",
+  "ext_section": "Browser extension",
+  "ext_instruction": "Paste this token and port into the Blicsa extension options (Chrome/Firefox).",
+  "ext_token": "Pairing token",
+  "ext_port": "Port",
+  "ext_copy": "Copy",
+  "ext_copied": "Copied!",
+  "ext_regenerate": "Regenerate token",
+  "ext_regenerated": "New token generated — reconfigure the extension.",
+  "ext_added": "Record added via extension ({count} in corpus)",
+  "ext_added_no_project": "Added to the loose corpus (no active project — open a project to save it).",
+  "dedup.low_confidence": "low confidence",
+  "dedup.select_hint": "Checked pairs will be removed. Author+year matches are low confidence and start unchecked."
 }

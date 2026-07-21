@@ -74,27 +74,33 @@ class ExtensionBridgeHandler(BaseHTTPRequestHandler):
         if self.path == '/api/add':
             if ExtensionBridgeHandler.on_add_record:
                 try:
-                    # 1. Fetch OpenAlex
+                    # 1. Resolver o registro no OpenAlex.
                     provider = OpenAlexProvider()
-                    query = ""
+                    record = None
+
+                    # Caminho correto: lookup EXATO por DOI (não busca textual).
                     if data.get('doi'):
-                        # Using doi prefix to search by DOI accurately
-                        doi = data['doi'].replace('https://doi.org/', '')
-                        query = f"doi:{doi}"
-                    elif data.get('title'):
+                        record = provider.get_by_doi(data['doi'])
+
+                    # Fallback só se o DOI falhou (ou não veio): título + autor.
+                    if record is None and data.get('title'):
                         query = f"TITLE(\"{data['title']}\")"
                         if data.get('authors'):
-                            query += f" AND AUTHOR(\"{data['authors']}\")"
-                    
-                    if not query:
+                            first_author = str(data['authors']).split(';')[0].strip()
+                            if first_author:
+                                query += f" AND AUTHOR(\"{first_author}\")"
+                        results = list(provider.search(query=query, max_results=1))
+                        record = results[0] if results else None
+
+                    if record is None and not (data.get('doi') or data.get('title')):
                         raise ValueError("Missing doi or title in payload")
-                        
-                    records = list(provider.search(query=query, max_results=1))
-                    if not records:
+                    if record is None:
                         raise ValueError("Paper not found in OpenAlex")
-                        
-                    record = records[0]
-                    
+
+                    # Preserva a URL de origem (página onde o usuário clicou).
+                    if data.get('source_url'):
+                        record['origin_url'] = data['source_url']
+
                     # 2. Dedupe & Add (delegated to callback)
                     # The callback should return the new count of the active corpus
                     new_count = ExtensionBridgeHandler.on_add_record(record)
