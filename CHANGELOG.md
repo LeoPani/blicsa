@@ -2,6 +2,35 @@
 
 All notable changes to this project will be documented in this file.
 
+## [0.9.0] - 2026-07-20
+
+Primeira release pública instalável do Blicsa (macOS `.app` + Windows `.exe`),
+consolidando os passos 1–5 de amadurecimento.
+
+### Added
+- **Mapa temático 100% offline (passo 5)**: graphology + sigma (3.0.3 estável)
+  vendorizados num bundle local (`assets/vendor/`) — o mapa Sigma renderiza sem
+  internet, sem depender de CDN em runtime. Exports Plotly com o `plotly.js`
+  embutido (`include_plotlyjs=True`). Strings dos gráficos vindas do catálogo i18n.
+- **Ajustes persistentes + keyring (passo 4)**: configurações no diretório de
+  usuário (`platformdirs`) e a API key guardada no keyring do sistema, com
+  migrações automáticas e erros de IA honestos na UI.
+- **Projetos + histórico (passo 3)**: cada pesquisa é uma pasta de projeto com
+  corpus, configuração e backlog de eventos (busca/análise), recarregável offline.
+- **Busca consolidada (passo 2)**: fonte única por busca (OpenAlex/Crossref/
+  PubMed), feed de revisão com deduplicação, tradução e paginação.
+- **Empacotamento**: `Blicsa.spec` inclui `assets/` (com `assets/vendor/`),
+  `locales/` e `docs/sample_dataset.csv`; flag `--smoke-test` para validação
+  pós-build no binário. Release Windows via GitHub Actions.
+
+### Changed
+- **Higiene (passo 1)**: importações e índices únicos, deduplicação exata,
+  remoção de dependências de rede em caminhos que deviam ser locais.
+
+### Notas de instalação
+- **macOS**: na primeira abertura, clique com o botão direito no `Blicsa.app` →
+  **Abrir** (o app ainda não é assinado; o Gatekeeper bloqueia o duplo-clique).
+
 ## [2.0-upgrade] - 2026-07-01
 
 ### Added

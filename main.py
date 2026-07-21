@@ -2936,7 +2936,8 @@ class BlicsaApp(ctk.CTk):
 
             import webbrowser
             url = f"http://127.0.0.1:{self._local_server_port}/assets/map_template.html"
-            webbrowser.open(url)
+            if not getattr(self, "_demo_no_browser", False):
+                webbrowser.open(url)
             log.info("[OK] Mapas prontos.\n")
 
             self.after(0, self._update_stats, stats)
@@ -5180,6 +5181,67 @@ if __name__ == "__main__":
             sys.exit(0)
         except Exception as e:
             print(f"Self-check FAILED: {e}", file=sys.stderr)
+            sys.exit(1)
+
+    if "--smoke-test" in sys.argv:
+        # Teste de fumaça pós-build (sem interação): sobe a UI REAL do app,
+        # carrega locales + settings, deixa a janela viver ~5s e fecha sozinho
+        # com exit 0. Roda no BINÁRIO empacotado para provar que o bundle abre.
+        try:
+            from core import i18n
+            from core.settings import get_settings, settings_path
+            i18n.load_locales()
+            get_settings()
+            print(f"[smoke] locales carregados: idioma={i18n.get_lang()}")
+            print(f"[smoke] settings: {settings_path()}")
+            app = BlicsaApp()  # constrói toda a UI e sobe o server local
+            app.withdraw()     # não exige foco/janela visível
+            print("[smoke] UI inicializada")
+            app.after(5000, app.destroy)  # fecha sozinho em ~5s
+            app.mainloop()
+            print("Smoke test passed: app subiu, locales/settings OK, UI fechada limpa.")
+            sys.exit(0)
+        except Exception as e:
+            import traceback
+            traceback.print_exc()
+            print(f"Smoke test FAILED: {e}", file=sys.stderr)
+            sys.exit(1)
+
+    if "--demo-search" in sys.argv:
+        # QA (Evidência do release): dispara no BINÁRIO uma busca online REAL de
+        # 25 registros (mesmo provider do botão Buscar) e gera o mapa, deixando a
+        # janela aberta para o screenshot. Não abre o navegador (mapa Sigma) para
+        # não roubar foco. Fecha sozinho após ~40s como rede de segurança.
+        try:
+            import pandas as pd
+            from core.sources import OpenAlexProvider
+            from core.project import create_project
+            app = BlicsaApp()
+            app._demo_no_browser = True
+
+            def _run_demo():
+                slug = create_project("Demo Release v0.9.0")
+                app._set_active_project(slug)
+                app._switch_tab("import")
+                app.update()
+                log.info("[Demo] Buscando 25 registros no OpenAlex…")
+                records = list(OpenAlexProvider().search(query="bibliometrics", max_results=25))
+                log.info(f"[Demo] {len(records)} registros baixados.")
+                app._dataframe = pd.DataFrame(records)
+                app._refresh_corpus_tab()
+                app._switch_tab("corpus")
+                app.update()
+                app._min_occ_var.set(1)
+                app._run_mapping()  # gera o mapa (threaded) + atualiza stats
+
+            app.after(1200, _run_demo)
+            app.after(40000, app.destroy)  # rede de segurança
+            app.mainloop()
+            sys.exit(0)
+        except Exception as e:
+            import traceback
+            traceback.print_exc()
+            print(f"Demo FAILED: {e}", file=sys.stderr)
             sys.exit(1)
 
     import tkinter as tk

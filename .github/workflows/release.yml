@@ -19,7 +19,7 @@ jobs:
           python-version: '3.11'
           cache: pip
 
-      - name: Install dependencies
+      - name: Install dependencies (core + ai + pdf)
         run: |
           pip install --upgrade pip
           pip install -r requirements.txt pyinstaller
@@ -31,17 +31,21 @@ jobs:
         shell: pwsh
         run: Copy-Item dist\Blicsa-onefile.exe dist\Blicsa.exe
 
+      - name: Smoke test (exe)
+        shell: pwsh
+        timeout-minutes: 5
+        continue-on-error: true
+        run: |
+          $p = Start-Process -FilePath dist\Blicsa.exe -ArgumentList '--smoke-test' -Wait -PassThru
+          Write-Host "smoke-test exit code: $($p.ExitCode)"
+          if ($p.ExitCode -ne 0) { throw "smoke-test failed with exit $($p.ExitCode)" }
+
+      # Publica o exe como artefato do workflow. A release em si é montada
+      # depois via `gh release create` (macOS + Windows juntos), baixando este
+      # artefato — assim não há corrida entre o CI e a criação manual da release.
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
           name: Blicsa-windows
           path: dist/Blicsa.exe
           if-no-files-found: error
-
-      - name: Attach to release (only on tag)
-        if: startsWith(github.ref, 'refs/tags/')
-        uses: softprops/action-gh-release@v2
-        with:
-          files: dist/Blicsa.exe
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
