@@ -69,8 +69,14 @@ def test_blink_drawer_preserves_feed_state():
 
 
 def test_article_card_no_fixed_whitespace():
-    """BUG-C: card não pode ter altura fixa gigante (era 236px por left_bar height=200
-    default). Card mínimo deve ser compacto e cards devem crescer com o conteúdo."""
+    """BUG-C: card não pode ter altura fixa gigante. Qualquer CTkFrame criado sem `height`
+    assume a default de 200px do CustomTkinter; um frame VAZIO (sem filhos) não encolhe e
+    vira vão branco. São três no card: left_bar, a faixa de badges e a faixa de ações.
+
+    O caso que escapou antes: o registro do teste tinha year/language (badges) e doi (botão),
+    então as duas faixas tinham filhos e encolhiam. Um registro SEM badge e SEM botão —
+    comum no feed real, p.ex. Open Access (não ganha "Abrir DOI") ou sem ano — somava
+    200px + 200px de branco. Por isso o card mínimo cobre agora o registro PELADO."""
     ctk = pytest.importorskip("customtkinter")
     try:
         root = ctk.CTk()
@@ -85,16 +91,49 @@ def test_article_card_no_fixed_whitespace():
         c.grid(row=0, column=0, sticky="ew"); root.update_idletasks()
         h = c.winfo_reqheight(); c.destroy(); return h
 
-    base = {"title": "T", "year": 2024, "authors": "", "source": "",
-            "citations": 0, "abstract": "", "doi": "10/1", "language": "en"}
-    h_min = height(base)
-    h_abs = height({**base, "authors": "Autor", "source": "Rev",
-                    "abstract": "Resumo " * 40})
+    # Registro PELADO: sem badge nenhum (sem ano/citações/OA/idioma) e sem botão (sem DOI).
+    bare = {"title": "T", "year": 0, "authors": "", "source": "",
+            "citations": 0, "abstract": "", "doi": "", "language": ""}
+    h_bare = height(bare)
+    # Com badges e botão — as faixas ganham filhos.
+    h_badges = height({**bare, "year": 2024, "language": "en", "doi": "10/1", "citations": 9})
+    # Open Access: tem badge, mas NÃO ganha o botão "Abrir DOI" (faixa de ações vazia).
+    h_oa = height({**bare, "year": 2024, "is_oa": True, "oa_url": "u", "doi": "10/1"})
+    h_abs = height({**bare, "authors": "Autor", "source": "Rev", "abstract": "Resumo " * 40})
     try:
-        assert h_min < 160, f"card mínimo alto demais ({h_min}px) — vão branco fixo?"
-        assert h_abs > h_min, "card com abstract deveria ser mais alto (altura segue conteúdo)"
+        for nome, h in (("pelado", h_bare), ("com badges", h_badges), ("open access", h_oa)):
+            assert h < 160, f"card {nome} alto demais ({h}px) — CTkFrame vazio reservando 200px?"
+        assert h_abs > h_bare, "card com abstract deveria ser mais alto (altura segue conteúdo)"
+        # As três variantes mínimas têm o MESMO conteúdo de uma linha: não podem divergir
+        # em centenas de px (era 454 vs 254 conforme o registro tivesse badge/botão).
+        assert max(h_bare, h_badges, h_oa) - min(h_bare, h_badges, h_oa) < 60, (
+            f"alturas inconsistentes entre variantes: pelado={h_bare} "
+            f"badges={h_badges} oa={h_oa}")
     finally:
         root.destroy()
+
+
+def test_truncate_source_name_never_leaves_a_dangling_paren():
+    """BUG-C (sidebar): "LA Referencia (Red F (305)" — o nome era cortado no meio e a
+    contagem colava logo depois, parecendo parêntese partido. O corte agora usa
+    reticências e não deixa parêntese aberto do nome pendurado antes da contagem."""
+    from ui.search_feed import truncate_source_name as tr
+
+    curto = tr("Nature")
+    assert curto == "Nature", "nome curto não deve ser mexido"
+
+    longo = tr("LA Referencia (Red Federal de Repositorios Institucionales)")
+    assert longo.endswith("…"), f"deveria truncar com reticências: {longo!r}"
+    assert longo.count("(") == longo.count(")"), (
+        f"parêntese aberto pendurado antes da contagem: {longo!r}")
+    assert "Red F" not in longo, f"cortou no meio do parêntese: {longo!r}"
+
+    # Sem parênteses, trunca normalmente e continua dentro do limite da sidebar.
+    simples = tr("Journal of Cleaner Production")
+    assert simples.endswith("…") and len(simples) <= 22
+
+    # Nome que é só um parêntese longo não pode virar string vazia.
+    assert tr("(" + "x" * 40 + ")").strip("…") != ""
 
 
 def test_refilter_maps_sidebar_to_server_filters():

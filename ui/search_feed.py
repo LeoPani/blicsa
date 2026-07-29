@@ -49,6 +49,23 @@ class SkeletonCard(ctk.CTkFrame):
     def stop(self):
         self._animating = False
 
+def truncate_source_name(name: str, limit: int = 22) -> str:
+    """Encurta o nome de uma fonte para a sidebar, com reticências.
+
+    Dois cuidados: o parêntese da CONTAGEM que vem depois ("… (305)") nunca pode ser
+    partido, e o corte não pode deixar um parêntese ABERTO do próprio nome pendurado —
+    "LA Referencia (Red Federal…" viraria "LA Referencia (Red Fe… (305)", que lê como
+    parêntese cortado no meio. Nesse caso o trecho entre parênteses sai inteiro.
+    """
+    s = (name or "").strip()
+    if len(s) <= limit:
+        return s
+    cut = s[:limit - 1].rstrip()
+    if cut.count("(") > cut.count(")"):
+        cut = cut[:cut.rfind("(")].rstrip()
+    return (cut or s[:limit - 1].rstrip()) + "…"
+
+
 class ArticleCard(ctk.CTkFrame):
     """
     A UI card representing a single bibliometric record/article.
@@ -78,11 +95,14 @@ class ArticleCard(ctk.CTkFrame):
         self.cb.select()
         self.cb.grid(row=0, column=1, rowspan=4, padx=(8, 4), pady=12, sticky="nw")
         
-        # Badges & Title
-        title_frame = ctk.CTkFrame(self, fg_color="transparent")
+        # Badges & Title — height=1 pelo mesmo motivo do left_bar: um CTkFrame sem altura
+        # explícita assume a default de 200px do CTkFrame, e um registro SEM badge nenhum
+        # (sem ano/citações/OA/idioma) reservava esses 200px de branco no topo do card.
+        # Segue sempre gridado: vazio ele custa 1px e mantém o respiro de topo do card.
+        title_frame = ctk.CTkFrame(self, fg_color="transparent", height=1)
         title_frame.grid(row=0, column=2, padx=(4, 12), pady=(12, 2), sticky="ew")
         title_frame.grid_columnconfigure(3, weight=1)
-        
+
         year = record.get("year", "")
         if year:
             ctk.CTkLabel(title_frame, text=str(year), fg_color=INK, text_color=WHITE, font=ctk.CTkFont(size=11, weight="bold"), corner_radius=0).pack(side="left", padx=(0, 6))
@@ -121,12 +141,15 @@ class ArticleCard(ctk.CTkFrame):
         if abs_text:
             ctk.CTkLabel(self, text=abs_text, text_color="#555555", font=ctk.CTkFont(size=12), anchor="w", justify="left", wraplength=700).grid(row=3, column=2, padx=(4, 12), pady=(0, 4), sticky="w")
             
-        actions_f = ctk.CTkFrame(self, fg_color="transparent")
+        # Idem: registro OA (ou sem DOI) não ganha botão, e a faixa vazia reservava 200px.
+        # Com height=1 ela custa 1px e continua garantindo o respiro inferior de 12px.
+        actions_f = ctk.CTkFrame(self, fg_color="transparent", height=1)
         actions_f.grid(row=4, column=2, padx=(4, 12), pady=(0, 12), sticky="w")
         if not record.get("is_oa") and record.get("doi"):
             import webbrowser
             ctk.CTkButton(actions_f, text="Abrir DOI", width=80, height=24, fg_color="#EEEEEE", text_color=INK, command=lambda d=record.get("doi"): webbrowser.open(f"https://doi.org/{d}")).pack(side="left")
-            
+
+
         self.bind("<Enter>", self._on_enter)
         self.bind("<Leave>", self._on_leave)
         for child in self.winfo_children():
@@ -398,8 +421,7 @@ class SearchFeedView(ctk.CTkFrame):
         for j, c in top_journals:
             var = ctk.BooleanVar(value=True)
             self.journal_vars[j] = var
-            # Trunca com reticências (nunca corta o parêntese da contagem no meio).
-            name = j if len(j) <= 22 else j[:21].rstrip() + "…"
+            name = truncate_source_name(j)
             cb = ctk.CTkCheckBox(self.sidebar, text=f"{name} ({c})", variable=var, command=self._apply_filters, corner_radius=0)
             cb.pack(anchor="w", pady=2)
             
