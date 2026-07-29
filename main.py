@@ -2385,9 +2385,14 @@ class BlicsaApp(ctk.CTk):
         if n < 1:
             n = DEFAULT_LIMIT
         if n > MAX_LIMIT:
+            # O corte reescrevia o campo sem dizer nada — o usuário pedia 50000 e recebia
+            # 10000 sem entender por quê. Agora explica e aponta o "Ilimitado".
             n = MAX_LIMIT
             self._search_max_entry.delete(0, "end")
             self._search_max_entry.insert(0, str(MAX_LIMIT))
+            lbl = getattr(self, "_search_trail_lbl", None)
+            if lbl is not None:
+                lbl.configure(text=t("search.limit_capped", max=MAX_LIMIT))
         return n
 
     # ── Busca por campo + prévia paginada (cherry-pick estilo Scopus) ──

@@ -103,6 +103,7 @@
   "search.interpreted": "Interprété comme : {query}",
   "search.trail": "Trouvés {found} · téléchargés {downloaded} · {reason}",
   "search.trail_limited": "Trouvés {found} · téléchargés {downloaded} sur {limit} (limite) · {reason}",
+  "search.limit_capped": "Maximum {max} par recherche dans le champ Qté — cochez « Illimité » pour tout télécharger.",
   "dedup.button": "Dédupliquer",
   "dedup.preview_title": "Déduplication — vérifiez avant d'appliquer",
   "dedup.summary": "{n} paires de doublons possibles — {doi} par DOI · {title} par titre similaire · {ay} par auteur+année",
