@@ -85,6 +85,8 @@ class PubMedProvider(SearchProvider):
         self.stop_reason = None
         self.stop_error = False
         self.pages_fetched = 0
+        # Total REAL da base (esearchresult.count), independente do retmax pedido.
+        self.total_available = 0
 
         # 2. Run ESearch to get PMIDs
         esearch_url = "https://eutils.ncbi.nlm.nih.gov/entrez/eutils/esearch.fcgi"
@@ -113,6 +115,7 @@ class PubMedProvider(SearchProvider):
 
         id_list = esearch_data.get("esearchresult", {}).get("idlist", [])
         total_results = int(esearch_data.get("esearchresult", {}).get("count", len(id_list)))
+        self.total_available = total_results
 
         if not id_list:
             self.stop_reason = "exauriu (sem resultados)"

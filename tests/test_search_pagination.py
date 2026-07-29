@@ -62,6 +62,64 @@ def test_persistent_error_is_not_silent():
     assert "erro de rede na página 3" in prov.stop_reason
 
 
+def test_total_available_is_the_real_base_total_not_the_limit():
+    """BUG-A.3: com limite finito, 'Encontrados' não pode ser o limite.
+    O progress_cb recebe min(limite, total) porque é ALVO de barra de progresso; usar
+    aquele número como 'Encontrados' fazia a trilha dizer "Encontrados 1000 · baixados
+    1000" com 319300 na base — o usuário não ficava sabendo que havia mais."""
+    TOTAL = 319_300
+    LIMITE = 1000
+
+    def big_page(start, count, next_cursor):
+        return json.dumps({
+            "meta": {"count": TOTAL, "next_cursor": next_cursor},
+            "results": [{"title": f"T{i}", "doi": f"10.1/{i}", "publication_year": 2020,
+                         "authorships": [{"author": {"display_name": f"A{i}"}}]}
+                        for i in range(start, start + count)],
+        }).encode("utf-8")
+
+    seen = []  # (current, total) que o progress_cb recebeu
+    pages = [big_page(i * 200, 200, f"c{i+1}") for i in range(5)]
+    with patch("urllib.request.urlopen", side_effect=[_resp(p) for p in pages]), patch("time.sleep"):
+        prov = OpenAlexProvider()
+        recs = list(prov.search("empreendedorismo", max_results=LIMITE,
+                                progress_cb=lambda c, t: seen.append((c, t))))
+
+    assert len(recs) == LIMITE, f"limite deveria valer para o download, obteve {len(recs)}"
+    assert prov.total_available == TOTAL, (
+        f"total_available deveria ser o total REAL da base ({TOTAL}), "
+        f"obteve {prov.total_available}")
+    # O alvo do progress_cb continua limitado (é barra de progresso) — a distinção é o ponto.
+    assert max(t for _, t in seen) == LIMITE
+    assert prov.total_available > max(t for _, t in seen)
+
+
+def test_crossref_and_pubmed_also_expose_total_available():
+    """O mesmo contrato nos outros dois providers (a trilha é a mesma para todos)."""
+    import json as _json
+    from core.sources import CrossrefProvider, PubMedProvider
+    from tests.conftest import serve
+
+    cr_body = _json.dumps({"message": {
+        "total-results": 80_598, "next-cursor": None,
+        "items": [{"DOI": f"10.1/{i}", "title": [f"T{i}"],
+                   "author": [{"family": "X", "given": "Y"}],
+                   "issued": {"date-parts": [[2020]]}} for i in range(50)],
+    }}).encode("utf-8")
+    with serve([cr_body.decode("utf-8")]):
+        cr = CrossrefProvider()
+        recs = list(cr.search("x", max_results=50))
+    assert len(recs) == 50
+    assert cr.total_available == 80_598, f"Crossref: obteve {cr.total_available}"
+
+    esearch = _json.dumps({"esearchresult": {"count": "12345", "idlist": ["1", "2"]}})
+    efetch = "PMID- 1\nTI  - Um título\nAU  - Silva J\n\nPMID- 2\nTI  - Outro\nAU  - Souza M\n\n"
+    with serve([esearch, efetch]):
+        pm = PubMedProvider()
+        recs = list(pm.search("x", max_results=2))
+    assert pm.total_available == 12_345, f"PubMed: obteve {pm.total_available}"
+
+
 def test_crossref_repeating_cursor_does_not_stop_early():
     """BUG (200 de 80598): o cursor de deep paging do Crossref REPETE a mesma string
     entre páginas (scroll server-side). O provider não pode parar quando o cursor repete —

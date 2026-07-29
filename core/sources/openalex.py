@@ -177,6 +177,10 @@ class OpenAlexProvider(SearchProvider):
         self.stop_reason = None
         self.stop_error = False
         self.pages_fetched = 0
+        # Total REAL da base (meta.count), independente do limite de download. O progress_cb
+        # recebe min(limite, total) porque é alvo de barra de progresso — usar aquele valor
+        # como "Encontrados" escondia do usuário que existiam mais resultados.
+        self.total_available = 0
 
         while count_fetched < max_results:
             if cancel_event and cancel_event.is_set():
@@ -202,6 +206,7 @@ class OpenAlexProvider(SearchProvider):
             
             if total_results is None:
                 total_results = meta.get("count", len(results))
+                self.total_available = int(total_results or 0)
 
             if not results:
                 self.stop_reason = "exauriu (sem resultados)"

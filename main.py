@@ -2666,14 +2666,18 @@ class BlicsaApp(ctk.CTk):
                 prov_name = prov.__class__.__name__.replace("Provider", "")
                 self.after(0, self._set_busy, f"Consultando {prov_name}...")
 
-                def progress(current, total):
+                def progress(current, total, _prov=prov):
                     nonlocal total_found_sum
-                    if total > total_found_sum: total_found_sum = total
+                    # "Encontrados" = total REAL da base (total_available). O 2º argumento do
+                    # progress_cb é o ALVO da barra (min(limite, total)) — usá-lo aqui fazia a
+                    # trilha dizer "Encontrados 1000" com 319300 na base.
+                    real_total = max(int(getattr(_prov, "total_available", 0) or 0), total)
+                    if real_total > total_found_sum: total_found_sum = real_total
 
                     if cancel_event.is_set():
                         self.after(0, self._set_idle, "Busca cancelada.")
                     else:
-                        self.after(0, self._set_busy, f"Baixando ({prov_name}): {current}/{total} (Total na base: {total})")
+                        self.after(0, self._set_busy, f"Baixando ({prov_name}): {current}/{total} (Total na base: {real_total})")
 
                 try:
                     for r in prov.search(query=query, filters=filters, max_results=max_per_provider, progress_cb=progress, cancel_event=cancel_event):
@@ -2700,6 +2704,10 @@ class BlicsaApp(ctk.CTk):
                             push_batch()
 
                 lang_filtered_total += getattr(prov, "language_filtered_count", 0)
+                # Total real da base mesmo quando o progress_cb não chegou a rodar
+                # (limite menor que uma página, ou parada logo no início).
+                prov_total = int(getattr(prov, "total_available", 0) or 0)
+                if prov_total > total_found_sum: total_found_sum = prov_total
                 if getattr(prov, "stop_error", False):
                     net_error_info = (prov_name, getattr(prov, "pages_fetched", 0), getattr(prov, "stop_reason", ""))
 
@@ -2752,14 +2760,17 @@ class BlicsaApp(ctk.CTk):
                 stop_reason = str(getattr(providers_to_run[-1], "stop_reason", "") or "")
             if not stop_reason:
                 stop_reason = "concluída"
+            # O motivo de rede embute a URL inteira: detalhe completo fica no log e no
+            # backlog; na trilha entra a versão curta (o label não vira um parágrafo).
+            reason_ui = stop_reason if len(stop_reason) <= 90 else stop_reason[:87].rstrip() + "…"
             # Só mostra "de {limite}" quando há um limite FINITO definido pelo usuário
             # (ilimitado usa uma sentinela grande e não exibe teto).
             if total_found_sum > baixados and max_results < 10_000_000:
                 trail = t("search.trail_limited", found=total_found_sum, downloaded=baixados,
-                          limit=max_results, reason=stop_reason)
+                          limit=max_results, reason=reason_ui)
             else:
                 trail = t("search.trail", found=max(total_found_sum, baixados),
-                          downloaded=baixados, reason=stop_reason)
+                          downloaded=baixados, reason=reason_ui)
             if lang_filtered_total:
                 trail += f" · filtrados por idioma: {lang_filtered_total}"
             if net_error_info:
