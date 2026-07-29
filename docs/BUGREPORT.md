@@ -40,3 +40,44 @@
   2. Providers passam a expor `stop_reason`/`stop_error`/`pages_fetched`; o worker lê e a trilha mostra `"⚠ interrompido na página N por erro de rede — resultados parciais"` quando `stop_error` — nunca mais silencioso.
   3. Limite honesto: padrão 1000, máximo 10000; "Ilimitado" passa a significar 10000; entradas acima são rejeitadas na UI. Trilha: `"Encontrados N · baixados M de LIMITE (limite)"` quando `N > M`.
 - **Reprodutibilidade:** ver `docs/RELATORIO-FIX-REVISAO.md` (mesma busca 2x, limite 2000, trilhas comparadas).
+
+## Re-auditoria 2026-07-29 — o que ainda estava quebrado depois do fix de 12/07
+
+### BUG-A.3: "Encontrados" mostrava o LIMITE, não o total da base
+- **Sintoma:** com o limite padrão (1000), a trilha dizia `Encontrados 1000 · baixados 1000`
+  numa busca cuja base tem 319300. O usuário não ficava sabendo que havia mais.
+- **Causa Raiz:** `total_found_sum` (main.py) era alimentado **só** pelo `progress_cb`, e os
+  providers passam nele o **alvo da barra de progresso**, não o total da base:
+  `progress_cb(count_fetched, min(max_results, total_results))` em openalex/crossref, e
+  `len(id_list)` (já cortada por `retmax`) em pubmed. Com limite finito, o "encontrados"
+  virava o próprio limite. Efeito colateral: o ramo `trail_limited` ("de N (limite)") era
+  **código morto**, porque `total_found_sum > baixados` nunca era verdadeiro.
+  O screenshot mostrava 319300 correto só porque veio do modo *Ilimitado*
+  (`min(9999999, 319300) = 319300`). PubMed calculava `total_results` e descartava.
+- **Correção:** providers expõem `total_available` (total REAL da API: `meta.count` /
+  `message.total-results` / `esearchresult.count`); o worker usa esse valor para
+  "Encontrados" e o `progress_cb` segue com o alvo limitado. Commit `ace716a`.
+- **Correção 2:** `_current_limit()` cortava o campo Qtd para 10000 em silêncio — agora
+  explica via `t("search.limit_capped")`. Nenhum teto novo: o "Ilimitado" segue como está
+  desde `6bfe474`. Commit `1beb0f5`.
+
+### BUG-C.2: o vão branco gigante continuava — eram outros DOIS frames
+- **Sintoma:** o mesmo do relato original (card com ~4x a altura do conteúdo), em *alguns*
+  cards e não em todos.
+- **Causa Raiz:** o fix de 12/07 corrigiu só o `left_bar`. Outros dois `CTkFrame` do
+  `ArticleCard` eram criados **sem `height`** e por isso assumiam a altura default de
+  **200px** do CustomTkinter, que não encolhe quando o frame fica **sem filhos**:
+  a faixa de badges (row 0), vazia quando o registro não tem ano/citações/OA/idioma; e a
+  faixa de ações (row 4), vazia quando o registro é Open Access ou não tem DOI (não ganha o
+  botão "Abrir DOI"). Card mínimo medido: **454px** (200 + 200 + 28 de título) — daí o vão
+  aparecer só em certos registros. O teste de regressão passava porque usava um registro com
+  `year`+`language`+`doi`, ou seja, as duas faixas tinham filhos.
+- **Correção:** `height=1` nas duas faixas, mantidas gridadas para preservar o respiro de
+  12px do card (só gridar quando têm conteúdo derrubava a folga inferior para 4px).
+  454px → 61px. Commit `6736c5f`.
+
+### BUG-B: nada quebrado, cobertura insuficiente
+- O drawer de `b99d4ab` está correto (sem troca de aba, sem reconstruir o feed, RAG dos
+  records em revisão). O teste chamava `open_blink_drawer()` direto e não cobria o
+  *callback*, que era onde o defeito original vivia (`_switch_tab("home")`). Dois testes
+  novos fecham o buraco, um deles verificado injetando a regressão. Commit `daa40aa`.
