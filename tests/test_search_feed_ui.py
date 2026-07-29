@@ -68,6 +68,92 @@ def test_blink_drawer_preserves_feed_state():
         root.destroy()
 
 
+def test_blink_button_path_does_not_rebuild_the_feed():
+    """BUG-B pelo caminho REAL do botão: o teste acima chama open_blink_drawer() direto,
+    então não cobre o defeito original, que era no callback (`on_ai_assistant` fazia
+    `_switch_tab("home")` e tirava a revisão da vista). Aqui o clique é simulado via
+    `_trigger_ai`, com o callback ligado como em main.py, e o feed tem de sobreviver
+    IDÊNTICO — mesmos objetos de card (não reconstruídos), seleção e scroll preservados."""
+    ctk = pytest.importorskip("customtkinter")
+    try:
+        root = ctk.CTk()
+    except Exception:
+        pytest.skip("sem display")
+    root.withdraw()
+    from ui.search_feed import SearchFeedView
+
+    recebido = {}
+
+    def on_ai(records_list, selected_idx):
+        # Mesma ligação de main.py: abre o drawer e escreve nele. Nada de troca de aba.
+        recebido["records"] = records_list
+        recebido["sel"] = set(selected_idx)
+        out = fv.open_blink_drawer()
+        out.configure(state="normal"); out.insert("1.0", "analisando…"); out.configure(state="disabled")
+
+    fv = SearchFeedView(root, lambda *a, **k: None, lambda: None, on_ai)
+    fv.pack(fill="both", expand=True)
+    try:
+        recs = [_rec(i, 2015 + (i % 5)) for i in range(50)]
+        fv.load_results(recs, "Encontrados 50")
+        root.update()
+
+        fv.selected_indices.discard(3)  # uma seleção manual para conferir preservação
+        canvas = getattr(fv.feed, "_parent_canvas", None)
+        if canvas is not None:
+            canvas.yview_moveto(0.4); root.update()
+        scroll_before = canvas.yview() if canvas is not None else None
+
+        cards_before = list(fv.cards)          # os OBJETOS, não só a contagem
+        sel_before = set(fv.selected_indices)
+        trail_before = fv.trail_lbl.cget("text")
+
+        fv._trigger_ai(); root.update()        # <- o clique no "✨ Blink"
+
+        assert recebido.get("records") is not None, "o callback do Blink nem foi chamado"
+        assert len(recebido["records"]) == 50, "o Blink deve receber os records EM REVISÃO"
+        assert fv.blink_drawer_open(), "o drawer deveria estar aberto após o clique"
+        assert fv.winfo_exists(), "o feed não pode ser destruído"
+        assert fv.cards == cards_before, "os cards foram RECONSTRUÍDOS (deveriam ser os mesmos)"
+        assert set(fv.selected_indices) == sel_before, "seleção perdida ao abrir o Blink"
+        assert fv.trail_lbl.cget("text") == trail_before, "trilha perdida ao abrir o Blink"
+        if canvas is not None:
+            assert canvas.yview() == scroll_before, "posição de scroll perdida"
+
+        fv.close_blink_drawer(); root.update()
+        assert not fv.blink_drawer_open()
+        assert fv.cards == cards_before, "fechar o drawer não pode reconstruir o feed"
+        assert set(fv.selected_indices) == sel_before
+        if canvas is not None:
+            assert canvas.yview() == scroll_before, "scroll perdido ao fechar o drawer"
+    finally:
+        root.destroy()
+
+
+def test_main_blink_callback_uses_the_drawer_and_never_switches_tab():
+    """Guarda a regressão EXATA relatada ("clicar em Blink faz a tela de importação
+    sumir"): o callback real em main.py fazia `_switch_tab("home")`. O teste acima usa
+    um callback próprio e não veria isso voltar, então aqui a checagem é no fonte do
+    callback de verdade — ele tem de abrir o drawer e nunca trocar de aba."""
+    import pathlib, re
+    src = pathlib.Path(__file__).resolve().parent.parent / "main.py"
+    texto = src.read_text(encoding="utf-8")
+
+    m = re.search(r"^(\s*)def on_ai_assistant\(.*?\):\n", texto, re.M)
+    assert m, "on_ai_assistant não encontrado em main.py"
+    indent = len(m.group(1))
+    corpo = []
+    for linha in texto[m.end():].splitlines():
+        if linha.strip() and (len(linha) - len(linha.lstrip())) <= indent:
+            break                      # dedentou: acabou o corpo da função
+        corpo.append(linha)
+    corpo = "\n".join(corpo)
+
+    assert "open_blink_drawer" in corpo, "o Blink deveria abrir no drawer sobre a revisão"
+    assert "_switch_tab" not in corpo, (
+        "on_ai_assistant voltou a trocar de aba — é o BUG-B (a revisão some da tela)")
+
+
 def test_article_card_no_fixed_whitespace():
     """BUG-C: card não pode ter altura fixa gigante. Qualquer CTkFrame criado sem `height`
     assume a default de 200px do CustomTkinter; um frame VAZIO (sem filhos) não encolhe e
