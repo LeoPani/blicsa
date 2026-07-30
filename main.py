@@ -144,6 +144,11 @@ class BlicsaApp(ctk.CTk):
         self._prune_largest_var = ctk.BooleanVar(value=False)
         self._cluster_alg_var = ctk.StringVar(value="louvain")
         self._cluster_res_var = ctk.DoubleVar(value=1.0)
+        # Fase 3 — controles de qualidade do mapa.
+        self._binary_count_var = ctk.BooleanVar(value=True)   # padrão do VOSviewer
+        self._attraction_var = ctk.DoubleVar(value=1.0)
+        self._repulsion_var = ctk.DoubleVar(value=0.0)
+        self._excluded_terms: set[str] = set()                # da lista revisável
 
         self._build_layout()
         self._attach_log_handler()
@@ -1593,6 +1598,23 @@ class BlicsaApp(ctk.CTk):
         
         self._thresh_lbl = ctk.CTkLabel(sc, text="", font=ctk.CTkFont(size=10), text_color=TEXT_MUTED)
         self._thresh_lbl.pack(anchor="w", padx=10, pady=(0, 6))
+
+        # 5b. Contagem binária (padrão do VOSviewer) — distinta de full/fractional, que é
+        # sobre o PESO da aresta. Aqui é sobre contar o termo uma vez por documento.
+        chk_bin = ctk.CTkCheckBox(sc, text="Contagem binária", variable=self._binary_count_var,
+                                  font=ctk.CTkFont(size=11), fg_color=ACCENT, hover_color=ACCENT_HOV,
+                                  command=self._update_thresh_label)
+        chk_bin.pack(anchor="w", padx=10, pady=(0, 6))
+        HoverTooltip(chk_bin, "Conta cada termo UMA vez por documento, mesmo que ele se repita.\n"
+                              "É o padrão recomendado pelo VOSviewer: sem isso, um termo repetido\n"
+                              "muitas vezes num único artigo distorce o mapa inteiro.")
+
+        # 5c. Lista de termos revisável ANTES de gerar (passo 13 do guia).
+        self._btn(sc, "📋  Revisar termos…", self._open_term_review, height=30,
+                  color=INK, hover=INK_HOV).pack(fill="x", padx=10, pady=(0, 6))
+        self._excluded_lbl = ctk.CTkLabel(sc, text="", font=ctk.CTkFont(size=10),
+                                          text_color=TEXT_MUTED)
+        self._excluded_lbl.pack(anchor="w", padx=10, pady=(0, 6))
         
         # 6. Filtro de Nós (Máx. nós ou Top %)
         lbl_max = ctk.CTkLabel(sc, text="Máx. Nós (0=∞):", font=ctk.CTkFont(size=11, weight="bold"))
@@ -1633,7 +1655,7 @@ class BlicsaApp(ctk.CTk):
         
         lbl_res = ctk.CTkLabel(sc, text="Resolução Cluster:", font=ctk.CTkFont(size=11, weight="bold"))
         lbl_res.pack(anchor="w", padx=10, pady=(4, 2))
-        HoverTooltip(lbl_res, "Controla o número de clusters gerados.\n- Valores > 1 geram mais clusters (menores).\n- Valores < 1 geram menos clusters (maiores).")
+        HoverTooltip(lbl_res, "Controla o particionamento em clusters.\nO efeito NÃO é monotônico com o Louvain: medido no grafo de referência,\n0.5 deu 5 clusters, 1.0 deu 4, 1.5 deu 5 e 2.0 deu 7.\nAjuste e observe o resultado — o padrão 1.0 costuma ser um bom começo.")
         res_f = ctk.CTkFrame(sc, fg_color="transparent")
         res_f.pack(fill="x", padx=10, pady=(0, 6))
         self._res_lbl = ctk.CTkLabel(res_f, text="1.00", font=ctk.CTkFont(size=13, weight="bold"), text_color=ACCENT)
@@ -1645,6 +1667,34 @@ class BlicsaApp(ctk.CTk):
             progress_color=ACCENT,
             command=lambda v: self._res_lbl.configure(text=f"{v:.2f}"),
         ).pack(side="left", fill="x", expand=True)
+
+        # Reclusterizar SEM refazer o layout: o mapa continua o mesmo mapa, só as cores e os
+        # grupos mudam. Refazer o layout a cada ajuste custaria segundos e, pior, embaralharia
+        # o desenho — o usuário perderia a referência visual do que estava olhando.
+        self._btn(sc, "🎯  Aplicar resolução (sem refazer layout)", self._recluster_only,
+                  height=30, color=INK, hover=INK_HOV).pack(fill="x", padx=10, pady=(0, 6))
+
+        # Atração e repulsão do ForceAtlas2. O guia recomenda attraction=1 / repulsion=0
+        # quando os rótulos se sobrepõem.
+        lbl_ar = ctk.CTkLabel(sc, text="Atração / Repulsão:", font=ctk.CTkFont(size=11, weight="bold"))
+        lbl_ar.pack(anchor="w", padx=10, pady=(4, 2))
+        HoverTooltip(lbl_ar, "Forças do ForceAtlas2.\nO guia do VOSviewer recomenda atração 1 e repulsão 0\nquando os rótulos estão se sobrepondo demais.")
+        ar_f = ctk.CTkFrame(sc, fg_color="transparent")
+        ar_f.pack(fill="x", padx=10, pady=(0, 6))
+        self._attr_lbl = ctk.CTkLabel(ar_f, text="1.0 / 0.0", font=ctk.CTkFont(size=12, weight="bold"),
+                                      text_color=ACCENT)
+        self._attr_lbl.pack(side="left", padx=(0, 8))
+
+        def _upd_ar(_=None):
+            self._attr_lbl.configure(
+                text=f"{self._attraction_var.get():.1f} / {self._repulsion_var.get():.1f}")
+
+        ctk.CTkSlider(ar_f, from_=0.1, to=5.0, number_of_steps=49, variable=self._attraction_var,
+                      height=14, button_color=ACCENT, button_hover_color=ACCENT_HOV,
+                      progress_color=ACCENT, command=_upd_ar).pack(side="left", fill="x", expand=True, padx=(0, 4))
+        ctk.CTkSlider(ar_f, from_=0.0, to=5.0, number_of_steps=50, variable=self._repulsion_var,
+                      height=14, button_color=INK, button_hover_color=INK_HOV,
+                      progress_color=INK, command=_upd_ar).pack(side="left", fill="x", expand=True)
 
         # 8. Modo de Visualização
         lbl_viz = ctk.CTkLabel(sc, text="Modo de Visualização:", font=ctk.CTkFont(size=11, weight="bold"))
@@ -2956,6 +3006,132 @@ class BlicsaApp(ctk.CTk):
         self._occ_lbl.configure(text=str(int(val)))
         self._update_thresh_label()
 
+    # ── Fase 3: controles de qualidade ────────────────────────────────────
+    def _recluster_only(self):
+        """Aplica a resolução ao grafo EXISTENTE, sem refazer o layout."""
+        G = getattr(self, "_graph", None)
+        if G is None or G.number_of_nodes() == 0:
+            messagebox.showwarning("Sem mapa", "Gere o mapa primeiro.")
+            return
+        from core.map_controls import cluster_sizes, recluster
+        antes = len(cluster_sizes(G))
+        recluster(G, resolution=self._cluster_res_var.get(),
+                  algorithm=self._cluster_alg_var.get())
+        depois = cluster_sizes(G)
+        log.info(f"[Mapa] resolução {self._cluster_res_var.get():.2f}: "
+                 f"{antes} → {len(depois)} clusters (posições intactas)")
+        # Redesenha com as MESMAS posições — self._positions não é tocado.
+        try:
+            self._render_current_map()
+        except Exception:
+            self._draw_map()
+
+    def _open_term_review(self):
+        """Tabela de termos revisável antes de gerar (passo 13 do guia do VOSviewer)."""
+        if self._dataframe is None or self._dataframe.empty:
+            messagebox.showwarning("Sem dados", "Importe um corpus primeiro.")
+            return
+
+        from core.term_extraction import extract_terms
+        campo = {"keywords": "keywords", "titles": "title_abstract",
+                 "abstracts": "title_abstract", "titles_abstracts": "title_abstract"}.get(
+            self._field_var.get(), "keywords")
+
+        self._set_busy("Extraindo termos…")
+        try:
+            resultado = extract_terms(
+                self._dataframe, fields=campo,
+                binary_count=self._binary_count_var.get(),
+                min_occurrences=int(self._min_occ_var.get()),
+                thesaurus=getattr(self, "_thesaurus", None))
+        finally:
+            self._set_idle("")
+
+        if not resultado.terms:
+            messagebox.showinfo(
+                "Nenhum termo",
+                t("map.warn_threshold_empty", total=resultado.total_unique_before_threshold))
+            return
+
+        win = ctk.CTkToplevel(self)
+        win.title("Revisar termos")
+        win.geometry("720x600")
+        win.transient(self)
+
+        cab = ctk.CTkFrame(win, fg_color="transparent")
+        cab.pack(fill="x", padx=16, pady=(16, 4))
+        ctk.CTkLabel(cab, text=f"{len(resultado.terms)} termos (limiar {self._min_occ_var.get()})",
+                     font=ctk.CTkFont(size=15, weight="bold")).pack(side="left")
+
+        # Avisos honestos da extração (idioma, backend) aparecem aqui, nunca em silêncio.
+        for aviso in resultado.warnings:
+            ctk.CTkLabel(win, text=t(aviso, lang=resultado.language or "?",
+                                     total=resultado.total_unique_before_threshold),
+                         font=ctk.CTkFont(size=11), text_color=RED,
+                         wraplength=680, justify="left").pack(anchor="w", padx=16, pady=(0, 2))
+
+        ordenar = ctk.StringVar(value="relevância")
+        lista = ctk.CTkScrollableFrame(win, fg_color=WHITE_CARD)
+        lista.pack(fill="both", expand=True, padx=16, pady=8)
+
+        marcas: dict[str, ctk.BooleanVar] = {}
+
+        def preencher():
+            for w in lista.winfo_children():
+                w.destroy()
+            termos = list(resultado.terms)
+            if ordenar.get() == "ocorrências":
+                termos.sort(key=lambda x: (-x.occurrences, x.term))
+            elif ordenar.get() == "alfabética":
+                termos.sort(key=lambda x: x.term)
+            else:
+                termos.sort(key=lambda x: (-x.relevance, -x.occurrences, x.term))
+
+            cabecalho = ctk.CTkFrame(lista, fg_color="transparent")
+            cabecalho.pack(fill="x", pady=(0, 4))
+            for texto, largura in (("incluir", 60), ("termo", 300),
+                                   ("ocorr.", 70), ("relev.", 70)):
+                ctk.CTkLabel(cabecalho, text=texto, width=largura, anchor="w",
+                             font=ctk.CTkFont(size=11, weight="bold")).pack(side="left")
+
+            for info in termos[:600]:      # a UI mostra os 600 primeiros; a exclusão vale p/ todos
+                linha = ctk.CTkFrame(lista, fg_color="transparent")
+                linha.pack(fill="x")
+                var = marcas.setdefault(
+                    info.term, ctk.BooleanVar(value=info.term not in self._excluded_terms))
+                ctk.CTkCheckBox(linha, text="", variable=var, width=60,
+                                fg_color=ACCENT, hover_color=ACCENT_HOV).pack(side="left")
+                ctk.CTkLabel(linha, text=info.term, width=300, anchor="w").pack(side="left")
+                ctk.CTkLabel(linha, text=str(info.occurrences), width=70,
+                             anchor="w").pack(side="left")
+                ctk.CTkLabel(linha, text=f"{info.relevance:.2f}", width=70,
+                             anchor="w").pack(side="left")
+
+        ord_f = ctk.CTkFrame(cab, fg_color="transparent")
+        ord_f.pack(side="right")
+        ctk.CTkLabel(ord_f, text="ordenar:").pack(side="left", padx=4)
+        ctk.CTkComboBox(ord_f, values=["relevância", "ocorrências", "alfabética"],
+                        variable=ordenar, width=130,
+                        command=lambda _: preencher()).pack(side="left")
+
+        rodape = ctk.CTkFrame(win, fg_color="transparent")
+        rodape.pack(fill="x", padx=16, pady=(0, 16))
+
+        def aplicar():
+            self._excluded_terms = {termo for termo, var in marcas.items() if not var.get()}
+            n = len(self._excluded_terms)
+            self._excluded_lbl.configure(text=f"{n} termo(s) excluído(s)" if n else "")
+            log.info(f"[Mapa] {n} termos excluídos pela revisão")
+            win.destroy()
+
+        self._btn(rodape, "Aplicar e fechar", aplicar, color=RED, hover=RED_HOV,
+                  height=36).pack(side="right")
+        self._btn(rodape, "Limpar exclusões",
+                  lambda: [v.set(True) for v in marcas.values()],
+                  color=INK, hover=INK_HOV, height=36).pack(side="right", padx=8)
+
+        preencher()
+
     def _on_field_change(self):
         self._refresh_candidate_counts()
 
@@ -3004,6 +3180,22 @@ class BlicsaApp(ctk.CTk):
         threading.Thread(target=self._mapping_worker, args=(None,), daemon=True).start()
 
     def _mapping_worker(self, allowed_terms: set[str] | None):
+        # Exclusões da lista revisável (passo 13 do guia): valem SEMPRE, inclusive quando o
+        # chamador não passou uma seleção própria. Sem isso o botão "Revisar termos" seria
+        # decorativo — o mapa sairia com os termos que o usuário acabou de descartar.
+        if getattr(self, "_excluded_terms", None):
+            from core.map_controls import allowed_terms_from
+            if allowed_terms is None:
+                from core.term_extraction import extract_terms
+                campo = {"keywords": "keywords"}.get(self._field_var.get(), "title_abstract")
+                candidatos = extract_terms(
+                    self._dataframe, fields=campo,
+                    binary_count=self._binary_count_var.get(),
+                    min_occurrences=int(self._min_occ_var.get()),
+                    thesaurus=getattr(self, "_thesaurus", None)).term_names
+                allowed_terms = allowed_terms_from(candidatos, self._excluded_terms)
+            else:
+                allowed_terms = allowed_terms_from(allowed_terms, self._excluded_terms)
         self.after(0, self._set_busy, "Gerando rede…")
         try:
             log.info("[Blicsa Engine] Calculando rede...")
@@ -4319,7 +4511,22 @@ class BlicsaApp(ctk.CTk):
                 "cluster_algorithm": self._cluster_alg_var.get(),
                 "cluster_resolution": self._cluster_res_var.get(),
             }
-            
+
+            # Fase 3: bloco único com os parâmetros do mapa, para o projeto reabrir com o
+            # MESMO mapa (inclusive os termos que o usuário excluiu na revisão).
+            from core.map_controls import MapParams
+            config["map_params"] = MapParams(
+                fields={"keywords": "keywords"}.get(self._field_var.get(), "title_abstract"),
+                binary_count=self._binary_count_var.get(),
+                min_occurrences=int(self._min_occ_var.get()),
+                resolution=float(self._cluster_res_var.get()),
+                algorithm=self._cluster_alg_var.get(),
+                attraction=float(self._attraction_var.get()),
+                repulsion=float(self._repulsion_var.get()),
+                excluded_terms=sorted(getattr(self, "_excluded_terms", set())),
+            ).to_dict()
+
+
             thumbnail_path = None
             if hasattr(self, '_map_canvas') and getattr(self._map_canvas, 'figure', None) is not None:
                 import tempfile
@@ -4393,6 +4600,20 @@ class BlicsaApp(ctk.CTk):
         for key, var, _ in setters:
             if (v := config.get(key)) is not None:
                 var.set(v)
+
+        # Fase 3: parâmetros do mapa. `from_dict` tolera projeto de versão anterior (sem o
+        # bloco) e valores corrompidos — um `.blicsa` antigo nunca pode deixar de abrir.
+        from core.map_controls import MapParams
+        mp = MapParams.from_dict(config.get("map_params"))
+        self._binary_count_var.set(mp.binary_count)
+        self._cluster_res_var.set(mp.resolution)
+        self._attraction_var.set(mp.attraction)
+        self._repulsion_var.set(mp.repulsion)
+        self._excluded_terms = set(mp.excluded_terms)
+        if hasattr(self, "_excluded_lbl"):
+            n = len(self._excluded_terms)
+            self._excluded_lbl.configure(text=f"{n} termo(s) excluído(s)" if n else "")
+
         for key, var in [
             ("max_nodes", self._max_nodes_var),
             ("max_pct",   self._max_pct_var),
