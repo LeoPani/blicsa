@@ -210,5 +210,8 @@
   "ext_added": "Record added via extension ({count} in corpus)",
   "ext_added_no_project": "Added to the loose corpus (no active project — open a project to save it).",
   "dedup.low_confidence": "low confidence",
-  "dedup.select_hint": "Checked pairs will be removed. Author+year matches are low confidence and start unchecked."
+  "dedup.select_hint": "Checked pairs will be removed. Author+year matches are low confidence and start unchecked.",
+  "map.warn_non_english": "Corpus mostly in {lang}: noun phrase extraction is built for English and degrades in other languages. Recommended: use keywords as the source, or apply a thesaurus.",
+  "map.warn_ngram_backend": "N-gram extraction (built in, offline). For POS-tagged noun phrases, install spaCy with the en_core_web_sm model — Blicsa picks it up automatically.",
+  "map.warn_threshold_empty": "The minimum occurrence threshold removed all {total} terms. Lower the threshold to generate the map."
 }

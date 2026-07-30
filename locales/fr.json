@@ -211,5 +211,8 @@
   "ext_added": "Enregistrement ajouté via l'extension ({count} dans le corpus)",
   "ext_added_no_project": "Ajouté au corpus libre (aucun projet actif — ouvrez un projet pour l'enregistrer).",
   "dedup.low_confidence": "faible confiance",
-  "dedup.select_hint": "Les paires cochées seront supprimées. Les correspondances auteur+année sont peu fiables et commencent décochées."
+  "dedup.select_hint": "Les paires cochées seront supprimées. Les correspondances auteur+année sont peu fiables et commencent décochées.",
+  "map.warn_non_english": "Corpus majoritairement en {lang} : l'extraction de groupes nominaux est conçue pour l'anglais et perd en qualité ailleurs. Recommandé : utiliser les mots-clés, ou appliquer un thésaurus.",
+  "map.warn_ngram_backend": "Extraction par n-grammes (intégrée, hors ligne). Pour des groupes nominaux avec étiquetage morphosyntaxique, installez spaCy avec le modèle en_core_web_sm — Blicsa l'utilisera automatiquement.",
+  "map.warn_threshold_empty": "Le seuil d'occurrence minimale a supprimé les {total} termes. Réduisez le seuil pour générer la carte."
 }

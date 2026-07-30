@@ -210,5 +210,8 @@
   "ext_added": "Registro adicionado via extensão ({count} no corpus)",
   "ext_added_no_project": "Adicionado ao corpus avulso (sem projeto ativo — abra um projeto para salvar).",
   "dedup.low_confidence": "baixa confiança",
-  "dedup.select_hint": "Pares marcados serão removidos. Correspondências por autor+ano são de baixa confiança e começam desmarcadas."
+  "dedup.select_hint": "Pares marcados serão removidos. Correspondências por autor+ano são de baixa confiança e começam desmarcadas.",
+  "map.warn_non_english": "Corpus predominantemente em {lang}: a extração de frases nominais é feita para inglês e perde qualidade em outros idiomas. Recomendado: usar as keywords como fonte, ou aplicar um thesaurus.",
+  "map.warn_ngram_backend": "Extração por n-gramas (embutida, offline). Para frases nominais com POS tagging, instale spaCy com o modelo en_core_web_sm — o Blicsa passa a usá-lo automaticamente.",
+  "map.warn_threshold_empty": "O limiar de ocorrência mínima removeu todos os {total} termos. Reduza o limiar para gerar o mapa."
 }
