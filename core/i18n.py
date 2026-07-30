@@ -77,6 +77,20 @@ MAP_I18N_KEYS = (
     "map_export_png",
     "map_clusters",
     "map_cluster_item",
+    # Fase 2 — as três visualizações (abas, métricas do overlay, densidade).
+    "map_mode_network",
+    "map_mode_overlay",
+    "map_mode_density",
+    "map_metric_avg_year",
+    "map_metric_avg_citations",
+    "map_metric_occurrences",
+    "map_no_data",
+    "map_uniform_scale",
+    "map_density_radius",
+    "map_size_by",
+    "map_size_occurrences",
+    "map_size_strength",
+    "map_edges_capped",
 )
 
 

@@ -213,5 +213,18 @@
   "dedup.select_hint": "Checked pairs will be removed. Author+year matches are low confidence and start unchecked.",
   "map.warn_non_english": "Corpus mostly in {lang}: noun phrase extraction is built for English and degrades in other languages. Recommended: use keywords as the source, or apply a thesaurus.",
   "map.warn_ngram_backend": "N-gram extraction (built in, offline). For POS-tagged noun phrases, install spaCy with the en_core_web_sm model — Blicsa picks it up automatically.",
-  "map.warn_threshold_empty": "The minimum occurrence threshold removed all {total} terms. Lower the threshold to generate the map."
+  "map.warn_threshold_empty": "The minimum occurrence threshold removed all {total} terms. Lower the threshold to generate the map.",
+  "map_mode_network": "Network",
+  "map_mode_overlay": "Overlay",
+  "map_mode_density": "Density",
+  "map_metric_avg_year": "Average year",
+  "map_metric_avg_citations": "Average citations",
+  "map_metric_occurrences": "Occurrences",
+  "map_no_data": "{n} without data",
+  "map_uniform_scale": "all equal ({value})",
+  "map_density_radius": "Kernel radius",
+  "map_size_by": "Node size",
+  "map_size_occurrences": "Occurrences",
+  "map_size_strength": "Link strength",
+  "map_edges_capped": "{rendered} of {total} edges"
 }

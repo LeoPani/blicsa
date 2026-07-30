@@ -304,7 +304,12 @@ class NetworkGenerator:
                 if t in term_years:
                     term_years[t].append(yr)
 
-        for t in valid:
+        # sorted(): `valid` é um set, e a ordem de iteração de um set de strings muda entre
+        # execuções (PYTHONHASHSEED). Como o Louvain depende da ordem de inserção dos nós, o
+        # MESMO corpus com os MESMOS parâmetros vinha dando partições diferentes — medido:
+        # 4 clusters numa execução, 5 na seguinte. Num programa científico isso é grave: o
+        # usuário regenera o mapa e recebe outra resposta. A ordenação torna determinístico.
+        for t in sorted(valid):
             yrs = term_years.get(t, [])
             year_mean = round(sum(yrs) / len(yrs), 1) if yrs else 0
             self.G.add_node(
@@ -372,7 +377,7 @@ class NetworkGenerator:
         counts: Counter = Counter(all_authors)
         valid = {a for a, n in counts.items() if n >= min_publications}
 
-        for author in valid:
+        for author in sorted(valid):   # determinismo: ver nota em build_keyword_cooccurrence
             self.G.add_node(
                 author,
                 size=int(10 + counts[author] * 3),
@@ -615,7 +620,7 @@ class NetworkGenerator:
         counts: Counter = Counter(all_codes)
         valid  = {c for c, n in counts.items() if n >= min_occurrence}
 
-        for code in valid:
+        for code in sorted(valid):     # determinismo: ver nota em build_keyword_cooccurrence
             self.G.add_node(
                 code,
                 size=int(10 + counts[code] * 2),

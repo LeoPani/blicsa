@@ -213,5 +213,18 @@
   "dedup.select_hint": "Pares marcados serão removidos. Correspondências por autor+ano são de baixa confiança e começam desmarcadas.",
   "map.warn_non_english": "Corpus predominantemente em {lang}: a extração de frases nominais é feita para inglês e perde qualidade em outros idiomas. Recomendado: usar as keywords como fonte, ou aplicar um thesaurus.",
   "map.warn_ngram_backend": "Extração por n-gramas (embutida, offline). Para frases nominais com POS tagging, instale spaCy com o modelo en_core_web_sm — o Blicsa passa a usá-lo automaticamente.",
-  "map.warn_threshold_empty": "O limiar de ocorrência mínima removeu todos os {total} termos. Reduza o limiar para gerar o mapa."
+  "map.warn_threshold_empty": "O limiar de ocorrência mínima removeu todos os {total} termos. Reduza o limiar para gerar o mapa.",
+  "map_mode_network": "Rede",
+  "map_mode_overlay": "Sobreposição",
+  "map_mode_density": "Densidade",
+  "map_metric_avg_year": "Ano médio",
+  "map_metric_avg_citations": "Citações médias",
+  "map_metric_occurrences": "Ocorrências",
+  "map_no_data": "{n} sem dado",
+  "map_uniform_scale": "todos iguais ({value})",
+  "map_density_radius": "Raio do kernel",
+  "map_size_by": "Tamanho do nó",
+  "map_size_occurrences": "Ocorrências",
+  "map_size_strength": "Força de ligação",
+  "map_edges_capped": "{rendered} de {total} arestas"
 }
