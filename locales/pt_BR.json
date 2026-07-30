@@ -102,7 +102,6 @@
   "search.interpreted": "Interpretado como: {query}",
   "search.trail": "Encontrados {found} · baixados {downloaded} · {reason}",
   "search.trail_limited": "Encontrados {found} · baixados {downloaded} de {limit} (limite) · {reason}",
-  "search.limit_capped": "Máximo {max} por busca no campo Qtd — marque \"Ilimitado\" para baixar tudo o que a fonte entregar.",
   "dedup.button": "Deduplicar",
   "dedup.preview_title": "Deduplicação — revise antes de aplicar",
   "dedup.summary": "{n} pares de possíveis duplicatas — {doi} por DOI · {title} por título similar · {ay} por autor+ano",

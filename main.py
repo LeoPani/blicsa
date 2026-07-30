@@ -1145,7 +1145,7 @@ class BlicsaApp(ctk.CTk):
         self._search_max_entry.insert(0, "1000")
         self._search_max_entry.pack(side="left", padx=4)
 
-        # Limite default 1000 (configurável até 10000); Ilimitado disponível.
+        # Limite default 1000, sem teto (o número digitado vale); Ilimitado disponível.
         self._search_unlimited_var = ctk.BooleanVar(value=False)
         self._search_unlimited_chk = ctk.CTkCheckBox(act_sf, text="Ilimitado", variable=self._search_unlimited_var, width=50,
                                                      command=lambda: self._search_max_entry.configure(state="disabled" if self._search_unlimited_var.get() else "normal"))
@@ -2374,8 +2374,14 @@ class BlicsaApp(ctk.CTk):
         return query
 
     def _current_limit(self) -> int:
-        """Limite da colheita: default 1000, teto 10000, Ilimitado = sentinela."""
-        UNLIMITED, DEFAULT_LIMIT, MAX_LIMIT = 10_000_000, 1000, 10_000
+        """Limite da colheita: default 1000, SEM teto, Ilimitado = sentinela.
+
+        Não há teto máximo: o número digitado vale. A proteção contra colher demais sem
+        querer é o aviso de volume (`_search_after_count` → `_show_count_dialog`, a partir
+        de 2000 resultados na base), que mostra o total e deixa escolher — não um corte
+        silencioso do valor pedido.
+        """
+        UNLIMITED, DEFAULT_LIMIT = 10_000_000, 1000
         if self._search_unlimited_var.get():
             return UNLIMITED
         try:
@@ -2384,15 +2390,6 @@ class BlicsaApp(ctk.CTk):
             n = DEFAULT_LIMIT
         if n < 1:
             n = DEFAULT_LIMIT
-        if n > MAX_LIMIT:
-            # O corte reescrevia o campo sem dizer nada — o usuário pedia 50000 e recebia
-            # 10000 sem entender por quê. Agora explica e aponta o "Ilimitado".
-            n = MAX_LIMIT
-            self._search_max_entry.delete(0, "end")
-            self._search_max_entry.insert(0, str(MAX_LIMIT))
-            lbl = getattr(self, "_search_trail_lbl", None)
-            if lbl is not None:
-                lbl.configure(text=t("search.limit_capped", max=MAX_LIMIT))
         return n
 
     # ── Busca por campo + prévia paginada (cherry-pick estilo Scopus) ──

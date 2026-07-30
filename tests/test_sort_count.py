@@ -101,3 +101,64 @@ def test_browse_per_page_capped_200():
     with patch("urllib.request.urlopen", return_value=_resp(body)) as mock:
         OpenAlexProvider().browse("x", per_page=999)
     assert "per_page=200" in mock.call_args[0][0].full_url
+
+
+# ── Limite do campo Qtd: sem teto (a proteção é o aviso de volume) ──
+
+def _limit_for(digitado: str, ilimitado: bool = False) -> tuple:
+    """Chama _current_limit com stubs dos dois widgets que ele lê (sem subir a UI).
+    Devolve (limite, conteúdo do campo depois) — o campo não deve ser reescrito."""
+    import types
+    import main
+
+    class _Stub:
+        def __init__(self, v): self.v = v
+        def get(self): return self.v
+
+    o = types.SimpleNamespace(_search_max_entry=_Stub(digitado),
+                              _search_unlimited_var=_Stub(ilimitado))
+    return main.BlicsaApp._current_limit(o), o._search_max_entry.get()
+
+
+def test_qtd_field_has_no_ceiling():
+    """Ilimitado tem que ser ilimitado: o número digitado no campo Qtd vale, sem teto.
+    Antes, valores acima de 10000 eram cortados (e o campo reescrito) — o usuário pedia
+    50000 e recebia 10000. A proteção contra colher demais é o aviso de volume
+    (test_count_dialog_threshold abaixo), não um corte do valor pedido."""
+    assert _limit_for("50000") == (50000, "50000")
+    assert _limit_for("999999") == (999999, "999999")
+    assert _limit_for("10001") == (10001, "10001"), "10000 não pode mais ser um teto"
+
+
+def test_qtd_field_defaults_and_unlimited():
+    """Entradas inválidas caem no padrão 1000; 'Ilimitado' usa a sentinela grande."""
+    assert _limit_for("1000")[0] == 1000
+    assert _limit_for("")[0] == 1000
+    assert _limit_for("0")[0] == 1000
+    assert _limit_for("-5")[0] == 1000
+    assert _limit_for("abc")[0] == 1000
+    assert _limit_for("1000", ilimitado=True)[0] == 10_000_000
+
+
+def test_count_dialog_threshold_is_the_real_protection():
+    """O aviso de volume (_search_after_count) é o que segura colheita grande sem querer:
+    dispara quando a base tem mais de 2000 E o limite pedido passa de 2000. Sem o teto,
+    quem pede 50000 continua passando por ele — a proteção não foi perdida."""
+    import main
+
+    chamou = {}
+
+    class _Fake:
+        _set_idle = lambda self, *a, **k: None
+        def search_to_dataset(self, *a): chamou["direto"] = True
+        def _show_count_dialog(self, *a): chamou["dialogo"] = True
+
+    def cenario(n_base, limite):
+        chamou.clear()
+        main.BlicsaApp._search_after_count(_Fake(), n_base, "q", "openalex", limite, {})
+        return "dialogo" if chamou.get("dialogo") else "direto"
+
+    assert cenario(319_300, 50_000) == "dialogo", "limite alto em base grande deve avisar"
+    assert cenario(319_300, 10_000_000) == "dialogo", "Ilimitado em base grande deve avisar"
+    assert cenario(319_300, 1000) == "direto", "limite baixo não precisa de aviso"
+    assert cenario(500, 50_000) == "direto", "base pequena não precisa de aviso"

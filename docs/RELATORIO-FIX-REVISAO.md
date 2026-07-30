@@ -213,10 +213,32 @@ mostra `t("search.limit_capped")` apontando o "Ilimitado".
 
 > **Divergência consciente com o prompt.** O item A.3 pedia "padrão 1000, máximo 10000".
 > Isso foi implementado em 12/07 e **revertido a pedido do Leonardo** ("já ficou horrível
-> pois limita a 10000, não queria esse limite") em `6bfe474`. Não reimpus teto nenhum:
-> o campo Qtd e o "Ilimitado" (que baixa tudo o que a fonte entregar) estão exatamente
-> como ele deixou — a mudança foi só torná-los explícitos. Se o teto do campo tiver de
-> sair também, é uma linha em `_current_limit()`.
+> pois limita a 10000, não queria esse limite") em `6bfe474`. Não reimpus teto nenhum.
+
+#### Atualização (2026-07-30) — teto do campo Qtd removido de vez
+Commit: `fix: tira o teto do campo Qtd — ilimitado e ilimitado`.
+Decisão do Leonardo: *"ilimitado tem que ser ilimitado; a proteção é o aviso de volume, não
+o teto silencioso."* O teto de 10000 saiu do `_current_limit()` — **o número digitado vale**
+(50000 → 50000), e o campo não é mais reescrito. A mensagem `search.limit_capped`, criada em
+`1beb0f5` para explicar o corte, virou órfã e foi removida dos três catálogos.
+
+A proteção contra colher demais sem querer continua inteira, e é a certa: o **aviso de
+volume** (`_search_after_count` → `_show_count_dialog`), que a partir de 2000 resultados na
+base mostra o total real e oferece "Top 2000 mais citados" / "Baixar todos (N)" / "Cancelar".
+Ele informa e deixa escolher, em vez de cortar por trás:
+
+| base | limite pedido | comportamento |
+|---|---|---|
+| 319300 | 50000 | **aviso de volume** (antes: cortado para 10000 em silêncio) |
+| 319300 | Ilimitado | **aviso de volume** |
+| 319300 | 1000 | direto (limite baixo, não precisa avisar) |
+| 500 | 50000 | direto (base pequena) |
+
+Testes em `tests/test_sort_count.py`: `test_qtd_field_has_no_ceiling` (verificado
+reintroduzindo o teto — fica vermelho), `test_qtd_field_defaults_and_unlimited` (entradas
+inválidas → padrão 1000; Ilimitado → sentinela) e
+`test_count_dialog_threshold_is_the_real_protection` (o aviso segue disparando nos cenários
+que o teto cobria).
 
 ---
 

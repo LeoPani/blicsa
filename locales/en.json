@@ -102,7 +102,6 @@
   "search.interpreted": "Interpreted as: {query}",
   "search.trail": "Found {found} · downloaded {downloaded} · {reason}",
   "search.trail_limited": "Found {found} · downloaded {downloaded} of {limit} (limit) · {reason}",
-  "search.limit_capped": "Maximum {max} per search in the Qty field — tick \"Unlimited\" to download everything the source returns.",
   "dedup.button": "Deduplicate",
   "dedup.preview_title": "Deduplication — review before applying",
   "dedup.summary": "{n} pairs of possible duplicates — {doi} by DOI · {title} by similar title · {ay} by author+year",
