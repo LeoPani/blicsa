@@ -199,6 +199,50 @@ def test_article_card_no_fixed_whitespace():
         root.destroy()
 
 
+def test_cards_align_content_at_the_same_left_edge():
+    """BUG-C (eixo horizontal, achado na captura de tela): `grid_columnconfigure(1, ...)`
+    dava o peso à coluna do CHECKBOX. A coluna do conteúdo ficava sem peso, encolhia ao
+    tamanho natural e era empurrada para a direita por uma distância que dependia do
+    conteúdo de cada card — títulos começando em x diferentes (variação medida: 532px),
+    com um vão branco no meio. O peso tem de ficar na coluna do conteúdo (2)."""
+    ctk = pytest.importorskip("customtkinter")
+    try:
+        root = ctk.CTk()
+    except Exception:
+        pytest.skip("sem display")
+    root.geometry("1200x800")
+    from ui.search_feed import SearchFeedView
+    fv = SearchFeedView(root, lambda *a, **k: None, lambda: None, lambda *a, **k: None)
+    fv.pack(fill="both", expand=True)
+    try:
+        # Conteúdos de larguras BEM diferentes: é a variação que expõe o defeito.
+        recs = [
+            {**_rec(0, 2020), "title": "Curto"},
+            {**_rec(1, 2020), "title": "Um título consideravelmente mais longo que o anterior",
+             "abstract": "Resumo " * 30},
+            {**_rec(2, 2020), "title": "Médio tamanho aqui", "authors": "A" * 60},
+        ]
+        fv.load_results(recs, "trilha")
+        root.update(); root.update_idletasks()
+
+        xs = []
+        for c in fv.cards:
+            titulos = [w for w in c.winfo_children()
+                       if isinstance(w, ctk.CTkLabel) and w.winfo_manager() == "grid"
+                       and w.grid_info().get("row") == 1]
+            assert titulos, "card sem label de título na row 1"
+            xs.append(titulos[0].winfo_x())
+
+        assert max(xs) - min(xs) == 0, (
+            f"títulos desalinhados entre cards (x={xs}) — o peso do grid está na coluna "
+            f"errada e o conteúdo é empurrado conforme a largura de cada card")
+        # O peso pertence à coluna do conteúdo, não à do checkbox.
+        assert fv.cards[0].grid_columnconfigure(2).get("weight") == 1
+        assert fv.cards[0].grid_columnconfigure(1).get("weight") in (0, "0")
+    finally:
+        root.destroy()
+
+
 def test_truncate_source_name_never_leaves_a_dangling_paren():
     """BUG-C (sidebar): "LA Referencia (Red F (305)" — o nome era cortado no meio e a
     contagem colava logo depois, parecendo parêntese partido. O corte agora usa

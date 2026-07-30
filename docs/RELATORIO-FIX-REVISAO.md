@@ -321,6 +321,37 @@ sem botão), o **Open Access** e o com badges, e compara as três variantes entr
 podem divergir em centenas de px). Verificado revertendo o fix — falha com `assert 454 < 160`.
 `test_truncate_source_name_never_leaves_a_dangling_paren` para a sidebar.
 
+### BUG-C.3 — o mesmo erro no eixo HORIZONTAL, achado pela captura de tela
+Com a permissão de Gravação de Tela liberada (2026-07-30), a primeira captura do feed com
+dados reais mostrou um defeito que **nenhuma medição de altura pegaria**: o conteúdo dos
+cards não estava alinhado — cada card começava num x diferente, com um vão branco entre o
+checkbox e o texto.
+
+**Causa raiz:** `self.grid_columnconfigure(1, weight=1)` dava o peso à coluna do **checkbox**.
+A coluna do conteúdo (2) ficava sem peso, encolhia ao tamanho natural e era empurrada para a
+direita pela coluna que esticava — por uma distância que dependia da largura do conteúdo de
+cada card. É exatamente o mesmo erro do BUG-C (dimensão do grid atribuída ao widget errado),
+no outro eixo.
+
+```
+ANTES                                   DEPOIS
+card  x do titulo                       card  x do titulo
+   0          362                          0           53
+   1          194                          1           53
+   2          403                          2           53
+   3          726                          3           53
+variacao = 532px                        variacao = 0px
+```
+
+**Correção:** peso na coluna 2 (conteúdo). Teste
+`test_cards_align_content_at_the_same_left_edge`, com registros de larguras bem diferentes —
+é a variação que expõe o defeito. Verificado revertendo o fix (falha com 602px de
+desalinhamento).
+
+Por que os testes anteriores não pegaram: todos mediam **altura**. O desalinhamento
+horizontal só aparece com cards de larguras diferentes lado a lado — e foi o olho na
+captura que viu primeiro, o que fecha o ciclo do que o Leonardo relatou desde o começo.
+
 ---
 
 ### Validação com dados REAIS (não sintéticos)
@@ -346,10 +377,25 @@ screenshot, fica em 151px com razão 1.09.
 **Smoke test do app:** `python3 main.py --smoke-test` → `app subiu, locales/settings OK,
 UI fechada limpa` (exit 0).
 
-## Pendência honesta
+## Evidência visual (pendência resolvida em 2026-07-30)
 
-**Captura de tela continua bloqueada:** `screencapture -x` retorna
-`could not create image from display` (permissão de Gravação de Tela não concedida ao
-terminal). Não há evidência visual desta sessão. Toda a validação do BUG-C é por **medição
-programática** de altura e folga — que é o fallback previsto no próprio prompt, e nesta
-sessão foi ela que achou o defeito que o olho no screenshot já tinha visto mas o teste não.
+A permissão de Gravação de Tela foi concedida e a captura passou a funcionar
+(2940×1912, 38774 cores distintas — imagem real, não tela preta).
+
+**`docs/evidence/bugc_cards_compactos_alinhados.png`** — feed com os 60 registros reais do
+OpenAlex, depois de todos os fixes. Confirma visualmente:
+
+- **BUG-A:** a trilha mostra `Encontrados 54067 · baixados 60 de 60 (limite) · atingiu limite`
+  — o total real da base, que era o ponto do fix. Antes diria "Encontrados 60".
+- **BUG-C (vertical):** cards compactos, sem vão branco abaixo do abstract; as alturas
+  variam visivelmente com o conteúdo.
+- **BUG-C.3 (horizontal):** badges, títulos, autores e abstracts de todos os cards alinhados
+  na mesma margem esquerda.
+- **Sidebar:** `"Revista de Administra… (12)"`, `"LA Referencia… (1)"` — truncagem com
+  reticências, contagem sempre inteira, nenhum parêntese partido.
+- O `left_bar` vermelho aparece no card sob o cursor (terceiro) — o hover continua vivo
+  depois do `height=1`.
+
+A **primeira** captura desta sessão é que revelou o BUG-C.3: a medição programática validava
+tudo o que sabia medir (altura), e o desalinhamento horizontal só apareceu no olho. Vale como
+registro de método — as duas formas de validação pegaram defeitos diferentes.

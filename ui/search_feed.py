@@ -78,8 +78,12 @@ class ArticleCard(ctk.CTkFrame):
         self.on_toggle = on_toggle
         self.index = index
         self._selected = True
-        
-        self.grid_columnconfigure(1, weight=1)
+
+        # A sobra de largura vai para a coluna do CONTEÚDO (2), não para a do checkbox (1).
+        # Com o peso na 1, a coluna do checkbox esticava e empurrava o texto para a direita
+        # por uma distância que dependia do conteúdo de cada card — os títulos começavam em
+        # x diferentes (variação medida: 532px), com um vão branco no meio do card.
+        self.grid_columnconfigure(2, weight=1)
         
         # Left edge bar — height=1 evita a altura default 200px do CTkFrame (que reservava
         # um vão branco gigante); com sticky="ns" a barra estica ao conteúdo real do card.
