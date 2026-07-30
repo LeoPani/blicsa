@@ -226,5 +226,14 @@
   "map_size_by": "Tamanho do nó",
   "map_size_occurrences": "Ocorrências",
   "map_size_strength": "Força de ligação",
-  "map_edges_capped": "{rendered} de {total} arestas"
+  "map_edges_capped": "{rendered} de {total} arestas",
+  "map_timeline_play": "Reproduzir",
+  "map_timeline_pause": "Pausar",
+  "map_timeline_step": "Ano a ano",
+  "map_timeline_speed": "Velocidade",
+  "map_presentation": "Modo apresentação (F)",
+  "map.anim_year_empty": "{year}: sem termos ainda",
+  "map.anim_year_no_docs": "{year}: nenhum documento neste ano",
+  "map.anim_mp4_skipped": "ffmpeg não encontrado — o MP4 foi pulado. O GIF e os PNGs foram gerados normalmente.",
+  "map.reduce_motion": "Reduzir movimento (desliga as animações do mapa)"
 }

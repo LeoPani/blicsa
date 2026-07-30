@@ -60,6 +60,33 @@
         border: 2px solid #141414; border-radius: 0; padding: 4px; background: #FFFFFF;
     }
     #edge-info { font-size: 11px; color: #555; margin-top: 8px; }
+
+    /* Linha do tempo, abaixo do canvas. Canto zero, sem sombra. */
+    #timeline {
+        position: absolute; bottom: 20px; left: 20px; z-index: 10;
+        background: #FFFFFF; border: 2px solid #141414; border-radius: 0;
+        padding: 8px 12px; display: none; align-items: center; gap: 10px;
+    }
+    #timeline button {
+        width: auto; margin: 0; padding: 6px 12px; background: #FFFFFF; color: #141414;
+        border: 2px solid #141414; border-radius: 0; font-size: 13px;
+    }
+    #timeline button:hover { background: #EEEEEE; }
+    #tl-scrub { width: 240px; }
+    #tl-speed {
+        font-family: inherit; border: 2px solid #141414; border-radius: 0;
+        padding: 4px; background: #FFFFFF;
+    }
+    /* Indicador grande do ano corrente, tipografia Archivo, no canto do canvas. */
+    #tl-year {
+        position: absolute; right: 28px; top: 90px; z-index: 9;
+        font-family: 'Archivo', Inter, sans-serif; font-size: 64px; font-weight: 700;
+        color: #141414; opacity: 0.22; letter-spacing: -2px; pointer-events: none;
+    }
+    /* Modo apresentação: só o mapa. Tecla F ou o botão dedicado. */
+    body.presentation #ui,
+    body.presentation #edge-info { display: none !important; }
+    body.presentation #tabs { opacity: 0.35; }
   </style>
 </head>
 <body>
@@ -103,7 +130,19 @@
   </div>
 
   <div id="container"></div>
+  <div id="tl-year"></div>
   <div id="legend"></div>
+
+  <div id="timeline">
+    <button id="tl-play" title="Reproduzir / pausar">▶</button>
+    <button id="tl-step" title="Ano a ano">⏭</button>
+    <input type="range" id="tl-scrub" min="0" max="0" value="0">
+    <select id="tl-speed" title="Velocidade">
+      <option value="0.5">0.5x</option>
+      <option value="1" selected>1x</option>
+      <option value="2">2x</option>
+    </select>
+  </div>
 
   <!-- Vendors locais (graphology + sigma), depois a lógica do mapa. Sem rede. -->
   <script src="vendor/blicsa-vendor.min.js"></script>

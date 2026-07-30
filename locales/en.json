@@ -226,5 +226,14 @@
   "map_size_by": "Node size",
   "map_size_occurrences": "Occurrences",
   "map_size_strength": "Link strength",
-  "map_edges_capped": "{rendered} of {total} edges"
+  "map_edges_capped": "{rendered} of {total} edges",
+  "map_timeline_play": "Play",
+  "map_timeline_pause": "Pause",
+  "map_timeline_step": "Year by year",
+  "map_timeline_speed": "Speed",
+  "map_presentation": "Presentation mode (F)",
+  "map.anim_year_empty": "{year}: no terms yet",
+  "map.anim_year_no_docs": "{year}: no documents this year",
+  "map.anim_mp4_skipped": "ffmpeg not found — MP4 skipped. The GIF and PNGs were generated normally.",
+  "map.reduce_motion": "Reduce motion (turns off map animations)"
 }

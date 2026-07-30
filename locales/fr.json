@@ -227,5 +227,14 @@
   "map_size_by": "Taille du nœud",
   "map_size_occurrences": "Occurrences",
   "map_size_strength": "Force de lien",
-  "map_edges_capped": "{rendered} sur {total} liens"
+  "map_edges_capped": "{rendered} sur {total} liens",
+  "map_timeline_play": "Lecture",
+  "map_timeline_pause": "Pause",
+  "map_timeline_step": "Année par année",
+  "map_timeline_speed": "Vitesse",
+  "map_presentation": "Mode présentation (F)",
+  "map.anim_year_empty": "{year} : pas encore de termes",
+  "map.anim_year_no_docs": "{year} : aucun document cette année",
+  "map.anim_mp4_skipped": "ffmpeg introuvable — MP4 ignoré. Le GIF et les PNG ont bien été générés.",
+  "map.reduce_motion": "Réduire les animations (désactive les transitions de la carte)"
 }

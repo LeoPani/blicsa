@@ -347,6 +347,24 @@ function visibleLabelSet() {
 }
 
 // ── Abas dos três modos ───────────────────────────────────────────────────
+// Cross-fade entre os modos: ~400ms, nunca um corte seco. Com "Reduzir movimento" ligado a
+// troca é instantânea — e o ESTADO FINAL é exatamente o mesmo, só sem o caminho animado.
+function crossFade(aoMeio) {
+  const container = sigmaInstance && sigmaInstance.getContainer();
+  if (state.reduceMotion || !container) {
+    aoMeio();
+    return;
+  }
+  const DUR = 400;
+  container.style.transition = `opacity ${DUR / 2}ms ease-in-out`;
+  container.style.opacity = "0.15";
+  setTimeout(() => {
+    aoMeio();
+    container.style.opacity = "1";
+    setTimeout(() => { container.style.transition = ""; }, DUR / 2);
+  }, DUR / 2);
+}
+
 function setMode(mode) {
   if (!["network", "overlay", "density"].includes(mode)) return;
   // Trocar de modo NÃO toca na câmera nem nas posições: é troca de camada visual.
@@ -365,9 +383,106 @@ function setMode(mode) {
   const densityCtl = document.getElementById("density-controls");
   if (densityCtl) densityCtl.style.display = mode === "density" ? "block" : "none";
 
-  renderLegend();
+  crossFade(() => {
+    renderLegend();
+    refreshGraph();
+    drawDensity();
+  });
+}
+
+// ── Linha do tempo ────────────────────────────────────────────────────────
+// As POSIÇÕES não mudam ao longo da animação (o layout foi calculado sobre o corpus
+// completo): o que muda é presença, tamanho e cor. É isso que evita a "sopa de nós
+// saltando" e torna a evolução legível.
+const timeline = {
+  years: [], index: 0, playing: false, speed: 1.0, timer: null,
+};
+
+function buildTimeline() {
+  const anos = new Set();
+  graph.forEachNode((n, a) => {
+    const y = a.first_year || (a.avg_year ? Math.round(a.avg_year) : null);
+    if (y) anos.add(y);
+  });
+  timeline.years = Array.from(anos).sort((a, b) => a - b);
+  timeline.index = timeline.years.length - 1;      // começa mostrando tudo
+
+  const barra = document.getElementById("timeline");
+  if (!barra || !timeline.years.length) {
+    if (barra) barra.style.display = "none";
+    return;
+  }
+  barra.style.display = "flex";
+  const scrub = document.getElementById("tl-scrub");
+  if (scrub) {
+    scrub.min = "0";
+    scrub.max = String(timeline.years.length - 1);
+    scrub.value = String(timeline.index);
+    scrub.addEventListener("input", () => {
+      timeline.index = Number(scrub.value);
+      applyTimeline();
+    });
+  }
+  const play = document.getElementById("tl-play");
+  if (play) play.addEventListener("click", togglePlay);
+  const passo = document.getElementById("tl-step");
+  if (passo) passo.addEventListener("click", () => {
+    timeline.index = Math.min(timeline.index + 1, timeline.years.length - 1);
+    applyTimeline();
+  });
+  const vel = document.getElementById("tl-speed");
+  if (vel) vel.addEventListener("change", () => {
+    timeline.speed = Number(vel.value) || 1;
+    if (timeline.playing) { stopPlay(); togglePlay(); }
+  });
+  applyTimeline();
+}
+
+function currentYear() {
+  return timeline.years.length ? timeline.years[timeline.index] : null;
+}
+
+function applyTimeline() {
+  const ano = currentYear();
+  const rotulo = document.getElementById("tl-year");
+  if (rotulo) rotulo.textContent = ano === null ? "" : String(ano);
+  const scrub = document.getElementById("tl-scrub");
+  if (scrub) scrub.value = String(timeline.index);
   refreshGraph();
   drawDensity();
+}
+
+function togglePlay() {
+  if (timeline.playing) { stopPlay(); return; }
+  if (!timeline.years.length) return;
+  timeline.playing = true;
+  const btn = document.getElementById("tl-play");
+  if (btn) btn.textContent = "⏸";
+  const intervalo = Math.max(120, 900 / (timeline.speed || 1));
+  timeline.timer = setInterval(() => {
+    timeline.index += 1;
+    if (timeline.index >= timeline.years.length) {
+      timeline.index = timeline.years.length - 1;
+      stopPlay();
+    }
+    applyTimeline();
+  }, intervalo);
+}
+
+function stopPlay() {
+  timeline.playing = false;
+  if (timeline.timer) clearInterval(timeline.timer);
+  timeline.timer = null;
+  const btn = document.getElementById("tl-play");
+  if (btn) btn.textContent = "▶";
+}
+
+function nodeVisibleAtCurrentYear(attrs) {
+  const ano = currentYear();
+  if (ano === null) return true;
+  const estreia = attrs.first_year || (attrs.avg_year ? Math.round(attrs.avg_year) : null);
+  if (!estreia) return true;             // sem ano: sempre visível (não se inventa data)
+  return estreia <= ano;
 }
 
 async function init() {
@@ -422,7 +537,9 @@ async function init() {
 
   buildClustersUi();
   wireInteractions();
+  buildTimeline();
   setMode("network");
+  staggerEntrance();
 
   // Densidade é relativa ao viewport: mover a câmera recalcula.
   sigmaInstance.getCamera().on("updated", () => {
@@ -522,7 +639,14 @@ function wireInteractions() {
   sigmaInstance.on("clickStage", () => { state.selectedNode = null; refreshGraph(); });
 
   document.addEventListener("keydown", (e) => {
+    // F: modo apresentação (só o mapa, para projetar numa banca).
+    if ((e.key === "f" || e.key === "F") && !e.metaKey && !e.ctrlKey &&
+        document.activeElement && document.activeElement.tagName !== "INPUT") {
+      document.body.classList.toggle("presentation");
+      return;
+    }
     if (e.key === "Escape") {
+      document.body.classList.remove("presentation");
       state.selectedNode = null;
       state.isolatedCluster = null;
       state.searchQuery = "";
@@ -570,6 +694,31 @@ function wireInteractions() {
   if (exportBtn) exportBtn.addEventListener("click", () => exportPng(2));
 }
 
+// Entrada escalonada dos nós ao gerar o mapa (~600ms, dos maiores para os menores): dá a
+// sensação de "o mapa se construindo". Com "Reduzir movimento" o mapa já nasce pronto.
+function staggerEntrance() {
+  if (state.reduceMotion || !graph) return;
+  const ordem = graph.nodes().sort(
+    (a, b) => graph.getNodeAttribute(b, "size") - graph.getNodeAttribute(a, "size"));
+  const total = 600;
+  const visiveis = new Set();
+  const passo = Math.max(1, Math.round(ordem.length / 24));
+
+  sigmaInstance.setSetting("nodeReducer", (node, data) => (
+    visiveis.has(node) ? { ...data } : { ...data, hidden: true }));
+  sigmaInstance.refresh();
+
+  let i = 0;
+  const timer = setInterval(() => {
+    for (let k = 0; k < passo && i < ordem.length; k++, i++) visiveis.add(ordem[i]);
+    sigmaInstance.refresh();
+    if (i >= ordem.length) {
+      clearInterval(timer);
+      refreshGraph();      // devolve o reducer normal
+    }
+  }, total / 24);
+}
+
 // Export PNG em alta resolução: compõe densidade + grafo num canvas só.
 function exportPng(escala) {
   sigmaInstance.refresh();
@@ -613,6 +762,8 @@ function refreshGraph() {
     if (state.isolatedCluster !== null && data.cluster !== state.isolatedCluster) {
       res.hidden = true; return res;
     }
+    // Linha do tempo: o nó só aparece a partir do ano da sua estreia. A POSIÇÃO nunca muda.
+    if (!nodeVisibleAtCurrentYear(data)) { res.hidden = true; return res; }
 
     // Tamanho: ocorrências (padrão) ou força de ligação.
     if (state.sizeBy === "strength" && isFinite(data.strength)) {
@@ -674,6 +825,11 @@ function refreshGraph() {
     const cs = graph.getNodeAttribute(source, "cluster");
     const ct = graph.getNodeAttribute(target, "cluster");
     if (state.hiddenClusters.has(cs) || state.hiddenClusters.has(ct)) { res.hidden = true; return res; }
+    // A aresta só existe quando as DUAS pontas já estrearam naquele recorte temporal.
+    if (!nodeVisibleAtCurrentYear(graph.getNodeAttributes(source)) ||
+        !nodeVisibleAtCurrentYear(graph.getNodeAttributes(target))) {
+      res.hidden = true; return res;
+    }
     if (state.isolatedCluster !== null && (cs !== state.isolatedCluster || ct !== state.isolatedCluster)) {
       res.hidden = true; return res;
     }
@@ -711,6 +867,22 @@ window.BlicsaMap = {
   },
   exportPng: (escala) => exportPng(escala || 2),
   state: () => ({ ...state, hiddenClusters: Array.from(state.hiddenClusters) }),
+  // Linha do tempo, para a captura de evidência e os testes.
+  timeline: () => ({ years: timeline.years.slice(), index: timeline.index,
+                     year: currentYear(), playing: timeline.playing }),
+  setYearIndex: (i) => {
+    timeline.index = Math.max(0, Math.min(Number(i) || 0, timeline.years.length - 1));
+    applyTimeline();
+    return currentYear();
+  },
+  visibleNodeCount: () => {
+    if (!graph) return 0;
+    let n = 0;
+    graph.forEachNode((_, a) => { if (nodeVisibleAtCurrentYear(a)) n++; });
+    return n;
+  },
+  setPresentation: (on) => document.body.classList.toggle("presentation", !!on),
+  setReduceMotion: (on) => { state.reduceMotion = !!on; },
   // Introspecção para a captura de evidência: o que o reducer realmente devolveu para um nó.
   debugNode: (chave) => {
     if (!graph) return null;
