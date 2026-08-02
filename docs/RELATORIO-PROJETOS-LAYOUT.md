@@ -247,3 +247,100 @@ Suíte: **276 passed, 1 xfailed**. Capturas refeitas nos três idiomas.
 - Tabela de medição final sem estouros. ✅
 - Smoke: app constrói, abas home/projects/import/corpus alternam, mapa/Blink/busca já
   validados em rodadas anteriores. ✅
+
+---
+
+# Itens 2 e 5 — testes que faltavam (2026-08-01)
+
+O Leonardo apontou que os itens 2 e 5 estavam faltando. As **correções de código** estavam
+todas lá (`width=100` nos botões do card e no Voltar, grid de 2 colunas nas sugestões, ramo
+`if max_y > min_y` no slider). O que faltava era o que a matriz de reinjeção da rodada
+anterior já tinha registrado: **"sem teste automatizado — só medição"**. Uma medição é uma
+foto; um teste é uma guarda. Sem ela, voltar `width=100` para `60` não quebrava nada.
+
+`tests/test_layout_widths.py` (novo, 11 testes) fecha isso. E medir de verdade corrigiu duas
+premissas erradas do prompt.
+
+## Correção de premissa 1 — o CTkButton CRESCE, não clipa
+
+O prompt tratava o problema como texto estourando o botão. Medido:
+
+| width configurado | largura renderizada | rótulo pede |
+|---:|---:|---:|
+| 40 | **70** | 58 |
+| 55 | **70** | 58 |
+| 80 | 80 | 58 |
+| 100 | 100 | 58 |
+
+O CTkButton tem largura mínima: ele **estica para caber o rótulo** em vez de cortar o texto.
+Então "não cabe" nunca virou texto cortado na tela.
+
+O defeito real é outro, e é o que o usuário enxerga — **a fileira de botões fica irregular**,
+porque cada botão estica ao tamanho do seu próprio rótulo:
+
+| width | idioma | larguras renderizadas |
+|---:|---|---|
+| 60 (original) | pt_BR | `[60, 68, 60, 60]` |
+| 60 (original) | fr | `[60, 72, 65, 69]` ← ragged |
+| 100 (atual) | pt_BR | `[100, 100, 100, 100]` |
+| 100 (atual) | fr | `[100, 100, 100, 100]` |
+
+Os testes passaram a afirmar isso: respiro mínimo de 8px **e** fileira uniforme **e** largura
+idêntica entre os três idiomas.
+
+## Correção de premissa 2 — "⬅ Retour" não estourava `width=80`
+
+O prompt dizia que o botão Voltar transbordava 7px em francês. Medido com a **fonte real do
+widget**, o rótulo pede **58px** e cabe em 80 com folga. Os 71px do relatório antigo vinham
+de uma fonte suposta (SF Pro Display 13), diferente da que o Tk desenha:
+
+| rótulo | fonte suposta (relatório antigo) | fonte real do widget |
+|---|---:|---:|
+| `⬅ Retour` | 71px | **56px** |
+| `Renommer` | 84px | **66px** |
+| `Supprimer` | 80px | **63px** |
+
+`width=100` fica como está — não faz mal e mantém os três idiomas iguais — mas o teste afirma
+o que é verdade (largura estável entre idiomas + respiro), não um estouro que não acontece.
+
+## Medições finais — fonte real, widgets reais
+
+| idioma | rótulo | rótulo pede | largura | folga |
+|---|---|---:|---:|---:|
+| pt_BR | Abrir · Renomear · Duplicar · Excluir | 32 · 64 · 53 · 43 | 100 | 68 · 36 · 47 · 57 |
+| en | Open · Rename · Duplicate · Delete | 35 · 51 · 60 · 42 | 100 | 65 · 49 · 40 · 58 |
+| fr | Ouvrir · Renommer · Dupliquer · Supprimer | 40 · 68 · 61 · 65 | 100 | 60 · 32 · 39 · 35 |
+| pt_BR / en / fr | ⬅ Voltar / ⬅ Back / ⬅ Retour | 54 · 48 · 58 | 100 | 46 · 52 · 42 |
+
+**Folga mínima: 32px** (fr, "Renommer"). **Zero estouros.** Fileira uniforme e largura
+idêntica nos três idiomas.
+
+**Sugestões do Blink** (grid de 2 colunas, linha mais larga = 2 botões):
+
+| idioma | botão | 3 numa linha (antes) | 2 colunas (agora) |
+|---|---:|---:|---:|
+| pt_BR | 313px | 959px | 636px |
+| en | 320px | 980px | 650px |
+| fr | 419px | **1277px — estourava** | **848px** |
+
+## Item 2.5 — slider de anos
+
+O teste em `test_search_feed_ui.py` já cobria o ano único. O novo cobre o **outro lado**: com
+anos variados o slider tem de existir e ter `number_of_steps` positivo — senão "proteger"
+viraria "nunca criar o slider", que passaria no teste antigo e quebraria a funcionalidade.
+
+Reinjetei os dois: `if True:` (volta o `ZeroDivisionError`) e `if False:` (nunca cria o
+slider). **Os dois deixam o teste vermelho.**
+
+## Matriz de reinjeção
+
+| defeito reintroduzido | resultado |
+|---|---|
+| card: `width` 100 → 60 (valor original) | VERMELHO |
+| card: largura por idioma deixa de ser uniforme | VERMELHO |
+| Voltar: 100 → 55 (abaixo do mínimo do CTk) | VERMELHO |
+| sugestões: 2 colunas → 1 linha | VERMELHO |
+| slider: remove o ramo de ano único | VERMELHO |
+| slider: nunca cria o slider | VERMELHO |
+
+Suíte: **287 passed, 1 xfailed**. Smoke test OK.
