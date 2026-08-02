@@ -235,5 +235,14 @@
   "map.anim_year_empty": "{year}: no terms yet",
   "map.anim_year_no_docs": "{year}: no documents this year",
   "map.anim_mp4_skipped": "ffmpeg not found — MP4 skipped. The GIF and PNGs were generated normally.",
-  "map.reduce_motion": "Reduce motion (turns off map animations)"
+  "map.reduce_motion": "Reduce motion (turns off map animations)",
+  "nav.collect": "Collect",
+  "nav.stats": "Statistics",
+  "nav.analyses": "Analyses",
+  "nav.gallery": "Gallery",
+  "nav.export": "Export",
+  "welcome.subtitle": "Welcome! Start a new research journey or pick up where you left off.",
+  "welcome.new": "Start\nNew Research",
+  "welcome.load": "Load\nResearch",
+  "corpus.badge_none": "No corpus"
 }

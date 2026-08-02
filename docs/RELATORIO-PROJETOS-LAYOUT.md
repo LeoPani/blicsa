@@ -186,6 +186,49 @@ Folga mínima: **34px** (fr, "Renommer"). **Zero estouros.**
 
 **Botão Voltar do Blink** (width=100): `⬅ Voltar` 66px · `⬅ Back` 58px · `⬅ Retour` 71px — OK.
 
+## Follow-up (mesmo dia): os dois achados foram corrigidos
+
+Os achados 2 e 3 ficaram fora do escopo do prompt original, mas o Leonardo pediu para fazer.
+
+### Navegação e tela de boas-vindas traduzidas
+
+Nove chaves novas nos três catálogos: `nav.collect`, `nav.stats`, `nav.analyses`,
+`nav.gallery`, `nav.export`, `welcome.subtitle`, `welcome.new`, `welcome.load` e
+`corpus.badge_none`. O botão de Ajustes passou a usar a `menu_settings` que já existia.
+
+"Blink" e "Corpus" seguem literais **de propósito** — são iguais nos três idiomas (nome do
+produto e termo técnico consagrado); traduzir seria inventar diferença onde não há.
+
+Sidebar completa depois da correção:
+
+| idioma | navegação | badge | ajustes |
+|---|---|---|---|
+| pt_BR | Blink · Meus Projetos · Coletar · Corpus · Estatísticas · Análises · Histórico · Galeria · Exportar | Nenhum corpus | Configurações |
+| en | Blink · My Projects · Collect · Corpus · Statistics · Analyses · History · Gallery · Export | No corpus | Settings |
+| fr | Blink · Mes projets · Collecter · Corpus · Statistiques · Analyses · Historique · Galerie · Exporter | Aucun corpus | Paramètres |
+
+Achado extra, corrigido junto porque estava nas mesmas linhas: os dois cards da tela de
+boas-vindas usavam `corner_radius=20`, **violando o "canto zero" que o próprio prompt declara
+inviolável** — e é a primeira tela que o usuário vê. Zerado.
+
+### Seletor de idioma passa a refletir os catálogos existentes
+
+A lista de bandeiras estava **duplicada em dois pontos** do `main.py`, com `de` fixo. Agora
+vem de `core.i18n.available_langs()`, que lê a pasta `locales/`:
+
+- criar `de.json` reativa a bandeira **sozinho**;
+- remover um catálogo tira a opção da tela;
+- pasta ausente cai no inglês em vez de derrubar o app.
+
+**Não criei um `de.json`**: são 237 chaves, e traduzir tudo por conta própria — sem alguém
+que fale alemão para revisar — num app científico é pior que não oferecer o idioma.
+
+**Reinjeção:** 5 defeitos reintroduzidos (rótulo hardcoded, boas-vindas com texto fixo, canto
+20 de volta, bandeira alemã fixa, `available_langs` sem guarda de diretório). **Todos deixam
+o teste correspondente vermelho.**
+
+Suíte: **276 passed, 1 xfailed**. Capturas refeitas nos três idiomas.
+
 ## Aceite da re-auditoria
 
 - `python3 -m pytest tests/ -q` → **270 passed, 1 xfailed**. ✅

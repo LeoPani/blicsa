@@ -29,6 +29,30 @@ def _load_dict(path: str) -> dict:
             print(f"[i18n] Error loading {path}: {e}")
     return {}
 
+def locales_dir() -> str:
+    base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    return os.path.join(base_dir, "locales")
+
+
+def available_langs() -> list[str]:
+    """Idiomas com catálogo de fato presente, em ordem estável.
+
+    A UI oferece exatamente estes. Antes o seletor tinha uma lista fixa com `de`, mas
+    `de.json` havia sido removido por quebrar a paridade: clicar na bandeira alemã não
+    quebrava — caía no fallback inglês — porém gravava `lang="de"`, e o app ficava em inglês
+    dizendo que estava em alemão. Derivando da pasta, criar o catálogo reativa a bandeira
+    sozinho, e remover um catálogo tira a opção da tela.
+    """
+    try:
+        achados = {f[:-5] for f in os.listdir(locales_dir()) if f.endswith(".json")}
+    except OSError:
+        achados = set()
+    preferida = ["pt_BR", "en", "fr"]
+    ordenados = [l for l in preferida if l in achados]
+    ordenados += sorted(achados - set(preferida))
+    return ordenados or ["en"]
+
+
 def load_locales(lang_code: str = None):
     global _translations, _fallback_translations, _current_lang
     base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))

@@ -235,5 +235,14 @@
   "map.anim_year_empty": "{year}: sem termos ainda",
   "map.anim_year_no_docs": "{year}: nenhum documento neste ano",
   "map.anim_mp4_skipped": "ffmpeg não encontrado — o MP4 foi pulado. O GIF e os PNGs foram gerados normalmente.",
-  "map.reduce_motion": "Reduzir movimento (desliga as animações do mapa)"
+  "map.reduce_motion": "Reduzir movimento (desliga as animações do mapa)",
+  "nav.collect": "Coletar",
+  "nav.stats": "Estatísticas",
+  "nav.analyses": "Análises",
+  "nav.gallery": "Galeria",
+  "nav.export": "Exportar",
+  "welcome.subtitle": "Bem-vindo! Inicie uma nova jornada de pesquisa ou continue de onde parou.",
+  "welcome.new": "Começar\nNova Pesquisa",
+  "welcome.load": "Carregar\nPesquisa",
+  "corpus.badge_none": "Nenhum corpus"
 }

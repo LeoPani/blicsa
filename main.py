@@ -74,6 +74,19 @@ FIELD_OPTS = [
     ("Títulos + Resumos",                "titles_abstracts"),
 ]
 
+def _flag_options() -> list[tuple[str, str]]:
+    """(código, arquivo da bandeira) para os idiomas que TÊM catálogo.
+
+    Derivado de `core.i18n.available_langs()`: o seletor não pode oferecer um idioma que não
+    existe. Idioma sem bandeira mapeada fica de fora do seletor gráfico (não vira botão
+    quebrado); a lista abaixo é só o mapa código→arquivo.
+    """
+    from core.i18n import available_langs
+    bandeiras = {"pt_BR": "flag-pt-br.png", "en": "flag-en.png",
+                 "fr": "flag-fr.png", "de": "flag-de.png", "es": "flag-es.png"}
+    return [(l, bandeiras[l]) for l in available_langs() if l in bandeiras]
+
+
 # ── Main App ───────────────────────────────────────────────────────────────────
 class BlicsaApp(ctk.CTk):
     """
@@ -435,7 +448,7 @@ class BlicsaApp(ctk.CTk):
         except:
             ctk.CTkLabel(center, text="Blicsa", font=ctk.CTkFont(size=56, weight="bold"), text_color=INK).pack(pady=(0, 20))
             
-        ctk.CTkLabel(center, text="Bem-vindo! Inicie uma nova jornada de pesquisa ou continue de onde parou.", 
+        ctk.CTkLabel(center, text=t("welcome.subtitle"),
                      font=ctk.CTkFont(size=18), text_color="#666666").pack(pady=(0, 40))
                      
         cards_frame = ctk.CTkFrame(center, fg_color="transparent")
@@ -449,14 +462,16 @@ class BlicsaApp(ctk.CTk):
             self._welcome_frame.place_forget()
             self._switch_tab("projects")
             
-        c1 = ctk.CTkButton(cards_frame, text="✨\n\nComeçar\nNova Pesquisa", font=ctk.CTkFont(size=24, weight="bold"), 
-                           width=260, height=260, fg_color=BLUE, hover_color="#153a7a", corner_radius=20,
+        # corner_radius=0: os dois cards estavam com 20, violando o "canto zero" do design
+        # system — e é a PRIMEIRA tela que o usuário vê.
+        c1 = ctk.CTkButton(cards_frame, text=f'✨\n\n{t("welcome.new")}', font=ctk.CTkFont(size=24, weight="bold"),
+                           width=260, height=260, fg_color=BLUE, hover_color="#153a7a", corner_radius=0,
                            command=new_proj)
         c1.grid(row=0, column=0, padx=30)
-        
-        c2 = ctk.CTkButton(cards_frame, text="📂\n\nCarregar\nPesquisa", font=ctk.CTkFont(size=24, weight="bold"), 
-                           width=260, height=260, fg_color=WHITE_CARD, text_color=INK, hover_color="#E5E5E5", 
-                           border_width=2, border_color=INK, corner_radius=20,
+
+        c2 = ctk.CTkButton(cards_frame, text=f'📂\n\n{t("welcome.load")}', font=ctk.CTkFont(size=24, weight="bold"),
+                           width=260, height=260, fg_color=WHITE_CARD, text_color=INK, hover_color="#E5E5E5",
+                           border_width=2, border_color=INK, corner_radius=0,
                            command=load_proj)
         c2.grid(row=0, column=1, padx=30)
 
@@ -532,15 +547,19 @@ class BlicsaApp(ctk.CTk):
         
         from PIL import Image
         for i, (key, icon_name, label_text) in enumerate([
+            # "Blink" e "Corpus" ficam literais de propósito: são iguais nos três idiomas
+            # (nome do produto e termo técnico consagrado). O resto passa pelo catálogo —
+            # antes 5 destes rótulos eram hardcoded em português e a barra lateral aparecia
+            # meio traduzida em en/fr.
             ("home",     "sparkle", "Blink"),
             ("projects", "house",   t("projects.title")),
-            ("import",   "magnet",  "Coletar"),
+            ("import",   "magnet",  t("nav.collect")),
             ("corpus",   "stack",   "Corpus"),
-            ("stats",    "chart",   "Estatísticas"),
-            ("analises", "chart",   "Análises"),
+            ("stats",    "chart",   t("nav.stats")),
+            ("analises", "chart",   t("nav.analyses")),
             ("hist",     "stack",   t("history.title")),
-            ("galeria",  "stack",   "Galeria"),
-            ("export",   "export",  "Exportar"),
+            ("galeria",  "stack",   t("nav.gallery")),
+            ("export",   "export",  t("nav.export")),
         ], start=1):
             try:
                 img_normal = ctk.CTkImage(light_image=Image.open(f"assets/icons/{icon_name}.png"), size=(20, 20))
@@ -572,13 +591,13 @@ class BlicsaApp(ctk.CTk):
             self._nav_btns[key] = btn
 
         # Corpus Badge at bottom of sidebar
-        self._corpus_badge = ctk.CTkLabel(sb, text="Nenhum corpus", text_color=MUTED, font=ctk.CTkFont(size=11))
+        self._corpus_badge = ctk.CTkLabel(sb, text=t("corpus.badge_none"), text_color=MUTED, font=ctk.CTkFont(size=11))
         self._corpus_badge.grid(row=10, column=0, padx=16, pady=(10, 5), sticky="sw")
         
         try:
             gear_img = ctk.CTkImage(light_image=Image.open("assets/icons/gear.png"), size=(16, 16))
         except: gear_img = None
-        self._settings_btn = ctk.CTkButton(sb, text=" Configurações" if gear_img else "⚙️ Configurações", image=gear_img, anchor="w", font=ctk.CTkFont(size=11), fg_color="transparent", hover_color="#e0e0e0", text_color=INK, corner_radius=0, height=32, border_width=1, border_color=INK, command=self._show_settings)
+        self._settings_btn = ctk.CTkButton(sb, text=f' {t("menu_settings")}' if gear_img else f'⚙️ {t("menu_settings")}', image=gear_img, anchor="w", font=ctk.CTkFont(size=11), fg_color="transparent", hover_color="#e0e0e0", text_color=INK, corner_radius=0, height=32, border_width=1, border_color=INK, command=self._show_settings)
         self._settings_btn.grid(row=12, column=0, padx=16, pady=(0, 10), sticky="ew")
 
         self._status_square = ctk.CTkFrame(sb, width=10, height=10, fg_color=BLUE, corner_radius=0)
@@ -695,7 +714,7 @@ class BlicsaApp(ctk.CTk):
             dlg.destroy()
             
         try:
-            for i, (l, f_name) in enumerate([("pt_BR", "flag-pt-br.png"), ("en", "flag-en.png"), ("fr", "flag-fr.png"), ("de", "flag-de.png")]):
+            for i, (l, f_name) in enumerate(_flag_options()):
                 img = ImageTk.PhotoImage(Image.open(f"assets/branding/{f_name}").resize((32, 22)))
                 btn = tk.Button(flag_f, image=img, command=lambda x=l: set_l(x), bg="#F6F4EE", relief="flat", bd=2, highlightbackground="#141414")
                 btn.image = img
@@ -935,7 +954,7 @@ class BlicsaApp(ctk.CTk):
             self._refresh_language()
             
         try:
-            for i, (l, f_name) in enumerate([("pt_BR", "flag-pt-br.png"), ("en", "flag-en.png"), ("fr", "flag-fr.png"), ("de", "flag-de.png")]):
+            for i, (l, f_name) in enumerate(_flag_options()):
                 img = ctk.CTkImage(light_image=Image.open(f"assets/branding/{f_name}"), size=(32, 22))
                 btn = ctk.CTkButton(flag_f, image=img, text="", width=32, height=22, fg_color="transparent", corner_radius=0, border_width=2, border_color=INK, hover_color="#e0e0e0", command=lambda x=l: set_l(x))
                 btn.grid(row=0, column=i, padx=4)
