@@ -655,3 +655,173 @@ def test_chip_label_comes_from_the_facet_display_name_for_uri_keys():
     assert chips[0]["label"] == "article", (
         f"o chip não pode mostrar a URI crua: {chips[0]['label']!r}")
     assert "http" not in chips[0]["label"]
+
+
+def test_facets_are_fetched_in_parallel():
+    """As 6 facetas são requisições independentes — em série a sidebar demora ~5x mais.
+
+    Medido ao vivo: 8,11s sequencial contra 1,49s em paralelo, com o mesmo custo em créditos
+    (1 por faceta). O que muda é o tempo em que a sidebar fica vazia ao lado de uma lista já
+    pronta.
+    """
+    import threading as _t
+    import time as _time
+
+    class Lenta(OpenAlexProvider):
+        def facet(self, campo, query, filters=None, top=10, cancel_event=None):
+            _time.sleep(0.15)
+            return [{"key": f"{campo}_a", "label": "A", "count": 1}]
+
+    s = BrowseSession(Lenta(), "x")
+    t0 = _time.perf_counter()
+    f = s.fetch_facets(["type", "language", "publication_year", "is_oa", "source", "author"])
+    dt = _time.perf_counter() - t0
+
+    assert len(f) == 6
+    assert dt < 0.45, (
+        f"6 facetas de 0,15s levaram {dt:.2f}s — parecem sequenciais (seriam ~0,9s)")
+
+
+def test_parallel_facets_keep_a_stable_display_order():
+    """Quem responde primeiro não pode reordenar a sidebar."""
+    import random
+    import time as _time
+
+    class Bagunçada(OpenAlexProvider):
+        def facet(self, campo, query, filters=None, top=10, cancel_event=None):
+            _time.sleep(random.uniform(0.01, 0.08))
+            return [{"key": f"{campo}_a", "label": "A", "count": 1}]
+
+    pedidos = ["type", "language", "publication_year", "is_oa"]
+    for _ in range(3):
+        s = BrowseSession(Bagunçada(), "x")
+        assert list(s.fetch_facets(pedidos).keys()) == pedidos
+
+
+def test_sequential_mode_still_available_and_equivalent():
+    """O outro lado da guarda: `paralelo=False` produz o mesmo resultado."""
+    class Fixa(OpenAlexProvider):
+        def facet(self, campo, query, filters=None, top=10, cancel_event=None):
+            return [{"key": f"{campo}_a", "label": "A", "count": 7}]
+
+    s1 = BrowseSession(Fixa(), "x")
+    s2 = BrowseSession(Fixa(), "x")
+    a = {k: [v.count for v in f.values] for k, f in s1.fetch_facets(["type"], paralelo=True).items()}
+    b = {k: [v.count for v in f.values] for k, f in s2.fetch_facets(["type"], paralelo=False).items()}
+    assert a == b == {"type": [7]}
+
+
+def test_one_failing_facet_does_not_take_down_the_parallel_batch():
+    """Uma faceta que levanta no meio do lote paralelo não derruba as outras."""
+    class Meio(OpenAlexProvider):
+        def facet(self, campo, query, filters=None, top=10, cancel_event=None):
+            if campo == "language":
+                raise urllib.error.URLError("caiu")
+            return [{"key": f"{campo}_a", "label": "A", "count": 1}]
+
+    s = BrowseSession(Meio(), "x")
+    f = s.fetch_facets(["type", "language", "is_oa"])
+    assert f["type"].ok and f["is_oa"].ok
+    assert not f["language"].ok and f["language"].error
+
+
+# ─────────────────── limite de uso da API (429) ───────────────────
+
+def test_persistent_429_raises_a_specific_error_not_a_generic_io():
+    """429 esgotado vira `RateLimitError`, não "Failed to fetch <url>".
+
+    A diferença importa para o usuário: erro de rede genérico não sugere ação nenhuma, e o
+    limite de uso tem uma saída concreta (chave gratuita nos Ajustes).
+    """
+    from core.sources.base import RateLimitError
+
+    err = urllib.error.HTTPError("url", 429, "Too Many Requests", {}, None)
+    with patch("urllib.request.urlopen", side_effect=[err, err, err]), patch("time.sleep"):
+        with pytest.raises(RateLimitError) as exc:
+            OpenAlexProvider().count("x")
+    assert exc.value.i18n_key == "search.error_rate_limit"
+    assert isinstance(exc.value, IOError), "quem tratava IOError genérico continua pegando"
+
+
+def test_other_http_errors_stay_generic():
+    """O outro lado: 500 esgotado continua sendo erro de rede comum, não limite de uso."""
+    from core.sources.base import RateLimitError
+
+    err = urllib.error.HTTPError("url", 500, "Server Error", {}, None)
+    with patch("urllib.request.urlopen", side_effect=[err, err, err]), patch("time.sleep"):
+        with pytest.raises(IOError) as exc:
+            OpenAlexProvider().count("x")
+    assert not isinstance(exc.value, RateLimitError)
+
+
+def test_429_recovered_by_retry_does_not_raise():
+    """429 que o retry recupera não vira erro nenhum."""
+    err = urllib.error.HTTPError("url", 429, "Too Many", {}, None)
+    ok = _resp(json.dumps({"meta": {"count": 42}, "results": []}).encode())
+    with patch("urllib.request.urlopen", side_effect=[err, ok]), patch("time.sleep"):
+        assert OpenAlexProvider().count("x") == 42
+
+
+def test_browse_page_carries_the_rate_limit_message_key():
+    """A página de erro leva a chave i18n, para a UI mostrar a explicação e não a URL."""
+    err = urllib.error.HTTPError("url", 429, "Too Many", {}, None)
+    with patch("urllib.request.urlopen", side_effect=[err, err, err]), patch("time.sleep"):
+        p = BrowseSession(OpenAlexProvider(), "x").fetch_page(1)
+
+    assert p.error, "o erro tem de aparecer"
+    assert p.error_key == "search.error_rate_limit"
+
+    from core.i18n import t
+    mensagem = t(p.error_key)
+    assert "http" not in mensagem.lower(), "a mensagem não pode ser uma URL crua"
+    assert len(mensagem) > 40, "a mensagem tem de explicar o que aconteceu"
+
+
+def test_generic_network_error_has_no_message_key():
+    """Erro sem explicação própria não inventa chave — a UI mostra o texto cru."""
+    with patch("urllib.request.urlopen", side_effect=urllib.error.URLError("sem rede")), \
+         patch("time.sleep"):
+        p = BrowseSession(OpenAlexProvider(), "x").fetch_page(1)
+    assert p.error and p.error_key == ""
+
+
+# ─────────────────── chave opcional do OpenAlex ───────────────────
+
+def test_api_key_is_absent_by_default():
+    """Vazia por padrão: o app funciona sem chave, que é o caminho normal."""
+    spy = UrlSpy([_pagina(n=1, total=1)])
+    with patch("urllib.request.urlopen", side_effect=spy):
+        OpenAlexProvider(api_key="").count("x")
+    assert "api_key=" not in spy.urls[0], f"não deveria mandar api_key: {spy.urls[0]}"
+
+
+def test_api_key_is_appended_to_every_request_when_configured():
+    """Configurada, a chave entra em TODAS as requisições do provider."""
+    spy = UrlSpy(por_url={"group_by": _group_by([("a", "A", 1)])})
+    prov = OpenAlexProvider(api_key="minha-chave-123")
+    with patch("urllib.request.urlopen", side_effect=spy):
+        prov.count("x")
+        prov.browse("x", page=2)
+        prov.facet("type", "x")
+
+    assert len(spy.urls) == 3
+    for u in spy.urls:
+        assert "api_key=minha-chave-123" in u, f"chave ausente em {u[:80]}"
+
+
+def test_api_key_is_read_from_settings_when_not_passed(monkeypatch):
+    import core.sources.openalex as oa
+
+    monkeypatch.setattr(oa, "openalex_api_key", lambda: "vinda-dos-ajustes")
+    spy = UrlSpy([_pagina(n=1, total=1)])
+    with patch("urllib.request.urlopen", side_effect=spy):
+        oa.OpenAlexProvider().count("x")
+    assert "api_key=vinda-dos-ajustes" in spy.urls[0]
+
+
+def test_api_key_is_not_duplicated_if_already_in_url():
+    spy = UrlSpy([_pagina(n=1, total=1)])
+    prov = OpenAlexProvider(api_key="k1")
+    with patch("urllib.request.urlopen", side_effect=spy):
+        prov.fetch_url("https://api.openalex.org/works?api_key=k1&per_page=1")
+    assert spy.urls[0].count("api_key=") == 1

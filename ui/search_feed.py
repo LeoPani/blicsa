@@ -484,6 +484,20 @@ class SearchFeedView(ctk.CTkFrame):
                     command=lambda f=campo, k=str(v.key): (on_toggle or (lambda *a: None))(f, k)
                 ).pack(anchor="w", pady=1)
 
+    def show_facets_loading(self):
+        """Sidebar com o título e um aviso de carregando, enquanto as facetas não chegam.
+
+        Sem isto ela fica um retângulo branco vazio ao lado de uma lista já pronta — o que
+        parece defeito, não espera.
+        """
+        for w in self.sidebar.winfo_children():
+            w.destroy()
+        ctk.CTkLabel(self.sidebar, text=t("facet.title"),
+                     font=ctk.CTkFont(size=14, weight="bold"), text_color=INK).pack(
+            anchor="w", pady=(4, 8))
+        ctk.CTkLabel(self.sidebar, text=t("facet.loading"), font=ctk.CTkFont(size=12),
+                     text_color="#555555").pack(anchor="w")
+
     def set_result_header(self, total: int, query: str = ""):
         """Cabeçalho compacto: "Resultados: 319.300" em destaque + a query embaixo."""
         from core.browse import format_count
@@ -508,7 +522,14 @@ class SearchFeedView(ctk.CTkFrame):
 
         erro = getattr(page_obj, "error", "")
         if erro:
-            self.show_error_state(erro)
+            # Erro com mensagem própria (limite de uso da API) mostra a explicação e o que
+            # fazer; o resto mostra o texto cru, que ao menos diz o que houve.
+            chave = getattr(page_obj, "error_key", "")
+            self.show_error_state(t(chave) if chave else erro,
+                                  on_retry=getattr(self, "on_retry", None))
+            # A busca falhou: as facetas não vêm. Deixar "Carregando filtros…" na sidebar
+            # daria a impressão de que ainda há algo a caminho.
+            self.render_facets({})
             return
         registros = list(getattr(page_obj, "records", []) or [])
         if not registros and self.browse_total == 0:
@@ -803,6 +824,12 @@ class SearchFeedView(ctk.CTkFrame):
     def _show_summary_and_import(self):
         selected_records = [self.records[i] for i in sorted(list(self.selected_indices))]
         if not selected_records:
+            # Nada marcado no modo navegação = "quero o conjunto inteiro desta busca".
+            # É o download em massa, que passa pelo aviso de volume — e é a única forma de
+            # trazer mais do que os 25 da página, já que navegar não baixa nada.
+            if getattr(self, "browse_session", None) is not None and self.browse_total > 0:
+                if getattr(self, "on_import_all", None):
+                    self.on_import_all(self.browse_session, self.browse_total)
             return
             
         years = [r.get("year") for r in selected_records if r.get("year")]

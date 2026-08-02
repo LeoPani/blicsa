@@ -8,6 +8,21 @@ from typing import Iterator, Callable, Dict, Any, Optional
 
 logger = logging.getLogger("SearchProvider")
 
+
+class RateLimitError(IOError):
+    """Limite de uso da API atingido (HTTP 429 depois de esgotar os retries).
+
+    Subclasse de IOError de propósito: quem já tratava erro de rede genérico continua
+    funcionando, e quem quiser dar a mensagem específica pega este tipo.
+    """
+
+    #: Chave i18n da mensagem que a UI deve exibir.
+    i18n_key = "search.error_rate_limit"
+
+    def __init__(self, url: str = ""):
+        super().__init__("limite de uso da API atingido (HTTP 429)")
+        self.url = url
+
 # Identidade única do app nas APIs (OpenAlex/Crossref pedem um mailto de contato).
 MAILTO = "blicsa.app@gmail.com"
 
@@ -81,6 +96,7 @@ class SearchProvider:
 
         retries = 3
         backoff = 1.0
+        ultimo_http = None
         while retries > 0:
             if cancel_event and cancel_event.is_set():
                 raise InterruptedError("Search cancelled by user")
@@ -100,6 +116,7 @@ class SearchProvider:
                     time.sleep(backoff)
                     backoff *= 2
                     retries -= 1
+                    ultimo_http = e.code
                 else:
                     raise e
             except Exception as e:
@@ -107,6 +124,11 @@ class SearchProvider:
                 time.sleep(backoff)
                 backoff *= 2
                 retries -= 1
+        # 429 esgotado não é "erro de rede genérico": é o teto de uso da API. Levantar um
+        # tipo próprio deixa a UI dizer o que fazer (chave gratuita nos Ajustes) em vez de
+        # mostrar "Failed to fetch https://api.openalex.org/works?per_page=25&mailto=..."
+        if ultimo_http == 429:
+            raise RateLimitError(url)
         raise IOError(f"Failed to fetch {url} after retries")
 
     def search(

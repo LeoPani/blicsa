@@ -245,3 +245,96 @@ Smoke test passed: app subiu, locales/settings OK, UI fechada limpa.
 `python -m pytest` não existe neste ambiente (só `python3`), e não há marcador `-m live`: as
 medições ao vivo estão em `scripts/benchmark_search.py`, fora da suíte, para o pytest não
 depender de rede.
+
+---
+
+# Religamento do fluxo (2026-08-02, mesma sessão)
+
+A pendência principal do relatório acima está resolvida: **o botão Buscar usa o modo
+navegação**. Verificado com o app aberto na frente e busca real na API.
+
+## O que mudou
+
+`_on_gui_search` deixou de contar e disparar a colheita completa; agora chama `_open_browse`,
+que monta a `BrowseSession`, busca a página 1 numa thread e desenha a lista. As facetas vêm
+logo depois, também em thread. O caminho antigo (`search_to_dataset`) **continua vivo** — é
+usado pela re-consulta da sidebar, pela prévia e pela recarga offline do backlog.
+
+O download em massa migrou para o botão "Importar para o corpus": sem nada marcado, ele
+importa o conjunto inteiro da busca corrente, passando pelo aviso de volume. Com registros
+marcados, importa só eles.
+
+**Medido no app real** (`empreendedorismo`, base OpenAlex):
+
+```
+lista pronta em 1,5s · total=54.409 · páginas=2.177 · cards=25
+facetas: type=10 · language=10 · publication_year=10 · is_oa=2 · source=10 · author=10
+```
+
+## Facetas em paralelo — lacuna que o religamento expôs
+
+O prompt da Fase 1 pedia as facetas "em paralelo" e eu havia implementado em série. Só
+apareceu ao rodar o app: a sidebar ficava um retângulo branco vazio por vários segundos ao
+lado de uma lista já pronta.
+
+| | tempo |
+|---|---:|
+| 6 facetas em série | **8,11s** |
+| 6 facetas em paralelo | **1,49s** |
+
+Mesmo custo em créditos (1 por faceta); o que muda é a espera. A ordem de exibição continua
+estável — quem responde primeiro não reordena a sidebar. Somado um estado "Carregando
+filtros…" enquanto elas não chegam.
+
+## Chave OpenAlex (opcional) e erro 429
+
+**Ajustes → Chave OpenAlex**, vazio por padrão. Quando preenchida, entra em todas as
+requisições do provider — um único ponto (`OpenAlexProvider.fetch_url`), em vez de repetir o
+parâmetro nos cinco lugares que montam URL. O app funciona sem ela, que é o caminho normal.
+
+**429 esgotado virou um tipo próprio** (`RateLimitError`, subclasse de `IOError` para quem já
+tratava erro de rede continuar funcionando). A UI mostra:
+
+> Limite gratuito diário do OpenAlex atingido. Uma chave gratuita, colada em Ajustes → Chave
+> OpenAlex, aumenta esse limite. O app continua funcionando sem ela — o limite volta a zerar
+> em algumas horas.
+
+Em vez de `Failed to fetch https://api.openalex.org/works?per_page=25&mailto=…`, que não diz
+ao usuário o que fazer. Erro 500 esgotado **continua** genérico — o teste cobre os dois lados.
+
+**Nenhum contador de créditos nem aviso preventivo na UI**, conforme pedido. O
+`SearchProvider.rate_limit` segue capturando os headers, mas nada é exibido: o usuário só
+ouve falar do limite se de fato bater nele.
+
+## Evidências
+
+| arquivo | como foi feito |
+|---|---|
+| `docs/evidence/busca_religada.png` | app real, clique programático no Buscar, **dado vivo da API** (54.409 resultados, facetas com contagens reais) |
+| `docs/evidence/busca_erro_429.png` | app real, com o **HTTP 429 injetado no transporte** |
+
+Sobre o 429: o gatilho é simulado, a mensagem e a tela são reais. Provocar um 429 de verdade
+exigiria queimar a cota diária inteira do Leonardo por uma captura — troca ruim. Está dito
+aqui para o número não ser lido como "aconteceu na prática".
+
+## Duas coisas que deram errado no caminho
+
+**Uma captura pegou a janela do navegador do Leonardo.** O script tinha um fallback: se não
+achasse o `CGWindowID`, capturava o **retângulo de tela** nas coordenadas da janela — e
+capturou o que estava ali, que era outro app. O arquivo foi apagado na hora e o fallback,
+removido: agora falha em voz alta em vez de gravar a janela errada e chamar de evidência.
+
+**Quebrei meu próprio roteiro** ao trocar `time.sleep` global para acelerar o teste do 429 —
+as esperas do roteiro usavam a mesma função, e o laço rodou instantaneamente. Só o `urlopen`
+é trocado agora.
+
+## Pendência
+
+**A captura do diálogo de Ajustes não saiu.** Ele usa `overrideredirect(True)` e é uma janela
+separada; a captura por `CGWindowID` da janela principal não o inclui, e a listagem do Quartz
+para janelas Tk se mostrou intermitente (funcionou em algumas execuções, não em outras). O
+campo está coberto por testes (chave ausente por padrão, anexada quando configurada, lida dos
+Ajustes, não duplicada) e a instrução aparece na captura do 429. Fica como validação humana:
+abrir Ajustes e conferir o campo "Chave OpenAlex (opcional)".
+
+Suíte: **407 passed, 1 xfailed**. Smoke test OK.

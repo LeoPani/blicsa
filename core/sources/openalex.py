@@ -6,6 +6,19 @@ from core.sources.base import SearchProvider
 
 logger = logging.getLogger("OpenAlexProvider")
 
+def openalex_api_key() -> str:
+    """Chave do OpenAlex, se o usuário tiver configurado uma nos Ajustes.
+
+    Opcional: vazia por padrão, e o app funciona sem ela — o `mailto` sozinho continua
+    válido. A chave só entra em cena para quem esbarra no limite gratuito diário.
+    """
+    try:
+        from core.settings import get_settings
+        return str(get_settings().get("openalex_api_key") or "").strip()
+    except Exception:
+        return ""
+
+
 class OpenAlexProvider(SearchProvider):
     _FIELD_MAP = {
         "title":    "title.search",
@@ -25,6 +38,22 @@ class OpenAlexProvider(SearchProvider):
         if isinstance(valor, (list, tuple, set)):
             return "|".join(str(v) for v in valor if str(v).strip())
         return str(valor)
+
+    def __init__(self, *a, api_key: str | None = None, **kw):
+        super().__init__(*a, **kw)
+        # `None` = ler dos Ajustes a cada instância; string vazia = sem chave (o padrão).
+        self.api_key = openalex_api_key() if api_key is None else str(api_key or "")
+
+    def fetch_url(self, url: str, *a, **kw) -> str:
+        """Anexa a chave da API, quando houver, a QUALQUER requisição deste provider.
+
+        Um único ponto em vez de repetir o parâmetro nos cinco lugares que montam URL — e
+        `get_by_doi`, `count`, `facet`, `browse` e `search` passam todos por aqui.
+        """
+        if self.api_key and "api_key=" not in url:
+            sep = "&" if "?" in url else "?"
+            url = f"{url}{sep}api_key={urllib.parse.quote(self.api_key)}"
+        return super().fetch_url(url, *a, **kw)
 
     def _oa_filter(self, query: str, filters: Optional[Dict[str, Any]]) -> str:
         """Valor de `filter=` a partir de filtros padrão + busca por campo (busca avançada)."""

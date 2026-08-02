@@ -273,5 +273,10 @@
   "browse.retry": "Réessayer",
   "browse.selected_of": "{sel} sélectionnés sur {total}",
   "browse.select_page": "Sélectionner la page",
-  "browse.clear_selection": "Effacer la sélection"
+  "browse.clear_selection": "Effacer la sélection",
+  "search.error_rate_limit": "Limite quotidienne gratuite d'OpenAlex atteinte. Une clé gratuite, collée dans Paramètres → Clé OpenAlex, augmente cette limite. L'application fonctionne sans — la limite se réinitialise dans quelques heures.",
+  "settings.openalex_key": "Clé OpenAlex (facultative)",
+  "settings.openalex_key_hint": "Laissez vide pour l'accès gratuit par défaut. Une clé gratuite (openalex.org) augmente la limite quotidienne.",
+  "browse.searching": "Recherche…",
+  "facet.loading": "Chargement des filtres…"
 }

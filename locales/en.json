@@ -272,5 +272,10 @@
   "browse.retry": "Try again",
   "browse.selected_of": "{sel} selected of {total}",
   "browse.select_page": "Select page",
-  "browse.clear_selection": "Clear selection"
+  "browse.clear_selection": "Clear selection",
+  "search.error_rate_limit": "OpenAlex free daily limit reached. A free key, pasted into Settings → OpenAlex key, raises that limit. The app keeps working without one — the limit resets in a few hours.",
+  "settings.openalex_key": "OpenAlex key (optional)",
+  "settings.openalex_key_hint": "Leave blank to use the default free access. A free key (openalex.org) raises the daily request limit.",
+  "browse.searching": "Searching…",
+  "facet.loading": "Loading filters…"
 }

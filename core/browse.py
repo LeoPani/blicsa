@@ -58,6 +58,7 @@ class Facet:
     field: str
     values: list[FacetValue] = field(default_factory=list)
     error: str = ""          # faceta que falhou: a lista continua, só sem ela
+    error_key: str = ""      # chave i18n quando o erro tem mensagem própria
 
     @property
     def ok(self) -> bool:
@@ -77,6 +78,8 @@ class Page:
     per_page: int = DEFAULT_PER_PAGE
     token: int = 0
     error: str = ""
+    #: Chave i18n do erro, quando ele tem uma mensagem própria (429 do OpenAlex, p.ex.).
+    error_key: str = ""
 
     @property
     def pages(self) -> int:
@@ -88,6 +91,18 @@ class Page:
     @property
     def empty(self) -> bool:
         return self.total == 0 and not self.records
+
+
+def error_i18n_key(exc: Exception) -> str:
+    """Chave i18n da mensagem de erro, quando o erro tem uma explicação própria.
+
+    Erro de rede genérico não tem: a UI mostra o texto cru dentro do estado de erro. Já o
+    limite de uso da API tem uma saída concreta (chave gratuita nos Ajustes), e mostrar
+    "Failed to fetch https://api.openalex.org/works?per_page=25&mailto=..." em vez disso
+    deixaria o usuário sem saber o que fazer.
+    """
+    chave = getattr(exc, "i18n_key", "")
+    return str(chave) if chave else ""
 
 
 def sort_to_api(sort: str) -> dict:
@@ -271,7 +286,8 @@ class BrowseSession:
                 self.query, self.current_filters(), page=self.page,
                 per_page=self.per_page, cancel_event=cancel_event)
         except Exception as e:
-            return Page(page=self.page, per_page=self.per_page, token=token, error=str(e))
+            return Page(page=self.page, per_page=self.per_page, token=token,
+                        error=str(e), error_key=error_i18n_key(e))
 
         self.total = int(total or 0)
         p = Page(records=list(registros), total=self.total, page=self.page,
@@ -290,27 +306,46 @@ class BrowseSession:
 
     # ── facetas ─────────────────────────────────────────────────────────
     def fetch_facets(self, campos: Sequence[str] | None = None, top: int = 10,
-                     cancel_event=None) -> dict[str, Facet]:
+                     cancel_event=None, paralelo: bool = True) -> dict[str, Facet]:
         """Contagens por faceta sobre o universo da busca.
 
+        **Em paralelo** por padrão: são 6 requisições independentes, e em série somam ~5s —
+        tempo em que a sidebar fica um retângulo branco vazio ao lado de uma lista já pronta.
+        Em paralelo custa o tempo da mais lenta, ~1s. O custo em créditos é o mesmo (1 por
+        faceta); o que muda é só a espera.
+
         Faceta que falha **não derruba a listagem**: entra com `error` preenchido e a UI mostra
-        o resto. Perder uma faceta é um aborrecimento; perder a lista de resultados por causa
-        dela seria um defeito.
+        o resto. Perder uma faceta é um aborrecimento; perder a lista por causa dela seria um
+        defeito.
         """
         alvos = list(campos) if campos else supported_facets(self.provider)
-        resultado: dict[str, Facet] = {}
-        for campo in alvos:
+        if not alvos:
+            self.facets = {}
+            return {}
+
+        def uma(campo: str) -> tuple[str, Facet]:
             try:
                 # `filters_excluding`: a faceta não aplica o próprio filtro, senão marcar um
                 # valor apaga os outros da lista e trava o usuário na escolha que ele fez.
                 brutos = self.provider.facet(campo, self.query, self.filters_excluding(campo),
                                              top=top, cancel_event=cancel_event)
-                resultado[campo] = Facet(
+                return campo, Facet(
                     field=campo,
                     values=[FacetValue(str(b["key"]), str(b.get("label") or b["key"]),
                                        int(b.get("count", 0) or 0)) for b in brutos])
             except Exception as e:
-                resultado[campo] = Facet(field=campo, error=str(e))
+                return campo, Facet(field=campo, error=str(e), error_key=error_i18n_key(e))
+
+        if paralelo and len(alvos) > 1:
+            from concurrent.futures import ThreadPoolExecutor
+            with ThreadPoolExecutor(max_workers=min(6, len(alvos))) as pool:
+                pares = list(pool.map(uma, alvos))
+        else:
+            pares = [uma(c) for c in alvos]
+
+        # Ordem de exibição estável, independente de quem respondeu primeiro.
+        por_campo = dict(pares)
+        resultado = {c: por_campo[c] for c in alvos if c in por_campo}
         self.facets = resultado
         return resultado
 

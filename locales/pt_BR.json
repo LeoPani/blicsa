@@ -272,5 +272,10 @@
   "browse.retry": "Tentar novamente",
   "browse.selected_of": "{sel} selecionados de {total}",
   "browse.select_page": "Selecionar página",
-  "browse.clear_selection": "Limpar seleção"
+  "browse.clear_selection": "Limpar seleção",
+  "search.error_rate_limit": "Limite gratuito diário do OpenAlex atingido. Uma chave gratuita, colada em Ajustes → Chave OpenAlex, aumenta esse limite. O app continua funcionando sem ela — o limite volta a zerar em algumas horas.",
+  "settings.openalex_key": "Chave OpenAlex (opcional)",
+  "settings.openalex_key_hint": "Deixe em branco para usar o acesso gratuito padrão. Uma chave gratuita (openalex.org) amplia o limite diário de requisições.",
+  "browse.searching": "Buscando…",
+  "facet.loading": "Carregando filtros…"
 }

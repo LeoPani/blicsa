@@ -721,8 +721,30 @@ class BlicsaApp(ctk.CTk):
                 btn.grid(row=0, column=i, padx=5)
         except:
             pass
-            
-        close = tk.Button(content, text=t("settings.ok"), command=dlg.destroy, bg="#DF3117", fg="white", relief="flat", highlightbackground="#141414", bd=2)
+
+        # Chave OpenAlex — OPCIONAL, vazia por padrão. O app funciona sem ela; a chave só
+        # importa para quem esbarra no limite gratuito diário. Nada de contador de uso aqui:
+        # o usuário só ouve falar do limite se de fato bater nele (mensagem do 429).
+        from core.settings import get_settings, update_settings
+        tk.Label(content, text=t("settings.openalex_key"), font=("Arial", 12, "bold"),
+                 bg="#F6F4EE", fg="#141414").pack(pady=(16, 2))
+        chave_var = tk.StringVar(value=str(get_settings().get("openalex_api_key") or ""))
+        entrada = tk.Entry(content, textvariable=chave_var, width=42, relief="flat",
+                           highlightthickness=2, highlightbackground="#141414",
+                           bg="#FFFFFF", fg="#141414")
+        entrada.pack(pady=2)
+        tk.Label(content, text=t("settings.openalex_key_hint"), font=("Arial", 9),
+                 bg="#F6F4EE", fg="#555555", wraplength=340, justify="left").pack(pady=(2, 4))
+
+        def _salvar_chave(*_):
+            update_settings(openalex_api_key=chave_var.get().strip())
+
+        chave_var.trace_add("write", _salvar_chave)
+
+        close = tk.Button(content, text=t("settings.ok"),
+                          command=lambda: (_salvar_chave(), dlg.destroy()),
+                          bg="#DF3117", fg="white", relief="flat",
+                          highlightbackground="#141414", bd=2)
         close.pack(side="bottom", pady=20)
 
     def _blink_system_prompt(self) -> str:
@@ -2170,13 +2192,12 @@ class BlicsaApp(ctk.CTk):
             getattr(self, "_search_sort_var", ctk.StringVar(value="Relevância")).get(), "relevance")
         filters["sort"] = sort_key
 
-        # Aviso de contagem antes de colher sets grandes — para TODAS as bases.
-        self._set_busy("Contando resultados…")
-        import threading
-        def _count_worker():
-            n = self._count_for_provider(provider, query, filters)
-            self.after(0, lambda: self._search_after_count(n, query, provider, max_results, filters))
-        threading.Thread(target=_count_worker, daemon=True).start()
+        # MODO NAVEGAÇÃO: buscar abre a lista na hora (contagem + 25 primeiros), sem baixar
+        # nada em massa. O download só acontece quando o usuário clica em "Importar para o
+        # corpus", já com a query e os filtros correntes — e aí sim com aviso de volume.
+        # O caminho antigo (colheita completa) continua vivo em `search_to_dataset`, usado
+        # pela re-consulta da sidebar, pela prévia e pela recarga offline do backlog.
+        self._open_browse(query, provider, filters, max_results)
 
     def _on_feed_import(self, selected_records, fuzzy_dedup=False):
         """Importa a seleção do feed para o corpus.
@@ -2665,6 +2686,193 @@ class BlicsaApp(ctk.CTk):
             self._search_query_entry.delete(0, 'end')
             self._search_query_entry.insert(0, query_str)
         show_query_builder(self, on_query_built)
+
+    # ── Modo navegação (core/browse.py) ──────────────────────────────────
+    def _open_browse(self, query: str, provider_name: str, filters: dict,
+                     max_results: int = 0):
+        """Abre a lista no modo navegação: contagem + 25 primeiros + facetas.
+
+        Nenhum download em massa acontece aqui. O `max_results` só é guardado para quando o
+        usuário mandar importar.
+        """
+        import threading
+
+        from core.browse import BrowseSession, supported_facets
+        from core.sources import CrossrefProvider, OpenAlexProvider, PubMedProvider
+        from ui.search_feed import SearchFeedView
+
+        classe = {"openalex": OpenAlexProvider, "crossref": CrossrefProvider,
+                  "pubmed": PubMedProvider}.get(provider_name.lower(), OpenAlexProvider)
+        sessao = BrowseSession(classe(), query, base_filters=dict(filters or {}))
+        self._browse_session = sessao
+        self._browse_import_limit = max_results
+
+        # Feed novo, em branco, na aba de revisão.
+        review_tab = self._tabs["review"]
+        for w in review_tab.winfo_children():
+            w.destroy()
+        fv = SearchFeedView(
+            review_tab,
+            lambda recs, dd=False: self._on_feed_import(recs, dd),
+            lambda: self._switch_tab("import"),
+            lambda recs, sel: self._feed_cbs.get("ai", lambda *a: None)(recs, sel),
+        )
+        fv.pack(fill="both", expand=True)
+        self.search_feed_view = fv
+        fv.on_goto_page = lambda p: self._browse_goto(p)
+        fv.on_retry = lambda: self._browse_goto(sessao.page, force=True)
+        fv.on_import_all = lambda s, total: self._browse_import_all(s, total)
+        if supported_facets(sessao.provider):
+            fv.show_facets_loading()
+        self._switch_tab("review")
+        self._set_busy(t("browse.searching"))
+
+        def worker():
+            pagina = sessao.fetch_page(1)
+            self.after(0, lambda: self._browse_render(pagina, primeira=True))
+            # Facetas depois da lista: a lista é o que o usuário está esperando ver.
+            if supported_facets(sessao.provider) and not pagina.error:
+                facetas = sessao.fetch_facets()
+                self.after(0, lambda: self._browse_render_facets(facetas))
+
+        threading.Thread(target=worker, daemon=True).start()
+
+    def _browse_goto(self, pagina: int, force: bool = False):
+        """Troca de página (ou tentar de novo) sem travar a UI."""
+        import threading
+
+        sessao = getattr(self, "_browse_session", None)
+        fv = getattr(self, "search_feed_view", None)
+        if sessao is None or fv is None:
+            return
+        self._set_busy(t("browse.searching"))
+
+        def worker():
+            p = sessao.fetch_page(pagina, use_cache=not force)
+            self.after(0, lambda: self._browse_render(p))
+
+        threading.Thread(target=worker, daemon=True).start()
+
+    def _browse_render(self, pagina, primeira: bool = False):
+        """Desenha a página, descartando resposta obsoleta."""
+        sessao = getattr(self, "_browse_session", None)
+        fv = getattr(self, "search_feed_view", None)
+        if sessao is None or fv is None or not fv.winfo_exists():
+            return
+        # Só a última query vence: resposta de token velho é ignorada em silêncio.
+        if not sessao.is_current(getattr(pagina, "token", 0)):
+            return
+
+        self._set_idle("")
+        fv.set_result_header(pagina.total, sessao.query)
+        fv.load_browse_page(pagina, session=sessao)
+        fv.render_chips(sessao.chips(), on_remove=self._browse_remove_chip)
+        if primeira and pagina.total:
+            log.info(f"[Busca] {sessao.query!r} → {pagina.total} resultados "
+                     f"({pagina.pages} páginas)")
+
+    def _browse_render_facets(self, facetas):
+        fv = getattr(self, "search_feed_view", None)
+        sessao = getattr(self, "_browse_session", None)
+        if fv is None or sessao is None or not fv.winfo_exists():
+            return
+        fv.render_facets(facetas, on_toggle=self._browse_toggle_facet,
+                         ativos=sessao.active_facets)
+
+    def _browse_toggle_facet(self, campo: str, valor: str):
+        """Clicar numa faceta refaz a busca com o filtro — é uma requisição de 25."""
+        import threading
+
+        sessao = getattr(self, "_browse_session", None)
+        if sessao is None:
+            return
+        sessao.toggle_facet(campo, valor)
+        self._set_busy(t("browse.searching"))
+
+        def worker():
+            p = sessao.fetch_page(1)
+            facetas = sessao.fetch_facets()
+            self.after(0, lambda: (self._browse_render(p), self._browse_render_facets(facetas)))
+
+        threading.Thread(target=worker, daemon=True).start()
+
+    def _browse_remove_chip(self, campo: str, chave: str):
+        sessao = getattr(self, "_browse_session", None)
+        if sessao is None:
+            return
+        sessao.clear_facet(campo, chave)
+        self._browse_toggle_facet_refresh()
+
+    def _browse_toggle_facet_refresh(self):
+        import threading
+
+        sessao = getattr(self, "_browse_session", None)
+        if sessao is None:
+            return
+        self._set_busy(t("browse.searching"))
+
+        def worker():
+            p = sessao.fetch_page(1)
+            facetas = sessao.fetch_facets()
+            self.after(0, lambda: (self._browse_render(p), self._browse_render_facets(facetas)))
+
+        threading.Thread(target=worker, daemon=True).start()
+
+    def _browse_import_all(self, sessao, total: int):
+        """Importa o conjunto INTEIRO da busca corrente, com aviso de volume.
+
+        Ponte entre o modo navegação e o caminho de colheita que já existe: reusa
+        `search_to_dataset`, passando a query e os filtros que estão em tela — inclusive as
+        facetas marcadas.
+        """
+        from core.import_job import decide_volume, format_eta, parse_limit
+
+        limite = parse_limit(getattr(self, "_browse_import_limit", None))
+        decisao = decide_volume(total, limite)
+        provider = sessao.provider.__class__.__name__.replace("Provider", "").lower()
+        filtros = sessao.current_filters()
+
+        def colher(n: int | None):
+            self._switch_tab("import")
+            self.search_to_dataset(sessao.query, provider, n or 10_000_000, filtros)
+
+        if not decisao.warn:
+            colher(limite)
+            return
+
+        # Volume grande: o número real na frente, com três saídas.
+        dlg = ctk.CTkToplevel(self)
+        dlg.title(t("import.volume_title"))
+        dlg.geometry("480x250")
+        dlg.transient(self)
+        dlg.grab_set()
+        eta = format_eta(decisao.eta_seconds)
+        ctk.CTkLabel(dlg, text=t("import.volume_title"),
+                     font=ctk.CTkFont(size=16, weight="bold")).pack(pady=(20, 4), padx=20)
+        ctk.CTkLabel(dlg, text=t("import.volume_body", n=f"{total:,}".replace(",", "."),
+                                 eta=eta),
+                     wraplength=430, justify="left").pack(pady=(0, 12), padx=20)
+        botoes = ctk.CTkFrame(dlg, fg_color="transparent")
+        botoes.pack(fill="x", padx=20)
+
+        def _tudo():
+            dlg.destroy()
+            colher(None)
+
+        def _limitar():
+            dlg.destroy()
+            colher(decisao.suggested_limit)
+
+        ctk.CTkButton(botoes, text=t("import.download_all",
+                                     n=f"{total:,}".replace(",", "."), eta=eta),
+                      fg_color=RED, text_color="white", corner_radius=0,
+                      command=_tudo).pack(fill="x", pady=3)
+        ctk.CTkButton(botoes, text=t("import.limit_to", n=f"{decisao.suggested_limit:,}".replace(",", ".")),
+                      fg_color=WHITE_CARD, text_color=INK, border_width=2, border_color=INK,
+                      corner_radius=0, command=_limitar).pack(fill="x", pady=3)
+        ctk.CTkButton(botoes, text=t("import.cancel"), fg_color="transparent", text_color=INK,
+                      hover_color="#e0e0e0", corner_radius=0,
+                      command=dlg.destroy).pack(fill="x", pady=3)
 
     def search_to_dataset(self, query: str, provider_name: str, max_results: int, filters: dict = None):
         import threading
