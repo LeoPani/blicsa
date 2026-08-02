@@ -257,5 +257,13 @@
   "search.error_empty_query": "Digite um termo para buscar.",
   "browse.results": "Resultados: {n}",
   "browse.page_of": "Página {p} de {t}",
-  "browse.goto": "Ir para"
+  "browse.goto": "Ir para",
+  "import.volume_title": "Muitos resultados",
+  "import.volume_body": "Esta busca tem {n} resultados. Baixar tudo leva {eta}.",
+  "import.download_all": "Baixar tudo ({n} registros, {eta})",
+  "import.limit_to": "Limitar a {n}",
+  "import.cancel": "Cancelar",
+  "import.progress": "{done} de {total} · {eta} restantes",
+  "import.limit_field": "Limite (vazio = ilimitado)",
+  "import.cancelled": "Cancelado — resultados parciais preservados"
 }

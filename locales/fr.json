@@ -258,5 +258,13 @@
   "search.error_empty_query": "Saisissez un terme à rechercher.",
   "browse.results": "Résultats : {n}",
   "browse.page_of": "Page {p} sur {t}",
-  "browse.goto": "Aller à"
+  "browse.goto": "Aller à",
+  "import.volume_title": "Nombreux résultats",
+  "import.volume_body": "Cette recherche a {n} résultats. Tout télécharger prend {eta}.",
+  "import.download_all": "Tout télécharger ({n} notices, {eta})",
+  "import.limit_to": "Limiter à {n}",
+  "import.cancel": "Annuler",
+  "import.progress": "{done} sur {total} · {eta} restantes",
+  "import.limit_field": "Limite (vide = illimité)",
+  "import.cancelled": "Annulé — résultats partiels conservés"
 }

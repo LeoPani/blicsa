@@ -257,5 +257,13 @@
   "search.error_empty_query": "Type a term to search.",
   "browse.results": "Results: {n}",
   "browse.page_of": "Page {p} of {t}",
-  "browse.goto": "Go to"
+  "browse.goto": "Go to",
+  "import.volume_title": "Many results",
+  "import.volume_body": "This search has {n} results. Downloading everything takes {eta}.",
+  "import.download_all": "Download all ({n} records, {eta})",
+  "import.limit_to": "Limit to {n}",
+  "import.cancel": "Cancel",
+  "import.progress": "{done} of {total} · {eta} remaining",
+  "import.limit_field": "Limit (empty = unlimited)",
+  "import.cancelled": "Cancelled — partial results kept"
 }
