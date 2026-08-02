@@ -245,15 +245,26 @@ function computeDensityGrid(cols, rows, radius) {
   const twoSigma2 = 2 * sigma * sigma;
   const cutoff = (3 * sigma) * (3 * sigma);
 
+  // Só as células dentro da CAIXA do kernel (3σ) — varrer a grade inteira por ponto era o
+  // gargalo: com 150×100 células e 500 nós davam 7,5 milhões de contas por quadro, e a
+  // densidade caía para ~11 fps enquanto rede e overlay ficavam em 60. Medido na Fase 5.
+  const alcance = 3 * sigma;
+  const cellW = width / cols;
+  const cellH = height / rows;
   for (const p of pts) {
-    for (let r = 0; r < rows; r++) {
-      const cy = height * (r + 0.5) / rows;
+    const c0 = Math.max(0, Math.floor((p.x - alcance) / cellW));
+    const c1 = Math.min(cols - 1, Math.ceil((p.x + alcance) / cellW));
+    const r0 = Math.max(0, Math.floor((p.y - alcance) / cellH));
+    const r1 = Math.min(rows - 1, Math.ceil((p.y + alcance) / cellH));
+    for (let r = r0; r <= r1; r++) {
+      const cy = cellH * (r + 0.5);
       const dy2 = (cy - p.y) * (cy - p.y);
       if (dy2 > cutoff) continue;
-      for (let c = 0; c < cols; c++) {
-        const cx = width * (c + 0.5) / cols;
+      const base = r * cols;
+      for (let c = c0; c <= c1; c++) {
+        const cx = cellW * (c + 0.5);
         const d2 = dy2 + (cx - p.x) * (cx - p.x);
-        if (d2 <= cutoff) grid[r * cols + c] += p.w * Math.exp(-d2 / twoSigma2);
+        if (d2 <= cutoff) grid[base + c] += p.w * Math.exp(-d2 / twoSigma2);
       }
     }
   }
@@ -278,8 +289,16 @@ function drawDensity() {
   ctx.clearRect(0, 0, w, h);
   if (state.mode !== "density") return;
 
-  const cols = Math.max(8, Math.round(w / 8));
-  const rows = Math.max(8, Math.round(h / 8));
+  // Célula ADAPTATIVA ao tamanho do grafo. O custo do kernel é (células tocadas por ponto) ×
+  // (nº de pontos): com célula de 8px e 5.000 nós dava 14,6 milhões de contas por quadro, e a
+  // densidade caía para 11,6 fps enquanto rede e overlay ficavam acima de 38 (medido na
+  // Fase 5). Engrossar a célula corta o custo quadraticamente — 16px custa 25% — e não muda o
+  // resultado visual, porque a densidade é um campo suave e o buffer é interpolado ao
+  // desenhar. Grafo pequeno segue na resolução fina.
+  const nNos = graph ? graph.order : 0;
+  const lado = nNos > 3000 ? 16 : (nNos > 1000 ? 12 : 8);
+  const cols = Math.max(8, Math.round(w / lado));
+  const rows = Math.max(8, Math.round(h / lado));
   const { grid, max } = computeDensityGrid(cols, rows, state.densityRadius);
   if (!max) return;
 
@@ -854,6 +873,26 @@ function refreshGraph() {
   if (state.mode === "density") drawDensity();
 }
 
+// ── Contador de quadros ───────────────────────────────────────────────────
+// Mede fps REAL durante interação (pan/zoom), para o benchmark da Fase 5. Fica sempre
+// ligado porque custa um incremento por quadro; o número só é lido quando alguém pergunta.
+const fpsMeter = { frames: 0, since: performance.now(), last: 0, samples: [] };
+
+function tickFps() {
+  fpsMeter.frames++;
+  const agora = performance.now();
+  const dt = agora - fpsMeter.since;
+  if (dt >= 500) {
+    fpsMeter.last = (fpsMeter.frames * 1000) / dt;
+    fpsMeter.samples.push(fpsMeter.last);
+    if (fpsMeter.samples.length > 120) fpsMeter.samples.shift();
+    fpsMeter.frames = 0;
+    fpsMeter.since = agora;
+  }
+  requestAnimationFrame(tickFps);
+}
+requestAnimationFrame(tickFps);
+
 // Exposto para os testes e para o Python (captura de evidência): permite trocar de modo
 // sem clicar, e conferir que as posições não mudaram.
 window.BlicsaMap = {
@@ -883,6 +922,66 @@ window.BlicsaMap = {
   },
   setPresentation: (on) => document.body.classList.toggle("presentation", !!on),
   setReduceMotion: (on) => { state.reduceMotion = !!on; },
+  // Benchmark de fps: zera, roda pan/zoom automatizado e devolve as estatísticas.
+  fpsReset: () => { fpsMeter.samples = []; fpsMeter.frames = 0; fpsMeter.since = performance.now(); },
+  fpsStats: () => {
+    const s = fpsMeter.samples.slice().sort((a, b) => a - b);
+    if (!s.length) return { n: 0 };
+    const media = s.reduce((a, b) => a + b, 0) / s.length;
+    return { n: s.length, min: s[0], p50: s[Math.floor(s.length / 2)],
+             media: media, max: s[s.length - 1] };
+  },
+  // Tempo de render por quadro, medido em laço fechado.
+  //
+  // É a métrica principal do benchmark, e não o fps observado: o macOS ESTRANGULA (às vezes
+  // suspende) o requestAnimationFrame de janela que não está em primeiro plano, então o fps
+  // por rAF mede o compositor do sistema, não o renderizador — e sai vazio quando a janela
+  // perde o foco. Além disso o rAF é limitado pelo vsync a 60, então só diria "≥60 ou não",
+  // sem mostrar a folga real. Aqui o número é o custo do desenho: ms por quadro, com pan e
+  // zoom variando a cada iteração para exercitar o caminho completo.
+  benchRenderTime: (n) => {
+    const cam = sigmaInstance.getCamera();
+    const total = Math.max(5, Number(n) || 60);
+    const amostras = [];
+    for (let i = 0; i < total; i++) {
+      const t = i / total;
+      cam.setState({ x: 0.5 + 0.25 * Math.sin(t * Math.PI * 4),
+                     y: 0.5 + 0.25 * Math.cos(t * Math.PI * 4),
+                     ratio: 0.6 + 0.7 * Math.abs(Math.sin(t * Math.PI * 2)), angle: 0 });
+      const t0 = performance.now();
+      refreshGraph();
+      if (state.mode === "density") drawDensity();
+      amostras.push(performance.now() - t0);
+    }
+    amostras.sort((a, b) => a - b);
+    const soma = amostras.reduce((a, b) => a + b, 0);
+    return {
+      n: amostras.length,
+      ms_media: soma / amostras.length,
+      ms_p50: amostras[Math.floor(amostras.length / 2)],
+      ms_p95: amostras[Math.floor(amostras.length * 0.95)],
+      ms_max: amostras[amostras.length - 1],
+      fps_equivalente: 1000 / (soma / amostras.length),
+    };
+  },
+  benchPan: (passos) => {
+    // Pan/zoom programático: exercita o renderizador do mesmo jeito que o usuário.
+    const cam = sigmaInstance.getCamera();
+    const n = Number(passos) || 60;
+    let i = 0;
+    return new Promise((resolve) => {
+      const passo = () => {
+        const t = i / n;
+        cam.setState({ x: 0.5 + 0.25 * Math.sin(t * Math.PI * 4),
+                       y: 0.5 + 0.25 * Math.cos(t * Math.PI * 4),
+                       ratio: 0.6 + 0.7 * Math.abs(Math.sin(t * Math.PI * 2)), angle: 0 });
+        i++;
+        if (i <= n) requestAnimationFrame(passo);
+        else resolve(true);
+      };
+      requestAnimationFrame(passo);
+    });
+  },
   // Introspecção para a captura de evidência: o que o reducer realmente devolveu para um nó.
   debugNode: (chave) => {
     if (!graph) return null;

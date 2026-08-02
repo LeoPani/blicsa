@@ -87,6 +87,29 @@ def test_singularize_rules(plural, singular):
     assert singularize(plural) == singular
 
 
+@pytest.mark.parametrize("termo", [
+    # Nomes de ÁREA terminados em "-ics" são singulares no uso. A lista de exceções cobria
+    # só um punhado (physics, economics…) e o resto virava "bibliometric"/"informatic".
+    "bibliometrics", "scientometrics", "informatics", "robotics", "physics", "economics",
+    # Substantivo massivo: "big data" virava "big datum", que não é termo de área nenhum.
+    "data", "big data",
+    # Termos de área plural-only: singularizar destrói o nome.
+    "public relations", "human resources", "operations research", "information systems",
+])
+def test_domain_terms_are_not_mangled_by_singularization(termo):
+    """Casos reais achados pelo teste de ponta a ponta, comparando os termos extraídos com
+    os nós que o gerador de grafo produziu — a divergência apontou para estes."""
+    assert normalize_phrase(termo) == termo, (
+        f"a singularização destruiu o termo de área: {termo!r} → {normalize_phrase(termo)!r}")
+
+
+def test_ordinary_plurals_are_still_singularized():
+    """A proteção acima não pode desligar a unificação singular/plural do caso comum."""
+    assert normalize_phrase("medical units") == "medical unit"
+    assert normalize_phrase("studies") == "study"
+    assert normalize_phrase("systems") == "system"
+
+
 def test_generic_words_get_low_relevance():
     """Termo genérico (espalhado por tudo) fica com relevância abaixo do específico.
 

@@ -124,7 +124,9 @@ _VES_PLURALS = {
 _IRREGULAR_PLURALS = {
     "children": "child", "men": "man", "women": "woman", "people": "person",
     "teeth": "tooth", "feet": "foot", "geese": "goose", "mice": "mouse",
-    "criteria": "criterion", "phenomena": "phenomenon", "data": "datum",
+    "criteria": "criterion", "phenomena": "phenomenon",
+    # "data" NÃO entra aqui: em texto científico moderno é substantivo massivo, e o mapa
+    # exibiria "big datum" — que não é termo de área nenhuma. O E2E pegou isso.
     "media": "medium", "bacteria": "bacterium", "curricula": "curriculum",
     "analyses": "analysis", "bases": "basis", "theses": "thesis",
     "hypotheses": "hypothesis", "diagnoses": "diagnosis", "syntheses": "synthesis",
@@ -132,6 +134,30 @@ _IRREGULAR_PLURALS = {
     "vertices": "vertex", "appendices": "appendix", "series": "series",
     "species": "species",
 }
+
+
+# Termos de área que só existem no PLURAL — singularizar destrói o nome ("public relation",
+# "operations research" → "operation research"). Lista curada; o caminho geral para o resto
+# é o thesaurus, que o usuário controla.
+_PLURAL_ONLY_HEADS = {
+    "relations", "resources", "operations", "communications", "affairs", "humanities",
+    "sciences", "arts", "studies", "systems", "networks", "commons", "analytics",
+}
+
+
+def is_plural_only(phrase: str) -> bool:
+    """A frase termina numa cabeça que é plural-only? (usado por `normalize_phrase`)"""
+    p = str(phrase or "").strip().lower()
+    if not p:
+        return False
+    cabeca = p.split(" ")[-1]
+    if cabeca not in _PLURAL_ONLY_HEADS:
+        return False
+    # "systems"/"studies"/"networks" só são plural-only quando FAZEM PARTE de um nome
+    # composto ("information systems", "regional studies"); sozinhos são plural comum.
+    return len(p.split(" ")) > 1 or cabeca in {
+        "relations", "resources", "operations", "communications", "affairs",
+        "humanities", "commons", "analytics"}
 
 
 def singularize(word: str) -> str:
@@ -146,6 +172,12 @@ def singularize(word: str) -> str:
         return w
     if w in _IRREGULAR_PLURALS:
         return _IRREGULAR_PLURALS[w]
+    # Nomes de campo terminados em "-ics" são SINGULARES no uso: bibliometrics,
+    # scientometrics, informatics, robotics… A lista de exceções cobria só um punhado deles
+    # (physics, economics…) e o resto virava "bibliometric"/"informatic" — nomes de área que
+    # ninguém escreve. Regra geral, achada pelo teste de ponta a ponta.
+    if w.endswith("ics") and len(w) > 4:
+        return w
     if w in _S_SINGULAR or not w.endswith("s"):
         return w
     if w.endswith("ss") or w.endswith("us") or w.endswith("is"):
@@ -168,6 +200,8 @@ def normalize_phrase(phrase: str) -> str:
     p = re.sub(r"\s+", " ", str(phrase or "").strip().lower())
     if not p:
         return ""
+    if is_plural_only(p):
+        return p                     # "public relations" não vira "public relation"
     parts = p.split(" ")
     parts[-1] = singularize(parts[-1])
     return " ".join(parts)
