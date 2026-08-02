@@ -265,5 +265,12 @@
   "import.cancel": "Cancel",
   "import.progress": "{done} of {total} · {eta} remaining",
   "import.limit_field": "Limit (empty = unlimited)",
-  "import.cancelled": "Cancelled — partial results kept"
+  "import.cancelled": "Cancelled — partial results kept",
+  "browse.empty_title": "No results for this search",
+  "browse.empty_hint": "Try removing filters, widening the period or using broader terms.",
+  "browse.error_title": "Could not load the results",
+  "browse.retry": "Try again",
+  "browse.selected_of": "{sel} selected of {total}",
+  "browse.select_page": "Select page",
+  "browse.clear_selection": "Clear selection"
 }

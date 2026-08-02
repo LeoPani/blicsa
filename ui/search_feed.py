@@ -5,6 +5,8 @@ from collections import Counter
 import threading
 import time
 
+from core.i18n import t
+
 PAPER = "#F6F4EE"
 INK = "#141414"
 RED = "#DF3117"
@@ -48,6 +50,27 @@ class SkeletonCard(ctk.CTkFrame):
 
     def stop(self):
         self._animating = False
+
+def record_key(record: dict) -> str:
+    """Identidade ESTÁVEL de um registro, para a seleção sobreviver à troca de página.
+
+    A seleção original era por índice na lista em memória — o que funcionava enquanto tudo
+    estava carregado de uma vez. Com paginação, "índice 3" é um registro na página 1 e outro
+    na página 2, e a seleção do usuário migraria para registros que ele nunca marcou.
+
+    DOI quando existe; senão título normalizado + ano, que é o que resta para distinguir.
+    """
+    doi = str(record.get("doi") or "").strip().lower()
+    for prefixo in ("https://doi.org/", "http://doi.org/", "doi:"):
+        if doi.startswith(prefixo):
+            doi = doi[len(prefixo):]
+    doi = doi.strip("/")
+    if doi:
+        return f"doi:{doi}"
+    titulo = " ".join(str(record.get("title") or "").lower().split())
+    ano = str(record.get("year") or "")
+    return f"t:{titulo}|{ano}"
+
 
 def truncate_source_name(name: str, limit: int = 22) -> str:
     """Encurta o nome de uma fonte para a sidebar, com reticências.
@@ -195,7 +218,14 @@ class SearchFeedView(ctk.CTkFrame):
         self.records = []
         self.filtered_indices = []
         self.selected_indices = set()
-        
+        # Modo navegação: a seleção viaja por CHAVE, não por índice, para sobreviver à troca
+        # de página. `selected_indices` continua sendo a visão da página corrente.
+        self.selected_keys: set[str] = set()
+        self.browse_session = None
+        self.browse_total = 0
+        self.browse_page = 1
+        self.browse_pages = 1
+
         self.grid_columnconfigure(1, weight=1)
         self.grid_rowconfigure(1, weight=1)
         
@@ -326,6 +356,104 @@ class SearchFeedView(ctk.CTkFrame):
         # load_results -> _clear_feed() destrói os cards de streaming (self.cards) e
         # re-renderiza a página 1 já com deduplicação/enriquecimento.
         self.load_results(records, count_trail)
+
+    # ---------------- Modo navegação (estilo Web of Science) ----------------
+    def load_browse_page(self, page_obj, session=None, count_trail: str = ""):
+        """Renderiza UMA página do modo navegação.
+
+        Diferente de `load_results`, que recebia o corpus inteiro: aqui só chegam os 25
+        registros da página corrente. A seleção é restaurada a partir de `selected_keys`,
+        então marcar um registro na página 1 e voltar depois de passear pela 7 continua
+        mostrando ele marcado.
+        """
+        self.browse_session = session
+        self.browse_total = int(getattr(page_obj, "total", 0) or 0)
+        self.browse_page = int(getattr(page_obj, "page", 1) or 1)
+        self.browse_pages = int(getattr(page_obj, "pages", 1) or 1)
+
+        erro = getattr(page_obj, "error", "")
+        if erro:
+            self.show_error_state(erro)
+            return
+        registros = list(getattr(page_obj, "records", []) or [])
+        if not registros and self.browse_total == 0:
+            self.show_empty_state()
+            return
+
+        self.records = registros
+        self.filtered_indices = list(range(len(registros)))
+        # Restaura a seleção da página a partir das chaves já marcadas.
+        self.selected_indices = {i for i, r in enumerate(registros)
+                                 if record_key(r) in self.selected_keys}
+
+        if count_trail:
+            self.trail_lbl.configure(text=count_trail)
+        self._clear_feed()
+        self.page = 0
+        self._render_page()
+        self._update_bottom_bar()
+
+    def select_all_on_page(self, marcar: bool = True):
+        """Marca/desmarca os registros DA PÁGINA, mantendo a seleção das outras."""
+        for r in self.records:
+            chave = record_key(r)
+            if marcar:
+                self.selected_keys.add(chave)
+            else:
+                self.selected_keys.discard(chave)
+        self.selected_indices = {i for i, r in enumerate(self.records)
+                                 if record_key(r) in self.selected_keys}
+        for i, card in enumerate(self.cards):
+            if hasattr(card, "set_selected"):
+                card.set_selected(i in self.selected_indices)
+        self._update_bottom_bar()
+
+    def selected_count(self) -> int:
+        """Total selecionado em TODAS as páginas visitadas, não só na corrente."""
+        return len(self.selected_keys)
+
+    def show_empty_state(self, sugestoes: bool = True):
+        """"Nenhum resultado" com o que fazer a respeito — não uma tela em branco."""
+        self.records = []
+        self.selected_indices = set()
+        self._clear_feed()
+        # grid, não pack: o conteúdo de `self.feed` é gerenciado por grid (os cards), e
+        # misturar os dois gerenciadores no mesmo pai levanta TclError.
+        self._empty_frame = ctk.CTkFrame(self.feed, fg_color="transparent")
+        self._empty_frame.grid(row=0, column=0, sticky="ew", pady=40)
+        ctk.CTkLabel(self._empty_frame, text=t("browse.empty_title"),
+                     font=ctk.CTkFont(size=18, weight="bold"), text_color=INK).pack(pady=(0, 8))
+        if sugestoes:
+            ctk.CTkLabel(self._empty_frame, text=t("browse.empty_hint"),
+                         font=ctk.CTkFont(size=13), text_color="#555555",
+                         justify="left").pack()
+        self._update_bottom_bar()
+
+    def show_error_state(self, mensagem: str, on_retry: Callable | None = None):
+        """Erro de rede com botão de tentar de novo — nunca falha silenciosa."""
+        self.records = []
+        self.selected_indices = set()
+        self._clear_feed()
+        self._error_frame = ctk.CTkFrame(self.feed, fg_color="transparent")
+        self._error_frame.grid(row=0, column=0, sticky="ew", pady=40)
+        ctk.CTkLabel(self._error_frame, text=t("browse.error_title"),
+                     font=ctk.CTkFont(size=18, weight="bold"), text_color=RED).pack(pady=(0, 8))
+        ctk.CTkLabel(self._error_frame, text=str(mensagem)[:200],
+                     font=ctk.CTkFont(size=12), text_color="#555555",
+                     wraplength=520, justify="left").pack(pady=(0, 12))
+        self._retry_btn = ctk.CTkButton(
+            self._error_frame, text=t("browse.retry"), fg_color=RED, text_color=WHITE,
+            corner_radius=0, border_width=0, command=on_retry or (lambda: None))
+        self._retry_btn.pack()
+        self._update_bottom_bar()
+
+    def has_empty_state(self) -> bool:
+        f = getattr(self, "_empty_frame", None)
+        return f is not None and f.winfo_exists()
+
+    def has_error_state(self) -> bool:
+        f = getattr(self, "_error_frame", None)
+        return f is not None and f.winfo_exists()
 
     # ---------------- Drawer do Blink (BUG-B: não destrói o feed) ----------------
     def open_blink_drawer(self):
@@ -491,6 +619,15 @@ class SearchFeedView(ctk.CTkFrame):
             c.destroy()
         self.cards.clear()
         self.load_more_btn.pack_forget()
+        # Os frames de estado (vazio/erro) usam grid dentro do mesmo `self.feed` em que o
+        # "Carregar mais" usa pack. Deixar um deles vivo faz o Tk recusar o outro gerenciador
+        # ("cannot use geometry manager pack ... grid is already managing"). Some com eles
+        # aqui, que é o ponto por onde toda troca de conteúdo passa.
+        for nome in ("_empty_frame", "_error_frame"):
+            f = getattr(self, nome, None)
+            if f is not None and f.winfo_exists():
+                f.destroy()
+            setattr(self, nome, None)
         
     def _render_page(self):
         start = self.page * self.page_size
@@ -515,6 +652,13 @@ class SearchFeedView(ctk.CTkFrame):
             self.selected_indices.add(index)
         else:
             self.selected_indices.discard(index)
+        # Espelha na seleção por CHAVE, que é a que atravessa a troca de página.
+        if 0 <= index < len(self.records):
+            chave = record_key(self.records[index])
+            if selected:
+                self.selected_keys.add(chave)
+            else:
+                self.selected_keys.discard(chave)
         self._update_bottom_bar()
         
     def _update_bottom_bar(self):

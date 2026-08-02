@@ -265,5 +265,12 @@
   "import.cancel": "Cancelar",
   "import.progress": "{done} de {total} · {eta} restantes",
   "import.limit_field": "Limite (vazio = ilimitado)",
-  "import.cancelled": "Cancelado — resultados parciais preservados"
+  "import.cancelled": "Cancelado — resultados parciais preservados",
+  "browse.empty_title": "Nenhum resultado para essa busca",
+  "browse.empty_hint": "Tente remover filtros, ampliar o período ou usar termos mais gerais.",
+  "browse.error_title": "Não foi possível carregar os resultados",
+  "browse.retry": "Tentar novamente",
+  "browse.selected_of": "{sel} selecionados de {total}",
+  "browse.select_page": "Selecionar página",
+  "browse.clear_selection": "Limpar seleção"
 }

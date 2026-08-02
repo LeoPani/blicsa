@@ -266,5 +266,12 @@
   "import.cancel": "Annuler",
   "import.progress": "{done} sur {total} · {eta} restantes",
   "import.limit_field": "Limite (vide = illimité)",
-  "import.cancelled": "Annulé — résultats partiels conservés"
+  "import.cancelled": "Annulé — résultats partiels conservés",
+  "browse.empty_title": "Aucun résultat pour cette recherche",
+  "browse.empty_hint": "Essayez de retirer des filtres, d'élargir la période ou d'utiliser des termes plus généraux.",
+  "browse.error_title": "Impossible de charger les résultats",
+  "browse.retry": "Réessayer",
+  "browse.selected_of": "{sel} sélectionnés sur {total}",
+  "browse.select_page": "Sélectionner la page",
+  "browse.clear_selection": "Effacer la sélection"
 }
