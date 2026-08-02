@@ -102,7 +102,14 @@ def test_reload_results_is_offline(monkeypatch, tmp_path):
         app._reload_search_entry(entry)
         app.update()
         assert len(app.search_feed_view.records) == 7
-        assert "offline" in app.search_feed_view.trail_lbl.cget("text").lower()
+        # A trilha é comparada com a MENSAGEM TRADUZIDA, não com a palavra "offline": o
+        # teste passava só quando o idioma persistido da máquina era pt_BR ou en, e quebrava
+        # em francês ("hors ligne"). Estado global da máquina não pode decidir o resultado.
+        from core.i18n import t
+        esperado = t("history.reloaded", n=7)
+        obtido = app.search_feed_view.trail_lbl.cget("text")
+        assert esperado.split("{")[0][:20] in obtido or esperado in obtido, (
+            f"trilha não indica recarga offline: {obtido!r} (esperava conter {esperado!r})")
     finally:
         app.destroy()
 

@@ -401,9 +401,12 @@ class SearchFeedView(ctk.CTkFrame):
         if years:
             min_y, max_y = min(years), max(years)
             ctk.CTkLabel(self.sidebar, text="Ano de Publicação", font=ctk.CTkFont(weight="bold")).pack(anchor="w", pady=(8, 0))
+            # ESTE `if` é a proteção contra o ZeroDivisionError do CTkSlider: com ano único
+            # (max_y == min_y) o slider não é criado. Havia aqui um `max(1, max_y - min_y)`
+            # comentado como sendo a proteção — mas dentro deste ramo a diferença já é >= 1,
+            # então era inalcançável, e o comentário apontava para o guarda errado.
             if max_y > min_y:
-                # number_of_steps > 0 garantido (evita ZeroDivisionError com ano único).
-                self.year_slider = ctk.CTkSlider(self.sidebar, from_=min_y, to=max_y, number_of_steps=max(1, max_y - min_y), command=self._apply_filters)
+                self.year_slider = ctk.CTkSlider(self.sidebar, from_=min_y, to=max_y, number_of_steps=max_y - min_y, command=self._apply_filters)
                 self.year_slider.set(min_y)
                 self.year_slider.pack(fill="x", pady=4)
                 self.year_lbl = ctk.CTkLabel(self.sidebar, text=f"A partir de {min_y}")
