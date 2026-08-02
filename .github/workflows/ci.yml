@@ -33,6 +33,14 @@ jobs:
     - name: Check i18n parity
       run: python scripts/check_i18n_parity.py
 
+    # Higiene do repositório: nenhuma captura de desktop entra como evidência, e nenhum
+    # segredo com formato de credencial real entra em commit. Os dois quebram o build.
+    - name: Check evidence privacy
+      run: python scripts/check_evidence_privacy.py
+
+    - name: Check for secrets
+      run: python scripts/check_secrets.py
+
     - name: Run tests (Headless X11)
       run: |
         export DISPLAY=:99.0
