@@ -178,6 +178,18 @@ class BrowseSession:
     def current_filters(self) -> dict:
         return build_filters(self.base_filters, self.active_facets, self.sort)
 
+    def filters_excluding(self, campo: str) -> dict:
+        """Filtros correntes SEM o da própria categoria.
+
+        É como o "Refine Results" do WoS funciona, e é o que mantém a lista utilizável: se a
+        faceta "Tipo" aplicasse o próprio filtro, marcar "Artigo" faria "Capítulo de livro"
+        desaparecer da sidebar — e o usuário não teria como trocar de opção sem antes
+        remover o chip. Os filtros das OUTRAS categorias continuam valendo, então as
+        contagens seguem coerentes com o resto do refinamento.
+        """
+        outros = {k: v for k, v in self.active_facets.items() if k != campo}
+        return build_filters(self.base_filters, outros, self.sort)
+
     def cache_key(self, page: int) -> tuple:
         f = self.current_filters()
         return (self.query, tuple(sorted((k, tuple(v) if isinstance(v, list) else v)
@@ -289,7 +301,9 @@ class BrowseSession:
         resultado: dict[str, Facet] = {}
         for campo in alvos:
             try:
-                brutos = self.provider.facet(campo, self.query, self.current_filters(),
+                # `filters_excluding`: a faceta não aplica o próprio filtro, senão marcar um
+                # valor apaga os outros da lista e trava o usuário na escolha que ele fez.
+                brutos = self.provider.facet(campo, self.query, self.filters_excluding(campo),
                                              top=top, cancel_event=cancel_event)
                 resultado[campo] = Facet(
                     field=campo,

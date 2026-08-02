@@ -19,6 +19,8 @@ class SearchProvider:
         self.mailto = mailto
         self.cache: OrderedDict = OrderedDict(cache or {})
         self.last_request_time = 0.0
+        # Orçamento informado pela API (ver _capture_rate_limit). Vazio até a 1ª resposta.
+        self.rate_limit: Dict[str, Any] = {}
 
     def _cache_get(self, url: str) -> Optional[str]:
         if url in self.cache:
@@ -31,6 +33,33 @@ class SearchProvider:
         self.cache.move_to_end(url)
         while len(self.cache) > CACHE_MAX_ENTRIES:
             self.cache.popitem(last=False)
+
+    def _capture_rate_limit(self, headers):
+        """Guarda o orçamento de requisições que a API informa nos headers.
+
+        O OpenAlex passou a devolver um modelo de CRÉDITOS: `X-RateLimit-Limit` por dia,
+        `X-RateLimit-Credits-Used` por requisição e `X-RateLimit-Remaining`. Medido neste
+        projeto: página custa 10 créditos, `group_by` custa 1, e o teto sem chave é 1.000/dia.
+        Não bloqueia nem cobra nada — só deixa o número disponível para a UI avisar quando
+        estiver acabando, em vez de o usuário descobrir com um 429 no meio de uma busca.
+        """
+        try:
+            def _num(chave):
+                v = headers.get(chave)
+                return float(v) if v not in (None, "") else None
+
+            restante = _num("X-RateLimit-Remaining")
+            if restante is None:
+                return
+            self.rate_limit = {
+                "remaining": restante,
+                "limit": _num("X-RateLimit-Limit"),
+                "used_by_last": _num("X-RateLimit-Credits-Used"),
+                "reset_seconds": _num("X-RateLimit-Reset"),
+                "remaining_usd": _num("X-RateLimit-Remaining-USD"),
+            }
+        except Exception:
+            pass          # header ausente ou malformado nunca pode derrubar a requisição
 
     def fetch_url(self, url: str, headers: Optional[Dict[str, str]] = None, cancel_event = None, rate_limit_delay: float = 0.0, no_cache: bool = False) -> str:
         # Check cache (no_cache=True para paginação por cursor de scroll que REPETE a URL,
@@ -61,6 +90,7 @@ class SearchProvider:
                 req = urllib.request.Request(url, headers=headers)
                 with urllib.request.urlopen(req, timeout=15) as response:
                     data = response.read().decode("utf-8", errors="replace")
+                    self._capture_rate_limit(response.headers)
                     if not no_cache:
                         self._cache_put(url, data)
                     return data

@@ -245,8 +245,10 @@ def test_facets_bring_universe_counts_without_downloading_records():
     tipo = facetas["type"]
     assert tipo.ok and [v.count for v in tipo.values] == [12043, 887]
     assert tipo.values[0].label == "Artigo"
-    # `per_page=1`: a chamada de faceta não baixa registros.
-    assert all("per_page=1" in u for u in spy.urls)
+    # A chamada de faceta não baixa registro nenhum — a resposta de `group_by` não traz
+    # `results`. (Este teste chegou a exigir `per_page=1`, que era justamente o parâmetro
+    # que truncava a lista de grupos; ver o teste específico mais abaixo.)
+    assert all("group_by=" in u for u in spy.urls)
 
 
 def test_facet_values_are_sorted_by_count_and_unknown_is_dropped():
@@ -561,3 +563,95 @@ def test_main_py_never_calls_browse_on_the_main_thread():
             janela = "\n".join(src.splitlines()[max(0, i - 60):i])
             assert "threading.Thread" in janela or "def _" in janela, (
                 f"main.py:{i} chama browse/fetch_page sem despachar para thread: {linha.strip()}")
+
+
+def test_facet_request_does_not_send_per_page_which_would_truncate_the_groups():
+    """`per_page` numa chamada de `group_by` TRUNCA a lista de grupos.
+
+    Bug real, encontrado só na medição ao vivo: com `per_page=1` a API devolvia **um** grupo
+    ("article") em vez dos 26, e a sidebar mostraria uma linha por faceta. O parâmetro era
+    desnecessário — uma resposta de `group_by` não traz `results` (medido: results=0) e custa
+    o mesmo 1 crédito com ou sem ele. A captura de tela não pegou porque usava facetas
+    sintéticas.
+    """
+    spy = UrlSpy([_group_by([("a", "A", 10), ("b", "B", 5)])])
+    with patch("urllib.request.urlopen", side_effect=spy):
+        vals = OpenAlexProvider().facet("type", "x")
+
+    assert len(vals) == 2, "os dois grupos deveriam chegar"
+    q = urllib.parse.parse_qs(urllib.parse.urlparse(spy.urls[0]).query)
+    assert "per_page" not in q, (
+        f"a chamada de faceta não pode mandar per_page (trunca os grupos): {spy.urls[0]}")
+    assert q["group_by"] == ["type"]
+
+
+def test_facet_top_n_is_applied_client_side():
+    """O corte de top-N é nosso, do lado do cliente — a API manda tudo."""
+    pares = [(f"k{i}", f"L{i}", 100 - i) for i in range(30)]
+    with patch("urllib.request.urlopen", return_value=_resp(_group_by(pares))):
+        vals = OpenAlexProvider().facet("type", "x", top=10)
+    assert len(vals) == 10 and vals[0]["count"] == 100
+
+
+def test_facet_does_not_apply_its_own_filter():
+    """Marcar "Artigo" não pode apagar "Capítulo de livro" da lista de tipos.
+
+    É como o "Refine Results" do WoS funciona: a faceta X ignora o filtro de X e respeita os
+    das outras categorias. Sem isso o usuário fica preso na opção que escolheu — para trocar,
+    teria de remover o chip primeiro. Achado ao capturar a evidência com facetas REAIS: a
+    lista de tipos vinha com um valor só.
+    """
+    s = BrowseSession(OpenAlexProvider(), "x")
+    s.toggle_facet("type", "article")
+    s.toggle_facet("language", "en")
+
+    filtros_type = s.filters_excluding("type")
+    assert "type" not in filtros_type, "a faceta de tipo não pode aplicar o filtro de tipo"
+    assert filtros_type.get("language") == "en", "os filtros das OUTRAS categorias continuam"
+
+    filtros_lang = s.filters_excluding("language")
+    assert "language" not in filtros_lang
+    assert filtros_lang.get("type") == "article"
+
+    # E a busca de página continua aplicando TUDO — só a faceta é que exclui a si mesma.
+    assert s.current_filters().get("type") == "article"
+    assert s.current_filters().get("language") == "en"
+
+
+def test_facet_request_omits_only_its_own_category():
+    """A URL da faceta comprova: sem o próprio campo, com os dos outros."""
+    spy = UrlSpy(por_url={"group_by=type": _group_by([("a", "A", 5)])})
+    with patch("urllib.request.urlopen", side_effect=spy):
+        s = BrowseSession(OpenAlexProvider(), "x")
+        s.toggle_facet("type", "article")
+        s.toggle_facet("language", "en")
+        s.fetch_facets(["type"])
+
+    url = spy.urls[0]
+    q = urllib.parse.parse_qs(urllib.parse.urlparse(url).query)
+    filtro = q.get("filter", [""])[0]
+    assert "language:en" in filtro, f"o filtro de idioma deveria valer: {filtro}"
+    assert "type:" not in filtro, f"o filtro do próprio campo não pode ir junto: {filtro}"
+
+
+def test_chip_label_comes_from_the_facet_display_name_for_uri_keys():
+    """O OpenAlex devolve a chave como URI; o chip tem de mostrar o nome legível.
+
+    Medido ao vivo: `group_by=type` devolve key=`https://openalex.org/types/article` com
+    key_display_name=`article`, e a API aceita as DUAS formas no filtro (verificado: mesma
+    contagem). Dentro do app tudo vem da sidebar, então a chave é sempre a mesma — o que não
+    pode acontecer é o chip exibir a URI crua para o usuário.
+    """
+    from core.browse import FacetValue
+
+    uri = "https://openalex.org/types/article"
+    s = BrowseSession(OpenAlexProvider(), "x")
+    s.facets = {"type": Facet(field="type", values=[FacetValue(uri, "article", 29730)])}
+    s.toggle_facet("type", uri)
+
+    chips = s.chips()
+    assert len(chips) == 1
+    assert chips[0]["key"] == uri, "a chave mantém a forma que a API devolveu"
+    assert chips[0]["label"] == "article", (
+        f"o chip não pode mostrar a URI crua: {chips[0]['label']!r}")
+    assert "http" not in chips[0]["label"]

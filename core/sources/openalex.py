@@ -140,7 +140,11 @@ class OpenAlexProvider(SearchProvider):
         gb = self.FACETS.get(campo)
         if not gb:
             raise ValueError(f"faceta não suportada pelo OpenAlex: {campo!r}")
-        params: Dict[str, Any] = {"group_by": gb, "per_page": 1, "mailto": self.mailto}
+        # SEM `per_page`: uma resposta de `group_by` não traz `results` (medido: results=0,
+        # custo 1 crédito com ou sem o parâmetro), mas `per_page=1` TRUNCA a lista de grupos
+        # para um só — a sidebar mostraria "Artigo (29.730)" e mais nada. Custou uma medição
+        # ao vivo para aparecer, porque a captura de tela usava facetas sintéticas.
+        params: Dict[str, Any] = {"group_by": gb, "mailto": self.mailto}
         flt = self._oa_filter(query, filters)
         if flt:
             params["filter"] = flt
