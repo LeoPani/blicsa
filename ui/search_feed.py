@@ -227,7 +227,7 @@ class SearchFeedView(ctk.CTkFrame):
         self.browse_pages = 1
 
         self.grid_columnconfigure(1, weight=1)
-        self.grid_rowconfigure(1, weight=1)
+        self.grid_rowconfigure(2, weight=1)   # a área de conteúdo é quem estica
         
         # Header
         hdr = ctk.CTkFrame(self, fg_color=WHITE, corner_radius=0, border_width=2, border_color=INK, height=60)
@@ -247,6 +247,18 @@ class SearchFeedView(ctk.CTkFrame):
         self.progress.set(0)
         # criada oculta; exibida em begin_stream()
 
+        # Chips de filtros ativos, logo abaixo do cabeçalho (só aparecem quando há filtro).
+        self.chips_bar = ctk.CTkFrame(self, fg_color="transparent")
+        self.chips_bar.grid(row=1, column=0, columnspan=3, sticky="ew", padx=16, pady=(0, 4))
+        self.chips_bar.grid_remove()
+
+        # Barra de paginação: "◀ Página 1 de 12.772 ▶" + ir para N.
+        self.pager = ctk.CTkFrame(self, fg_color=WHITE, corner_radius=0,
+                                  border_width=2, border_color=INK, height=44)
+        self.pager.grid(row=3, column=0, columnspan=3, sticky="ew", padx=16, pady=(4, 0))
+        self.pager.grid_remove()
+        self._build_pager()
+
         # Estado de streaming
         self._skeletons = []
         self._stream_rendered = 0
@@ -254,16 +266,16 @@ class SearchFeedView(ctk.CTkFrame):
         
         # Sidebar
         self.sidebar = ctk.CTkScrollableFrame(self, width=250, fg_color=WHITE, corner_radius=0, border_width=2, border_color=INK)
-        self.sidebar.grid(row=1, column=0, sticky="ns", padx=(16, 8), pady=8)
+        self.sidebar.grid(row=2, column=0, sticky="ns", padx=(16, 8), pady=8)
         
         # Main feed
         self.feed = ctk.CTkScrollableFrame(self, fg_color="transparent")
-        self.feed.grid(row=1, column=1, sticky="nsew", padx=(8, 16), pady=8)
+        self.feed.grid(row=2, column=1, sticky="nsew", padx=(8, 16), pady=8)
         self.feed.grid_columnconfigure(0, weight=1)
         
         # Bottom Bar
         self.bottom_bar = ctk.CTkFrame(self, fg_color=INK, corner_radius=0, height=60)
-        self.bottom_bar.grid(row=2, column=0, columnspan=3, sticky="ew")
+        self.bottom_bar.grid(row=4, column=0, columnspan=3, sticky="ew")
         self.bottom_bar.pack_propagate(False)
         
         self.sel_lbl = ctk.CTkLabel(self.bottom_bar, text="0 selecionados de 0", text_color=WHITE, font=ctk.CTkFont(size=14, weight="bold"))
@@ -357,6 +369,129 @@ class SearchFeedView(ctk.CTkFrame):
         # re-renderiza a página 1 já com deduplicação/enriquecimento.
         self.load_results(records, count_trail)
 
+    # ---------------- Barra de paginação, chips e facetas ----------------
+    def _build_pager(self):
+        """Rodapé de paginação, no modelo do WoS: setas, "Página N de M" e pular para N."""
+        self.on_goto_page: Callable[[int], None] | None = None
+
+        self._prev_btn = ctk.CTkButton(
+            self.pager, text="◀", width=44, fg_color=WHITE, text_color=INK,
+            border_width=2, border_color=INK, corner_radius=0, hover_color="#EEEEEE",
+            command=lambda: self._goto(self.browse_page - 1))
+        self._prev_btn.pack(side="left", padx=(12, 6), pady=6)
+
+        self._page_lbl = ctk.CTkLabel(self.pager, text="", font=ctk.CTkFont(size=13, weight="bold"),
+                                      text_color=INK)
+        self._page_lbl.pack(side="left", padx=8)
+
+        self._next_btn = ctk.CTkButton(
+            self.pager, text="▶", width=44, fg_color=WHITE, text_color=INK,
+            border_width=2, border_color=INK, corner_radius=0, hover_color="#EEEEEE",
+            command=lambda: self._goto(self.browse_page + 1))
+        self._next_btn.pack(side="left", padx=6)
+
+        self._goto_entry = ctk.CTkEntry(self.pager, width=70, corner_radius=0,
+                                        border_width=2, border_color=INK)
+        self._goto_entry.pack(side="right", padx=(6, 12), pady=6)
+        ctk.CTkLabel(self.pager, text=t("browse.goto"), font=ctk.CTkFont(size=12),
+                     text_color=INK).pack(side="right")
+        self._goto_entry.bind("<Return>", lambda _e: self._goto_from_entry())
+
+    def _goto(self, pagina: int):
+        """Vai para a página, presa à faixa válida — clicar ◀ na página 1 não faz nada."""
+        alvo = max(1, min(int(pagina), max(1, self.browse_pages)))
+        if alvo == self.browse_page:
+            return
+        if self.on_goto_page:
+            self.on_goto_page(alvo)
+
+    def _goto_from_entry(self):
+        try:
+            self._goto(int(self._goto_entry.get().strip()))
+        except (TypeError, ValueError):
+            pass
+
+    def update_pager(self):
+        """Atualiza rótulo e habilitação das setas a partir do estado corrente."""
+        from core.browse import format_count
+
+        if self.browse_total <= 0:
+            self.pager.grid_remove()
+            return
+        self.pager.grid()
+        self._page_lbl.configure(text=t("browse.page_of",
+                                        p=format_count(self.browse_page),
+                                        t=format_count(self.browse_pages)))
+        self._prev_btn.configure(state="normal" if self.browse_page > 1 else "disabled")
+        self._next_btn.configure(
+            state="normal" if self.browse_page < self.browse_pages else "disabled")
+
+    def render_chips(self, chips: list[dict], on_remove: Callable[[str, str], None] | None = None):
+        """Chips dos filtros ativos, cada um removível pelo ✕."""
+        for w in self.chips_bar.winfo_children():
+            w.destroy()
+        if not chips:
+            self.chips_bar.grid_remove()
+            return
+        self.chips_bar.grid()
+        for c in chips:
+            chip = ctk.CTkFrame(self.chips_bar, fg_color=WHITE, corner_radius=0,
+                                border_width=2, border_color=INK)
+            chip.pack(side="left", padx=(0, 6), pady=4)
+            ctk.CTkLabel(chip, text=str(c.get("label") or c.get("key"))[:28],
+                         font=ctk.CTkFont(size=12), text_color=INK).pack(side="left", padx=(8, 4))
+            ctk.CTkButton(chip, text="✕", width=22, height=22, fg_color=WHITE, text_color=RED,
+                          hover_color="#EEEEEE", corner_radius=0, border_width=0,
+                          command=lambda f=c["field"], k=c["key"]: (on_remove or (lambda *a: None))(f, k)
+                          ).pack(side="left", padx=(0, 4))
+
+    def render_facets(self, facets: dict, on_toggle: Callable[[str, str], None] | None = None,
+                      ativos: dict | None = None):
+        """Sidebar "Refinar resultados" com as contagens reais do universo.
+
+        Faceta com erro aparece com a nota de erro em vez de sumir sem explicação; provider
+        que não suporta a faceta simplesmente não a envia, e ela não é desenhada.
+        """
+        from core.browse import FACET_LABELS, format_count
+
+        for w in self.sidebar.winfo_children():
+            w.destroy()
+        ctk.CTkLabel(self.sidebar, text=t("facet.title"),
+                     font=ctk.CTkFont(size=14, weight="bold"), text_color=INK).pack(
+            anchor="w", pady=(4, 8))
+
+        if not facets:
+            ctk.CTkLabel(self.sidebar, text=t("facet.unsupported"), font=ctk.CTkFont(size=11),
+                         text_color="#555555", wraplength=210, justify="left").pack(anchor="w")
+            return
+
+        marcados = ativos or {}
+        for campo, faceta in facets.items():
+            ctk.CTkLabel(self.sidebar, text=t(FACET_LABELS.get(campo, campo)),
+                         font=ctk.CTkFont(size=12, weight="bold"), text_color=INK).pack(
+                anchor="w", pady=(10, 2))
+            if getattr(faceta, "error", ""):
+                ctk.CTkLabel(self.sidebar, text=t("facet.error"), font=ctk.CTkFont(size=11),
+                             text_color=RED, wraplength=210, justify="left").pack(anchor="w")
+                continue
+            for v in getattr(faceta, "values", []):
+                marcado = str(v.key) in marcados.get(campo, [])
+                var = ctk.BooleanVar(value=marcado)
+                rotulo = f"{truncate_source_name(str(v.label))} ({format_count(v.count)})"
+                ctk.CTkCheckBox(
+                    self.sidebar, text=rotulo, variable=var, corner_radius=0,
+                    font=ctk.CTkFont(size=12), fg_color=RED, hover_color=RED, text_color=INK,
+                    command=lambda f=campo, k=str(v.key): (on_toggle or (lambda *a: None))(f, k)
+                ).pack(anchor="w", pady=1)
+
+    def set_result_header(self, total: int, query: str = ""):
+        """Cabeçalho compacto: "Resultados: 319.300" em destaque + a query embaixo."""
+        from core.browse import format_count
+
+        self.title_lbl.configure(text=t("browse.results", n=format_count(total)))
+        if query:
+            self.trail_lbl.configure(text=query[:90])
+
     # ---------------- Modo navegação (estilo Web of Science) ----------------
     def load_browse_page(self, page_obj, session=None, count_trail: str = ""):
         """Renderiza UMA página do modo navegação.
@@ -392,6 +527,7 @@ class SearchFeedView(ctk.CTkFrame):
         self.page = 0
         self._render_page()
         self._update_bottom_bar()
+        self.update_pager()
 
     def select_all_on_page(self, marcar: bool = True):
         """Marca/desmarca os registros DA PÁGINA, mantendo a seleção das outras."""
@@ -466,7 +602,7 @@ class SearchFeedView(ctk.CTkFrame):
             self._blink_output.configure(state="disabled")
             return self._blink_output
         self._blink_drawer = ctk.CTkFrame(self, width=340, fg_color=WHITE, corner_radius=0, border_width=2, border_color=INK)
-        self._blink_drawer.grid(row=1, column=2, sticky="ns", padx=(0, 16), pady=8)
+        self._blink_drawer.grid(row=2, column=2, sticky="ns", padx=(0, 16), pady=8)
         self._blink_drawer.grid_propagate(False)
         self._blink_drawer.grid_rowconfigure(1, weight=1)
         self._blink_drawer.grid_columnconfigure(0, weight=1)
