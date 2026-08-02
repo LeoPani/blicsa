@@ -244,5 +244,18 @@
   "welcome.subtitle": "Bem-vindo! Inicie uma nova jornada de pesquisa ou continue de onde parou.",
   "welcome.new": "Começar\nNova Pesquisa",
   "welcome.load": "Carregar\nPesquisa",
-  "corpus.badge_none": "Nenhum corpus"
+  "corpus.badge_none": "Nenhum corpus",
+  "facet.type": "Tipo",
+  "facet.language": "Idioma",
+  "facet.year": "Ano",
+  "facet.open_access": "Acesso aberto",
+  "facet.source": "Fonte",
+  "facet.author": "Autor",
+  "facet.title": "Refinar resultados",
+  "facet.unsupported": "Esta base não oferece este filtro.",
+  "facet.error": "Não foi possível carregar este filtro.",
+  "search.error_empty_query": "Digite um termo para buscar.",
+  "browse.results": "Resultados: {n}",
+  "browse.page_of": "Página {p} de {t}",
+  "browse.goto": "Ir para"
 }

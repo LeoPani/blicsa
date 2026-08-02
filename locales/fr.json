@@ -245,5 +245,18 @@
   "welcome.subtitle": "Bienvenue ! Commencez une nouvelle recherche ou reprenez là où vous en étiez.",
   "welcome.new": "Commencer\nune recherche",
   "welcome.load": "Charger\nune recherche",
-  "corpus.badge_none": "Aucun corpus"
+  "corpus.badge_none": "Aucun corpus",
+  "facet.type": "Type",
+  "facet.language": "Langue",
+  "facet.year": "Année",
+  "facet.open_access": "Libre accès",
+  "facet.source": "Source",
+  "facet.author": "Auteur",
+  "facet.title": "Affiner les résultats",
+  "facet.unsupported": "Cette base n'offre pas ce filtre.",
+  "facet.error": "Impossible de charger ce filtre.",
+  "search.error_empty_query": "Saisissez un terme à rechercher.",
+  "browse.results": "Résultats : {n}",
+  "browse.page_of": "Page {p} sur {t}",
+  "browse.goto": "Aller à"
 }

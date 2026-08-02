@@ -14,22 +14,41 @@ class OpenAlexProvider(SearchProvider):
         "all":      "default.search",
     }
 
+    @staticmethod
+    def _ou(valor) -> str:
+        """Valor de faceta → sintaxe do OpenAlex.
+
+        Lista vira `a|b|c`, que é **OR dentro do mesmo campo**; campos diferentes são
+        separados por vírgula, que é AND. É a semântica do "Refine Results" do Web of
+        Science e a que o usuário espera ao marcar duas caixas da mesma categoria.
+        """
+        if isinstance(valor, (list, tuple, set)):
+            return "|".join(str(v) for v in valor if str(v).strip())
+        return str(valor)
+
     def _oa_filter(self, query: str, filters: Optional[Dict[str, Any]]) -> str:
         """Valor de `filter=` a partir de filtros padrão + busca por campo (busca avançada)."""
         f = filters or {}
         fp = []
-        if f.get("year_start") and f.get("year_end"):
+        # Anos escolhidos na faceta (lista de valores) têm precedência sobre a faixa.
+        if f.get("year_values"):
+            fp.append(f"publication_year:{self._ou(f['year_values'])}")
+        elif f.get("year_start") and f.get("year_end"):
             fp.append(f"publication_year:{f['year_start']}-{f['year_end']}")
         elif f.get("year_start"):
             fp.append(f"publication_year:>{int(f['year_start']) - 1}")
         elif f.get("year_end"):
             fp.append(f"publication_year:<{int(f['year_end']) + 1}")
         if f.get("type"):
-            fp.append(f"type:{f['type']}")
+            fp.append(f"type:{self._ou(f['type'])}")
         if f.get("is_oa") is not None:
             fp.append(f"is_oa:{str(f['is_oa']).lower()}")
         if f.get("language"):
-            fp.append(f"language:{f['language']}")
+            fp.append(f"language:{self._ou(f['language'])}")
+        if f.get("source"):
+            fp.append(f"primary_location.source.id:{self._ou(f['source'])}")
+        if f.get("author"):
+            fp.append(f"authorships.author.id:{self._ou(f['author'])}")
         # Linhas de busca avançada por campo (ANDadas via vírgula no OpenAlex).
         for field, value in (f.get("fields") or []):
             v = str(value).strip()
@@ -99,6 +118,45 @@ class OpenAlexProvider(SearchProvider):
         data = json.loads(self.fetch_url(url, cancel_event=cancel_event))
         return int(data.get("meta", {}).get("count", 0))
 
+    # Facetas suportadas: campo do `group_by` → chave usada na UI. É o equivalente ao
+    # "Refine Results" do Web of Science, e a graça é que cada chamada devolve a contagem do
+    # UNIVERSO INTEIRO sem baixar um registro sequer.
+    FACETS = {
+        "type": "type",
+        "language": "language",
+        "publication_year": "publication_year",
+        "is_oa": "open_access.is_oa",
+        "source": "primary_location.source.id",
+        "author": "authorships.author.id",
+    }
+
+    def facet(self, campo: str, query: str, filters: Optional[Dict[str, Any]] = None,
+              top: int = 10, cancel_event=None) -> list[dict]:
+        """Contagens de uma faceta sobre o universo da busca, via `group_by`.
+
+        Devolve [{"key", "label", "count"}], já cortado no top-N e sem a categoria
+        "unknown" (que o OpenAlex devolve para registros sem o campo e só polui a sidebar).
+        """
+        gb = self.FACETS.get(campo)
+        if not gb:
+            raise ValueError(f"faceta não suportada pelo OpenAlex: {campo!r}")
+        params: Dict[str, Any] = {"group_by": gb, "per_page": 1, "mailto": self.mailto}
+        flt = self._oa_filter(query, filters)
+        if flt:
+            params["filter"] = flt
+        url = f"https://api.openalex.org/works?{urllib.parse.urlencode(params)}"
+        data = json.loads(self.fetch_url(url, cancel_event=cancel_event))
+        saida = []
+        for g in data.get("group_by", []):
+            chave = g.get("key")
+            if chave in (None, "unknown", ""):
+                continue
+            saida.append({"key": str(chave),
+                          "label": str(g.get("key_display_name") or chave),
+                          "count": int(g.get("count", 0) or 0)})
+        saida.sort(key=lambda d: (-d["count"], d["label"]))
+        return saida[:max(1, int(top))]
+
     def browse(self, query: str, filters: Optional[Dict[str, Any]] = None,
                page: int = 1, per_page: int = 25, sort: Optional[str] = None, cancel_event=None):
         """Paginação BÁSICA pulável (tipo Scopus): devolve (records_da_página, total).
@@ -108,8 +166,12 @@ class OpenAlexProvider(SearchProvider):
         flt = self._oa_filter(query, filters)
         if flt:
             params["filter"] = flt
-        oa_sort = {"citations": "cited_by_count:desc",
-                   "date": "publication_date:desc"}.get((filters or {}).get("sort") or sort)
+        # "date" com order=asc vira publication_date:asc — é o "mais antigo primeiro" da UI.
+        f = filters or {}
+        chave_sort = f.get("sort") or sort
+        direcao = "asc" if str(f.get("order", "")).lower() == "asc" else "desc"
+        oa_sort = {"citations": f"cited_by_count:{direcao}",
+                   "date": f"publication_date:{direcao}"}.get(chave_sort)
         if oa_sort:
             params["sort"] = oa_sort
         url = f"https://api.openalex.org/works?{urllib.parse.urlencode(params)}"

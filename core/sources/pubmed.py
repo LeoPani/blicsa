@@ -44,6 +44,89 @@ class PubMedProvider(SearchProvider):
         data = json.loads(self.fetch_url(url, cancel_event=cancel_event, rate_limit_delay=0.35))
         return int(data.get("esearchresult", {}).get("count", 0))
 
+    # O PubMed não tem `group_by`; as facetas ficariam mentindo na UI (origem do BUG-02).
+    FACETS: Dict[str, str] = {}
+
+    def _term(self, query: str, filters: Optional[Dict[str, Any]] = None) -> str:
+        """Monta o `term` do E-utilities a partir da query + filtros."""
+        partes = [query.strip()] if query.strip() else []
+        f = filters or {}
+        if f.get("year_start") and f.get("year_end"):
+            partes.append(f"({f['year_start']}:{f['year_end']}[DP])")
+        if f.get("type"):
+            partes.append(f"({f['type']}[PT])")
+        if f.get("language"):
+            la = _pubmed_lang_code(f["language"])
+            if la:
+                partes.append(f"{la}[LA]")
+        return " AND ".join(partes) if partes else "all[Filter]"
+
+    def _parse_medline(self, texto: str) -> list[Dict[str, Any]]:
+        """MEDLINE cru → lista de dicionários por tag (mesmo parser do `search`)."""
+        registros, atual, tag_atual = [], {}, None
+        for linha in texto.splitlines():
+            if not linha.strip():
+                if atual:
+                    registros.append(atual)
+                    atual, tag_atual = {}, None
+                continue
+            m = re.match(r"^([A-Z0-9]{2,4})\s*-\s*(.*)$", linha)
+            if m:
+                tag, valor = m.group(1), m.group(2).strip()
+                tag_atual = tag
+                atual[tag] = (atual[tag] + "; " + valor) if tag in atual else valor
+            elif tag_atual and linha.startswith("      "):
+                atual[tag_atual] = atual.get(tag_atual, "") + " " + linha.strip()
+        if atual:
+            registros.append(atual)
+        return registros
+
+    def _record_from_medline(self, r: Dict[str, Any]) -> Dict[str, Any]:
+        kw = r.get("MH", r.get("OT", r.get("KW", "")))
+        dp = r.get("DP", r.get("DA", "0"))
+        m_ano = re.search(r"\b(19|20)\d{2}\b", dp)
+        doi_raw = r.get("LID", r.get("AID", ""))
+        m_doi = re.search(r"([^\s]+)\s+\[doi\]", doi_raw)
+        return {
+            "authors": r.get("AU", r.get("FAU", "")),
+            "title": r.get("TI", ""),
+            "year": int(m_ano.group()) if m_ano else 0,
+            "source": r.get("JT", r.get("TA", "")),
+            "keywords": kw,
+            "abstract": r.get("AB", ""),
+            "citations": 0,
+            "doi": m_doi.group(1) if m_doi else doi_raw.strip(),
+            "references": "",
+            "origin": "PubMed",
+            "language": r.get("LA", ""),
+            "is_oa": False,
+            "oa_url": "",
+        }
+
+    def browse(self, query: str, filters: Optional[Dict[str, Any]] = None,
+               page: int = 1, per_page: int = 25, sort: Optional[str] = None, cancel_event=None):
+        """Uma página via ESearch(retstart) + EFetch do lote. Devolve (registros, total)."""
+        por_pagina = max(1, min(100, int(per_page)))
+        inicio = max(0, (max(1, int(page)) - 1) * por_pagina)
+        params = {"db": "pubmed", "term": self._term(query, filters), "retmode": "json",
+                  "retmax": por_pagina, "retstart": inicio}
+        if ((filters or {}).get("sort") or sort) == "date":
+            params["sort"] = "pub_date"
+        url = ("https://eutils.ncbi.nlm.nih.gov/entrez/eutils/esearch.fcgi?"
+               + urllib.parse.urlencode(params))
+        dados = json.loads(self.fetch_url(url, cancel_event=cancel_event, rate_limit_delay=0.35))
+        res = dados.get("esearchresult", {})
+        total = int(res.get("count", 0) or 0)
+        ids = res.get("idlist", []) or []
+        if not ids:
+            return [], total
+
+        efetch = ("https://eutils.ncbi.nlm.nih.gov/entrez/eutils/efetch.fcgi?"
+                  + urllib.parse.urlencode({"db": "pubmed", "id": ",".join(ids),
+                                            "retmode": "text", "rettype": "medline"}))
+        texto = self.fetch_url(efetch, cancel_event=cancel_event, rate_limit_delay=0.35)
+        return [self._record_from_medline(r) for r in self._parse_medline(texto)], total
+
     def search(
         self,
         query: str,

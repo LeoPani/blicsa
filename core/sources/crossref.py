@@ -63,6 +63,76 @@ class CrossrefProvider(SearchProvider):
         data = json.loads(self.fetch_url(url, cancel_event=cancel_event))
         return int(data.get("message", {}).get("total-results", 0))
 
+    # Facetas: o Crossref não tem `group_by` como o OpenAlex. Declarar isso explicitamente
+    # é o que impede a UI de oferecer um filtro que não funciona — origem do BUG-02.
+    FACETS: Dict[str, str] = {}
+
+    def _normalize_item(self, w: Dict[str, Any]) -> Dict[str, Any]:
+        """Um item cru do Crossref → registro no formato do app.
+
+        Extraído de dentro do `search()` para o `browse()` reusar exatamente a mesma
+        normalização; duas cópias divergiriam na primeira manutenção.
+        """
+        has_cc_license = any(
+            "creative-commons" in (lic.get("URL", "") or "").lower()
+            or "creativecommons" in (lic.get("URL", "") or "").lower()
+            for lic in (w.get("license") or [])
+        )
+        authors = "; ".join(
+            f"{a.get('family', '')} {a.get('given', '')}".strip()
+            for a in w.get("author", [])
+        )
+        issued = (w.get("issued") or {}).get("date-parts", [[0]])[0]
+        year = issued[0] if issued else 0
+        return {
+            "authors": authors,
+            "title": " ".join(w.get("title", [""])),
+            "year": int(year or 0),
+            "source": " ".join(w.get("container-title", [""])),
+            "keywords": "; ".join(w.get("subject", [])),
+            "abstract": re.sub(r"<[^>]+>", " ", w.get("abstract", "") or "").strip(),
+            "citations": int(w.get("is-referenced-by-count", 0)),
+            "doi": (w.get("DOI", "") or "").strip(),
+            "references": "; ".join(r.get("DOI", "") for r in w.get("reference", []) if r.get("DOI")),
+            "origin": "Crossref",
+            "language": str(w.get("language") or ""),
+            "is_oa": has_cc_license,
+            "oa_url": "",
+        }
+
+    def browse(self, query: str, filters: Optional[Dict[str, Any]] = None,
+               page: int = 1, per_page: int = 25, sort: Optional[str] = None, cancel_event=None):
+        """Uma página, sem colher tudo. Devolve (registros, total)."""
+        import re as _re
+        params: Dict[str, Any] = {"rows": max(1, min(100, int(per_page))),
+                                  "offset": max(0, (max(1, int(page)) - 1) * int(per_page)),
+                                  "mailto": self.mailto}
+        f = filters or {}
+        fp = []
+        if f.get("year_start"):
+            fp.append(f"from-pub-date:{f['year_start']}-01-01")
+        if f.get("year_end"):
+            fp.append(f"until-pub-date:{f['year_end']}-12-31")
+        if f.get("type"):
+            fp.append(f"type:{f['type']}")
+        if fp:
+            params["filter"] = ",".join(fp)
+        ordem = {"citations": "is-referenced-by-count", "date": "issued"}.get(
+            (f.get("sort") or sort) or "")
+        if ordem:
+            params["sort"] = ordem
+            params["order"] = "desc"
+        if query.strip():
+            q = _re.sub(r'\b(AND|OR|NOT)\b', ' ', query, flags=_re.IGNORECASE)
+            q = _re.sub(r'[\(\)]', ' ', q)
+            params["query.bibliographic"] = _re.sub(r'\s+', ' ', q).strip()
+
+        url = "https://api.crossref.org/works?" + urllib.parse.urlencode(params)
+        data = json.loads(self.fetch_url(url, cancel_event=cancel_event))
+        msg = data.get("message", {})
+        registros = [self._normalize_item(w) for w in msg.get("items", [])]
+        return registros, int(msg.get("total-results", 0))
+
     def search(
         self,
         query: str,

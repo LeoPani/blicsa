@@ -244,5 +244,18 @@
   "welcome.subtitle": "Welcome! Start a new research journey or pick up where you left off.",
   "welcome.new": "Start\nNew Research",
   "welcome.load": "Load\nResearch",
-  "corpus.badge_none": "No corpus"
+  "corpus.badge_none": "No corpus",
+  "facet.type": "Type",
+  "facet.language": "Language",
+  "facet.year": "Year",
+  "facet.open_access": "Open access",
+  "facet.source": "Source",
+  "facet.author": "Author",
+  "facet.title": "Refine results",
+  "facet.unsupported": "This database does not offer this filter.",
+  "facet.error": "Could not load this filter.",
+  "search.error_empty_query": "Type a term to search.",
+  "browse.results": "Results: {n}",
+  "browse.page_of": "Page {p} of {t}",
+  "browse.goto": "Go to"
 }
