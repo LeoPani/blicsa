@@ -23,6 +23,29 @@ class RateLimitError(IOError):
         super().__init__("limite de uso da API atingido (HTTP 429)")
         self.url = url
 
+
+class PaginationLimitError(IOError):
+    """Fronteira de paginação da API no modo navegação (`page` × `per_page`).
+
+    Não é erro de rede nem culpa do usuário: é um teto da API. O OpenAlex recusa
+    `page × per_page > 10.000` — navegar além disso é impossível **por paginação**, mas o
+    conjunto inteiro continua acessível pela importação, que usa cursor e não tem teto.
+
+    Por isso a mensagem precisa ser específica: um erro genérico ou uma página em branco
+    deixaria o usuário achando que os resultados acabaram, quando existem milhares.
+    """
+
+    #: Chave i18n da mensagem que a UI deve exibir.
+    i18n_key = "browse.error_page_limit"
+
+    def __init__(self, limite: int = 0, page: int = 0, per_page: int = 0):
+        super().__init__(
+            f"paginação limitada a {limite} resultados "
+            f"(página {page} × {per_page} por página excede o teto)")
+        self.limite = int(limite)
+        self.page = int(page)
+        self.per_page = int(per_page)
+
 # Identidade única do app nas APIs (OpenAlex/Crossref pedem um mailto de contato).
 MAILTO = "blicsa.app@gmail.com"
 
@@ -30,6 +53,11 @@ MAILTO = "blicsa.app@gmail.com"
 CACHE_MAX_ENTRIES = 50
 
 class SearchProvider:
+    #: Teto de resultados alcançáveis pela paginação por `page` (modo navegação).
+    #: `0` = sem teto conhecido. Quem tem teto declara o seu e a navegação avisa ao chegar
+    #: lá, em vez de devolver erro genérico ou página em branco.
+    BROWSE_MAX_RESULTS = 0
+
     def __init__(self, mailto: str = MAILTO, cache: Optional[Dict[str, Any]] = None):
         self.mailto = mailto
         self.cache: OrderedDict = OrderedDict(cache or {})

@@ -1,8 +1,9 @@
 import urllib.parse
+import urllib.error
 import json
 import logging
 from typing import Iterator, Dict, Any, Optional, Callable
-from core.sources.base import SearchProvider
+from core.sources.base import SearchProvider, PaginationLimitError
 
 logger = logging.getLogger("OpenAlexProvider")
 
@@ -20,6 +21,10 @@ def openalex_api_key() -> str:
 
 
 class OpenAlexProvider(SearchProvider):
+    #: Teto da paginação por `page` na API: `page × per_page` não pode passar de 10.000.
+    #: Vale **só para a navegação**; a importação usa cursor e alcança o conjunto inteiro.
+    BROWSE_MAX_RESULTS = 10_000
+
     _FIELD_MAP = {
         "title":    "title.search",
         "author":   "authorships.author.display_name.search",
@@ -193,9 +198,18 @@ class OpenAlexProvider(SearchProvider):
     def browse(self, query: str, filters: Optional[Dict[str, Any]] = None,
                page: int = 1, per_page: int = 25, sort: Optional[str] = None, cancel_event=None):
         """Paginação BÁSICA pulável (tipo Scopus): devolve (records_da_página, total).
-        Não colhe tudo — só a página pedida. Navega os primeiros ~10.000 do OpenAlex."""
-        params: Dict[str, Any] = {"per_page": max(1, min(200, per_page)),
-                                  "page": max(1, page), "mailto": self.mailto}
+        Não colhe tudo — só a página pedida. Navega os primeiros 10.000 do OpenAlex.
+
+        Além de `BROWSE_MAX_RESULTS` a API recusa a requisição: levanta
+        `PaginationLimitError` **antes** de gastar a chamada, porque o teto é conhecido e
+        gastar crédito para receber um 400 previsível não ajuda ninguém. A importação
+        (`search`) usa cursor e não tem esse teto.
+        """
+        pp = max(1, min(200, per_page))
+        pg = max(1, page)
+        if self.BROWSE_MAX_RESULTS and pg * pp > self.BROWSE_MAX_RESULTS:
+            raise PaginationLimitError(self.BROWSE_MAX_RESULTS, pg, pp)
+        params: Dict[str, Any] = {"per_page": pp, "page": pg, "mailto": self.mailto}
         flt = self._oa_filter(query, filters)
         if flt:
             params["filter"] = flt
@@ -208,7 +222,15 @@ class OpenAlexProvider(SearchProvider):
         if oa_sort:
             params["sort"] = oa_sort
         url = f"https://api.openalex.org/works?{urllib.parse.urlencode(params)}"
-        data = json.loads(self.fetch_url(url, cancel_event=cancel_event))
+        try:
+            data = json.loads(self.fetch_url(url, cancel_event=cancel_event))
+        except urllib.error.HTTPError as e:
+            # Rede de segurança para o dia em que o teto da API mudar e o pré-cheque acima
+            # ficar defasado: o 400 de paginação vira a MESMA mensagem explicativa, nunca um
+            # erro genérico. Só o 400; qualquer outro código continua subindo como está.
+            if e.code == 400:
+                raise PaginationLimitError(self.BROWSE_MAX_RESULTS, pg, pp) from e
+            raise
         total = int(data.get("meta", {}).get("count", 0))
         records = [self._normalize_work(w) for w in data.get("results", [])]
         return records, total

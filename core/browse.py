@@ -286,8 +286,11 @@ class BrowseSession:
                 self.query, self.current_filters(), page=self.page,
                 per_page=self.per_page, cancel_event=cancel_event)
         except Exception as e:
+            # `total` do estado anterior vai junto: no teto de paginação o usuário precisa
+            # continuar vendo quantos resultados existem — é o que dá sentido à sugestão de
+            # refinar a busca ou importar tudo.
             return Page(page=self.page, per_page=self.per_page, token=token,
-                        error=str(e), error_key=error_i18n_key(e))
+                        total=self.total, error=str(e), error_key=error_i18n_key(e))
 
         self.total = int(total or 0)
         p = Page(records=list(registros), total=self.total, page=self.page,

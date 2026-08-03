@@ -130,14 +130,30 @@ def test_qtd_field_has_no_ceiling():
     assert _limit_for("10001") == (10001, "10001"), "10000 não pode mais ser um teto"
 
 
-def test_qtd_field_defaults_and_unlimited():
-    """Entradas inválidas caem no padrão 1000; 'Ilimitado' usa a sentinela grande."""
+def test_qtd_vazio_e_ilimitado_de_verdade():
+    """Campo vazio = ILIMITADO. O padrão de 1000 contradizia "vazio = ilimitado": quem não
+    digitava nada recebia um teto silencioso de 1000 que nunca pediu.
+
+    Regra única: número positivo vale exatamente; qualquer outra coisa é ilimitado, porque
+    nenhuma delas expressa um limite. A proteção continua sendo o aviso de volume."""
+    UNLIMITED = 10_000_000
+    assert _limit_for("")[0] == UNLIMITED, "vazio tem que ser ilimitado, não 1000"
+    assert _limit_for("   ")[0] == UNLIMITED, "só espaços é o mesmo que vazio"
+    assert _limit_for("0")[0] == UNLIMITED, "zero não é um limite"
+    assert _limit_for("-5")[0] == UNLIMITED, "negativo não é um limite"
+    assert _limit_for("abc")[0] == UNLIMITED, "texto inválido não vira teto de 1000"
+    assert _limit_for("1000", ilimitado=True)[0] == UNLIMITED
+
+    # O outro lado da guarda: número positivo continua valendo exatamente, sem virar
+    # ilimitado por acidente — senão o campo perderia a função.
     assert _limit_for("1000")[0] == 1000
-    assert _limit_for("")[0] == 1000
-    assert _limit_for("0")[0] == 1000
-    assert _limit_for("-5")[0] == 1000
-    assert _limit_for("abc")[0] == 1000
-    assert _limit_for("1000", ilimitado=True)[0] == 10_000_000
+    assert _limit_for("1")[0] == 1, "o menor limite válido tem que ser respeitado"
+    assert _limit_for(" 250 ")[0] == 250, "espaços em volta não invalidam o número"
+
+
+def test_qtd_vazio_nao_reescreve_o_campo():
+    """Ilimitado por vazio não pode "corrigir" o campo para 1000 na cara do usuário."""
+    assert _limit_for("") == (10_000_000, ""), "o campo tem que continuar vazio"
 
 
 def test_count_dialog_threshold_is_the_real_protection():

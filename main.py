@@ -2464,23 +2464,25 @@ class BlicsaApp(ctk.CTk):
         return query
 
     def _current_limit(self) -> int:
-        """Limite da colheita: default 1000, SEM teto, Ilimitado = sentinela.
+        """Limite da colheita: SEM teto e SEM piso — campo vazio é ilimitado.
 
-        Não há teto máximo: o número digitado vale. A proteção contra colher demais sem
-        querer é o aviso de volume (`_search_after_count` → `_show_count_dialog`, a partir
-        de 2000 resultados na base), que mostra o total e deixa escolher — não um corte
-        silencioso do valor pedido.
+        Uma regra só: **número positivo digitado vale exatamente; qualquer outra coisa é
+        ilimitado.** Vazio, zero, negativo e texto inválido caem todos no mesmo lugar,
+        porque nenhum deles expressa um limite — e substituí-los por 1000 seria um teto que
+        o usuário não pediu, exatamente o defeito que o campo vazio já tinha.
+
+        A proteção contra colher demais sem querer é o aviso de volume
+        (`_search_after_count` → `_show_count_dialog`, a partir de 2000 resultados na base),
+        que mostra o total e deixa escolher — não um corte silencioso do valor pedido.
         """
-        UNLIMITED, DEFAULT_LIMIT = 10_000_000, 1000
+        UNLIMITED = 10_000_000
         if self._search_unlimited_var.get():
             return UNLIMITED
         try:
-            n = int(self._search_max_entry.get().strip() or str(DEFAULT_LIMIT))
-        except ValueError:
-            n = DEFAULT_LIMIT
-        if n < 1:
-            n = DEFAULT_LIMIT
-        return n
+            n = int(self._search_max_entry.get().strip())
+        except (ValueError, TypeError, AttributeError):
+            return UNLIMITED
+        return n if n >= 1 else UNLIMITED
 
     # ── Busca por campo + prévia paginada (cherry-pick estilo Scopus) ──
     def _add_field_row(self):
