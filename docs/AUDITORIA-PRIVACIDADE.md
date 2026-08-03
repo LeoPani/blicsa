@@ -1,23 +1,31 @@
 # Auditoria de privacidade e segredos — antes de publicar
 
-**Data:** 2026-08-02 · Repositório: `PyBibliomics/blicsa` · Escopo: working tree **e histórico completo**
+**Data:** 2026-08-02 · **Resolvida em:** 2026-08-03 · Repositório: `github.com/LeoPani/blicsa`
+· Escopo: working tree **e histórico completo**
 
-> ## VEREDITO: **NÃO — ainda não está seguro para publicar**
+> ## VEREDITO FINAL: **SEGURO PARA PUBLICAR — sim**
 >
-> Nenhuma chave de API real foi encontrada, em lugar nenhum. Mas há **três achados que
-> precisam da sua decisão**, e um deles está no histórico (apagar o arquivo agora não
-> resolve). Os três estão na seção "Ponto de parada", no fim.
+> Os três achados foram corrigidos e verificados no histórico completo, não só no estado
+> atual. Nenhuma chave de API real existia em lugar nenhum — **não há nada a revogar**.
+> O que foi feito está na Parte 4; o que **permanece público do passado** está na Parte 6,
+> e é a única coisa que este trabalho não pode desfazer.
+>
+> **Correção de fato:** a versão de 02/08 deste relatório afirmava que o repositório "ainda
+> não foi publicado". **Isso estava errado** — `github.com/LeoPani/blicsa` já era público, com
+> 74 commits enviados. A recomendação de `rm -rf .git` que decorria desse erro foi descartada;
+> ver Parte 4.
 
-| verificação | resultado |
-|---|---|
-| Chaves de API reais (working tree e histórico) | **nenhuma** ✓ |
-| `.env` / `.blicsa_settings.json` rastreados | **não** ✓ |
-| Caminhos `/Users/...` em arquivos rastreados | **zero** ✓ |
-| Segredos ou caminhos pessoais em `docs/*.md` | **nenhum** ✓ |
-| Imagens analisadas (working tree + histórico) | 130 blobs · **123 OK**, 7 para inspeção |
-| Captura de tela cheia **commitada** | **1** ⚠ |
-| Arquivos de "evidência" com 0 bytes | **5** ⚠ |
-| E-mails de terceiros em fixtures | **46** ⚠ |
+| verificação | 02/08 | 03/08 (final) |
+|---|---|---|
+| Chaves de API reais (working tree e histórico) | nenhuma ✓ | **nenhuma** ✓ |
+| `.env` / `.blicsa_settings.json` rastreados | não ✓ | **não** ✓ |
+| Caminhos `/Users/...` em arquivos rastreados | zero ✓ | **zero** ✓ |
+| Segredos ou caminhos pessoais em `docs/*.md` | nenhum ✓ | **nenhum** ✓ |
+| Imagens no histórico completo | 130 blobs · 123 OK, 7 p/ inspeção | **125 blobs · 125 OK, 0** ✓ |
+| Captura de tela cheia commitada | 1 ⚠ | **0** ✓ (blob removido) |
+| Arquivos de "evidência" com 0 bytes | 5 ⚠ | **0** ✓ |
+| E-mails de terceiros em fixtures | 46 ⚠ | **0** ✓ (51 redigidos, 8 arquivos) |
+| Testes | 407 passed | **407 passed** ✓ |
 
 ---
 
@@ -151,9 +159,48 @@ necessário: os relatórios já usam caminhos relativos.
 
 ---
 
-## Parte 4 — PONTO DE PARADA: sua decisão
+## Parte 4 — O que foi decidido e executado (03/08)
 
-Três coisas precisam de você. As duas primeiras estão **no histórico**.
+> **A versão original desta seção partia de uma premissa falsa** — a de que o repositório
+> ainda não era público. Ela recomendava (b) `rm -rf .git` com commit único. Leonardo corrigiu
+> o fato e decidiu o contrário: **preservar o histórico de desenvolvimento**, porque ele é um
+> ativo para a submissão ao JOSS, e **jamais** deletar ou recriar o repositório no GitHub —
+> o que preserva URL, estrelas, issues e a futura integração com o Zenodo. O texto original
+> das opções fica abaixo, para registro.
+
+**Executado:**
+
+1. **Blob da tela cheia removido cirurgicamente pelo ID**, não pelo caminho:
+
+   ```bash
+   git filter-repo --strip-blobs-with-ids /tmp/blobs-remover.txt --force
+   ```
+
+   O comando original do plano (`--path … --invert-paths`) apagaria **todas** as versões do
+   arquivo, inclusive a recaptura limpa. Removendo por ID, o blob ruim (`9edcdea4`, 1.309.655
+   bytes) sai e o bom (`e5f00f28`, 467.997 bytes) fica. 104 commits preservados, 2 objetos a
+   menos.
+
+2. **51 e-mails de terceiros redigidos** para `redacted@example.org` em **8 fixtures** — o
+   plano previa 2; a auditoria achou mais 6.
+
+3. **E-mail pessoal trocado** por `blicsa.app@gmail.com` em `main.py` e `docs/BUGREPORT.md`.
+
+4. **5 arquivos `phase1_*.png` de 0 byte removidos.**
+
+5. **Publicado por fast-forward**, não force-push:
+
+   ```
+   04313fd..e7e86b4  main -> main
+   ```
+
+   O blob problemático só existiu em commits **posteriores** ao topo publicado, então a
+   reescrita não tocou em nada que já fosse público: `04313fd` sobreviveu com o mesmo hash e
+   as duas tags do remoto (`v0.9.0`, `v1.1.1-beta`) batem hash a hash. **Nenhum clone quebrou.**
+
+6. **CI provado com isca** (Parte 5).
+
+### Registro — as opções originais (uma delas baseada em premissa falsa)
 
 ### 1. A captura de tela cheia (decisão obrigatória)
 
@@ -172,9 +219,11 @@ pip install git-filter-repo
 git filter-repo --path docs/evidence/bugc_cards_compactos_alinhados.png --invert-paths
 ```
 
-Reescreve **todos os hashes** a partir do commit afetado. Como o repositório ainda não foi
-publicado, não há ninguém com clone para quebrar. Depois é só recapturar a evidência pela
-janela (o script já faz isso) e commitar de novo.
+Reescreve **todos os hashes** a partir do commit afetado. ~~Como o repositório ainda não foi
+publicado, não há ninguém com clone para quebrar.~~ **[ERRADO — o repositório era público.
+Na prática o commit afetado era posterior ao topo publicado, então nenhum hash público mudou;
+mas isso foi sorte da cronologia, não consequência da premissa.]** Depois é só recapturar a
+evidência pela janela (o script já faz isso) e commitar de novo.
 
 **(b) Começar o repositório público do zero** — mais simples, e talvez melhor.
 
@@ -192,9 +241,15 @@ desenvolvimento com muito mais contexto do que as mensagens de commit.
 **(c) Publicar como está** — só se você olhar a imagem e concluir que o Dock e a barra de
 menu não te incomodam. É uma decisão legítima; só não deve ser tomada sem olhar.
 
-**Minha recomendação: (b).** O repositório ainda não foi publicado, ninguém depende dos
+~~**Minha recomendação: (b).** O repositório ainda não foi publicado, ninguém depende dos
 hashes, e é o único caminho que não deixa margem para eu ter deixado passar algum outro blob
-nas 130 imagens.
+nas 130 imagens.~~
+
+> **[RECOMENDAÇÃO RETIRADA — 03/08]** Baseava-se na premissa falsa de que o repositório não
+> era público. Ele era: 74 commits, com tags e histórico já clonáveis. O (b) teria destruído
+> o histórico de desenvolvimento — o ativo que sustenta a submissão ao JOSS — sem sequer
+> alcançar o objetivo, já que o conteúdo antigo continuaria nos clones existentes. **Foi
+> executado o (a)**, com remoção por ID de blob em vez de por caminho.
 
 ### 2. Os 46 e-mails de pesquisadores (decisão sua)
 
@@ -226,6 +281,58 @@ requisições que o app faz. Posso trocar se quiser.
 O script já teria pego o caso desta auditoria: `bugc_cards_compactos_alinhados.png` sai como
 REPROVADA por dimensão de tela cheia.
 
+### Prova de que o CI reprova de verdade (03/08)
+
+Não basta o script sair com código 1 na minha máquina — o que importa é o build quebrar. Num
+branch descartável, commitei uma isca de 2940×1912 (dimensões exatas da tela desta máquina) e
+enviei ao GitHub:
+
+```
+run 30847246772 · conclusão: failure
+  passo 7. Check evidence privacy  ← falhou aqui
+
+  67 imagens analisadas · OCR NÃO verificado (tesseract ausente)
+    [REPROVADA] docs/evidence/teste_ci_tela_cheia.png · 2940x1912 · papel 0.0% ·
+    dimensões de TELA CHEIA (2940x1912); fundo papel em só 0.0% (mínimo 25%);
+    100% de pixels escuros — terminal/navegador?
+  66 OK · 1 para inspeção humana
+```
+
+Branch e isca apagados em seguida; o remoto tem só `main`.
+
+**A primeira tentativa foi inconclusiva** e revelou outro problema: o build morria em
+`Install dependencies`, antes de chegar ao passo 7. Causa: `networkx==3.6.1` exige Python
+`>=3.11`, mas a matriz do CI inclui `3.10` e o README anuncia "Python 3.10+". **O CI do `main`
+está vermelho desde 21/07 por isso** — quebra pré-existente, não introduzida por esta limpeza.
+Contornado apenas no branch descartável (matriz 3.11/3.12) para que o teste alcançasse o alvo.
+**Pendente de decisão:** ou os pins passam a aceitar 3.10, ou README, badge e matriz passam a
+dizer 3.11+.
+
+---
+
+## Parte 6 — O que esta limpeza NÃO desfaz
+
+Honestidade sobre o alcance: o trabalho corrige o **estado atual** do repositório público e
+remove do histórico o blob que nunca chegou a ser publicado. Não alcança o passado já exposto.
+
+| item | esteve público? | desde | situação |
+|---|---|---|---|
+| Captura de tela cheia (Dock + barra de menu) | **não, nunca** | — | **removida do histórico** ✓ |
+| `phase1_*.png` (0 byte) | **sim** | 04/07 | removidos do estado atual; ficam nos clones antigos |
+| E-mails de terceiros nas fixtures | **sim** | 12/07 | redigidos no estado atual; ficam nos clones antigos |
+| E-mail pessoal em `main.py` e afins | **sim** | 07/07 (commit nº 18) | trocado no estado atual; **permanece nos commits 18/49/54**, que são públicos |
+| E-mail pessoal nos metadados de autor | **sim** | — | 1 commit; remover exigiria reescrever autoria |
+| `leopaniago@outlook.com` nos metadados de autor | **sim** | — | 103 commits; normal em qualquer repositório git |
+
+Sobre as três últimas linhas: retirá-las exigiria reescrever ~85 commits **já publicados** —
+quebrando clones, forks e permalinks que a submissão ao JOSS pode citar. Como o endereço não é
+credencial e a exposição já ocorreu, a decisão (Leonardo, 03/08) foi **não** reescrever
+histórico público. Quem clonou entre 04/07 e 03/08 mantém a cópia antiga; não há como apagar.
+
+**Rollback:** `/Users/leopani/PyBibliomics-BACKUP-20260803-0050` — 103 commits, com o blob
+removido intacto (1.309.655 bytes). Vale notar que a branch `historico-completo-pre-limpeza`
+**não** serve de rollback: o `filter-repo` reescreve todas as refs, inclusive ela.
+
 ---
 
 ## Aceite
@@ -234,9 +341,21 @@ REPROVADA por dimensão de tela cheia.
 $ python3 -m pytest tests/ -q
 407 passed, 18 deselected, 1 xfailed
 
-$ python3 scripts/check_evidence_privacy.py
-exit 0   (working tree: os 5 arquivos de 0 byte saem como SUSPEITA, não REPROVADA)
+$ python3 scripts/check_evidence_privacy.py --historico
+125 imagens analisadas · 125 OK · 0 para inspeção humana        (exit 0)
 
-$ git log --all --diff-filter=A --name-only --pretty=format: | sort -u | grep -icE '\.(png|jpg|gif)$'
-71   (bate com o inventário)
+$ python3 scripts/check_secrets.py
+Nenhum segredo com formato de credencial real encontrado.        (exit 0)
+
+$ git ls-tree -r --name-only origin/main | grep -c 'phase1_.*png'
+0
+
+$ git grep -c 'leopaniago2@gmail.com' origin/main | wc -l
+0
+
+$ git grep -lE '@(qq|163|sina)\.com' origin/main -- tests/fixtures/ | wc -l
+0
+
+$ git cat-file -s origin/main:docs/evidence/bugc_cards_compactos_alinhados.png
+467997   (a recaptura pela janela, não a tela cheia)
 ```
