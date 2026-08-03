@@ -106,7 +106,7 @@ Cobre `.env*`, `.blicsa_settings.json`, `blicsa_config.json`, `__pycache__`, `di
 | e-mail | ocorrências | situação |
 |---|---|---|
 | `blicsa.app@gmail.com` | `core/sources/base.py` | contato **do projeto** no User-Agent — intencional |
-| `leopaniago2@gmail.com` | `main.py:4359`, `main.py:4387`, `docs/BUGREPORT.md:20` | **seu e-mail pessoal**, em dois User-Agent |
+| e-mail pessoal do autor | `main.py:4359`, `main.py:4387`, `docs/BUGREPORT.md:20` | **corrigido** para o contato do projeto (2026-08-03) |
 | 46 endereços de pesquisadores | `tests/fixtures/openalex_page2.json`, `page3.json` | **dados de terceiros** |
 
 Dois pontos aqui:
@@ -124,8 +124,8 @@ Dois pontos aqui:
 O histórico tem duas identidades de autor, e elas **ficam públicas junto com os commits**:
 
 ```
-Leonardo Paniago <leopaniago@outlook.com>
-Leonardo Paniago <leopaniago2@gmail.com>
+Leonardo Paniago <...@outlook.com>
+Leonardo Paniago <...@gmail.com>
 ```
 
 Isso é normal em qualquer repositório git e seu nome já está no `CITATION.cff`. Registrado
@@ -208,7 +208,7 @@ campo.
 
 ### 3. Seu gmail pessoal no `main.py` (correção simples)
 
-Duas linhas usando `leopaniago2@gmail.com` como User-Agent, onde o projeto já tem
+Duas linhas usando o e-mail pessoal do autor como User-Agent, onde o projeto já tem
 `blicsa.app@gmail.com`. Não é segredo — é escolha sua se quer o e-mail pessoal aparecendo nas
 requisições que o app faz. Posso trocar se quiser.
 

@@ -4356,7 +4356,7 @@ class BlicsaApp(ctk.CTk):
                     openalex_url = f"https://api.openalex.org/works/https://doi.org/{doi}"
                     req = urllib.request.Request(
                         openalex_url, 
-                        headers={'User-Agent': 'mailto:leopaniago2@gmail.com'}
+                        headers={'User-Agent': 'mailto:blicsa.app@gmail.com'}
                     )
                     with urllib.request.urlopen(req, timeout=5) as r:
                         data = json.loads(r.read().decode('utf-8'))
@@ -4384,7 +4384,7 @@ class BlicsaApp(ctk.CTk):
                     openalex_url = f"https://api.openalex.org/works?q={query}&limit=1"
                     req = urllib.request.Request(
                         openalex_url, 
-                        headers={'User-Agent': 'mailto:leopaniago2@gmail.com'}
+                        headers={'User-Agent': 'mailto:blicsa.app@gmail.com'}
                     )
                     with urllib.request.urlopen(req, timeout=5) as r:
                         data = json.loads(r.read().decode('utf-8'))

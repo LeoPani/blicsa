@@ -17,7 +17,7 @@
 ## Fase 1: Higiene de Código
 - **Sintoma:** O código contém strings de e-mail de teste fixadas e métodos não utilizados ou redundantes que criam ruído.
 - **Causa Raiz:** Dívida técnica ao longo do desenvolvimento inicial.
-- **Solução Implementada:** Todos os e-mails `pybibliomics@example.com` modificados para `leopaniago2@gmail.com`. Método solto `chat_history` no `ai/client.py` deletado. `fix_treeview.py` solto na raiz deletado. `Access-Control-Allow-Origin` em `bridge.py` restringido a web extensions nativas.
+- **Solução Implementada:** Todos os e-mails `pybibliomics@example.com` modificados para `blicsa.app@gmail.com`. Método solto `chat_history` no `ai/client.py` deletado. `fix_treeview.py` solto na raiz deletado. `Access-Control-Allow-Origin` em `bridge.py` restringido a web extensions nativas.
 
 ## Fase 2: Idiomas nos Dados
 - **Sintoma:** Os registros carregados via APIs perdem as referências de idioma e metadados Open Access.
