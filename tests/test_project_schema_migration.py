@@ -188,3 +188,74 @@ def test_versao_minima_do_python_e_consistente():
         "uma das duas afirmações está mentindo")
     assert menor_ci >= (3, 11), (
         f"os pins de numpy/pandas/scipy/networkx exigem >=3.11; a matriz mínima é {menor_ci}")
+
+
+# ── Item 3: a normalização cobre TODOS os formatos já produzidos ──────────────────
+
+def test_normalizacao_cobre_os_tres_formatos_conhecidos(tmp_path):
+    """v1.0 (14/07), v3 (30/07, alheio ao app) e o formato atual, no mesmo teste.
+
+    O `v3` não é uma evolução do `1.0`: nenhum código deste repositório escreve
+    `version: 3` nem `app: "Blicsa"`, e os dois arquivos com esse manifesto têm o mesmo
+    carimbo redondo (`10:00:00`), enquanto o app grava `time.strftime`. São artefatos de um
+    script avulso. Entram aqui porque **existem em disco de usuário** e precisam abrir.
+    """
+    import networkx as nx
+    from core.project import CURRENT_MANIFEST_VERSION, save_blicsa_project
+
+    atual = tmp_path / "formato_atual.blicsa"
+    save_blicsa_project(
+        str(atual),
+        pd.DataFrame([{**SCHEMA_REGISTRO, "title": "Atual", "year": 2025, "citations": 3}]),
+        {"name": "Atual"}, {"n": (0.0, 0.0)}, nx.Graph([("a", "b")]), {0: "C0"}, [])
+
+    casos = [(ANTIGO, "1.0"), (SO_TITULO, 3), (atual, CURRENT_MANIFEST_VERSION)]
+    for caminho, versao_esperada in casos:
+        with zipfile.ZipFile(caminho) as z:
+            assert json.loads(z.read("manifest.json"))["version"] == versao_esperada, caminho.name
+        df = load_blicsa_project(str(caminho))["df"]
+        faltando = [c for c in SCHEMA_REGISTRO if c not in df.columns]
+        assert not faltando, f"{caminho.name}: faltam {faltando}"
+        # E o dado tem que ser utilizável, não só presente.
+        mb._extract_term_lists(df, "keywords", {}, None)
+        assert str(df["year"].dtype).startswith("int")
+
+
+def test_manifesto_do_app_e_sempre_a_versao_corrente(tmp_path):
+    """O número gravado tem que sair de `CURRENT_MANIFEST_VERSION`, não de um literal solto."""
+    import networkx as nx
+    from core.project import CURRENT_MANIFEST_VERSION, save_blicsa_project
+
+    destino = tmp_path / "p.blicsa"
+    save_blicsa_project(str(destino), pd.DataFrame([{"title": "T"}]), {}, None,
+                        nx.Graph(), None, None)
+    with zipfile.ZipFile(destino) as z:
+        m = json.loads(z.read("manifest.json"))
+    assert m["version"] == CURRENT_MANIFEST_VERSION
+    assert m["app"] == "PyBibliomics Blicsa", "o app nunca escreve app='Blicsa'"
+
+
+# ── Item 4: os acessos a df["year"] em main.py estão guardados ────────────────────
+
+def test_acessos_a_year_em_main_estao_guardados():
+    """`main.py` monta DataFrame por caminhos que NÃO passam pela normalização de projeto
+    (importação de arquivo, resultado de busca). Cada `df["year"]` precisa da sua guarda.
+
+    Foi assim que o cálculo de rede morria com "[ERRO] 'keywords'": acesso direto a coluna
+    que podia não existir. O mesmo risco vale para `year`, e este teste impede que um acesso
+    novo entre sem guarda."""
+    import re
+
+    linhas = (Path(__file__).parent.parent / "main.py").read_text(encoding="utf-8").splitlines()
+    desprotegidos = []
+    for i, linha in enumerate(linhas):
+        codigo = linha.split("#", 1)[0]          # comentário não é acesso
+        if not re.search(r'df\["year"\]', codigo):
+            continue
+        janela = "\n".join(linhas[max(0, i - 8):i])
+        if not re.search(r'"year"\s+in\s+df\.columns|\btem_ano\b', janela):
+            desprotegidos.append(i + 1)
+
+    assert not desprotegidos, (
+        f"acesso a df[\"year\"] sem guarda nas linhas {desprotegidos} de main.py — "
+        'preceda com `if "year" in df.columns`')

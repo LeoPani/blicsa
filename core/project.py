@@ -333,7 +333,19 @@ def load_blicsa_project(path: str) -> dict:
         # Read Clusters (Labels)
         if "clusters.json" in zf.namelist():
             serialized_clusters = json.loads(zf.read("clusters.json").decode("utf-8"))
-            # Convert keys back to integers for cluster IDs
-            result["cluster_labels"] = {int(k): v for k, v in serialized_clusters.items()}
+            # As chaves voltam a inteiro porque é o que o app usa (`dict[int, str]`, ids da
+            # partição do Louvain) e a gravação as serializa com `str(k)`.
+            #
+            # Chave não numérica é preservada como veio em vez de derrubar a carga: `int(k)`
+            # sem guarda levantava `ValueError` e o projeto INTEIRO deixava de abrir — dataset,
+            # mapa e parâmetros perdidos por causa do rótulo de um cluster.
+            def _id_cluster(chave: str):
+                try:
+                    return int(chave)
+                except (TypeError, ValueError):
+                    return chave
+
+            result["cluster_labels"] = {_id_cluster(k): v
+                                        for k, v in serialized_clusters.items()}
 
     return result

@@ -3436,9 +3436,16 @@ class BlicsaApp(ctk.CTk):
                 yr_max = int(self._year_max_var.get().strip()) if self._year_max_var.get().strip() else None
             except ValueError:
                 yr_min = yr_max = None
-            if yr_min is not None:
+            # `year` pode faltar: a normalização de schema só roda ao ABRIR um projeto, e um
+            # DataFrame vindo de importação de arquivo ou de uma busca chega por outro
+            # caminho. Sem a guarda, `df["year"]` levanta KeyError e o cálculo de rede morre
+            # com "[ERRO] 'year'" — uma mensagem que não diz nem que o problema é a coluna.
+            tem_ano = "year" in df.columns
+            if not tem_ano and (yr_min is not None or yr_max is not None):
+                log.warning("[Filtro] coluna 'year' ausente: filtro de período ignorado")
+            if tem_ano and yr_min is not None:
                 df = df[df["year"] >= yr_min]
-            if yr_max is not None:
+            if tem_ano and yr_max is not None:
                 df = df[df["year"] <= yr_max]
             if yr_min or yr_max:
                 log.info(f"[Filtro] Período {yr_min or '?'} – {yr_max or '?'}: {len(df)} registros\n")
