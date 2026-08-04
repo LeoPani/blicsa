@@ -34,18 +34,125 @@ jobs:
       - name: Smoke test (exe)
         shell: pwsh
         timeout-minutes: 5
-        continue-on-error: true
         run: |
           $p = Start-Process -FilePath dist\Blicsa.exe -ArgumentList '--smoke-test' -Wait -PassThru
           Write-Host "smoke-test exit code: $($p.ExitCode)"
           if ($p.ExitCode -ne 0) { throw "smoke-test failed with exit $($p.ExitCode)" }
 
-      # Publica o exe como artefato do workflow. A release em si é montada
-      # depois via `gh release create` (macOS + Windows juntos), baixando este
-      # artefato — assim não há corrida entre o CI e a criação manual da release.
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
           name: Blicsa-windows
           path: dist/Blicsa.exe
           if-no-files-found: error
+
+  build-macos:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: pip
+
+      - name: Install dependencies (core + ai + pdf)
+        run: |
+          pip install --upgrade pip
+          pip install -r requirements.txt pyinstaller
+
+      - name: Build with PyInstaller
+        run: pyinstaller Blicsa.spec --noconfirm
+
+      - name: Smoke test
+        timeout-minutes: 5
+        run: |
+          chmod +x dist/Blicsa-onefile
+          ./dist/Blicsa-onefile --smoke-test
+          echo "smoke-test exit code: $?"
+
+      # O .app não é assinado nem notarizado — ver docs/limitacoes.md. O zip preserva
+      # o bundle; o binário solto perderia a estrutura do .app.
+      - name: Package
+        run: |
+          cd dist
+          if [ -d Blicsa.app ]; then zip -qry Blicsa-macos.zip Blicsa.app;
+          else cp Blicsa-onefile Blicsa-macos && zip -q Blicsa-macos.zip Blicsa-macos; fi
+          ls -la Blicsa-macos.zip
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: Blicsa-macos
+          path: dist/Blicsa-macos.zip
+          if-no-files-found: error
+
+  build-linux:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: pip
+
+      # Tk e WebKit: o app é desktop e o mapa usa navegador embutido.
+      - name: System dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y python3-tk xvfb libgirepository1.0-dev
+
+      - name: Install dependencies (core + ai + pdf)
+        run: |
+          pip install --upgrade pip
+          pip install -r requirements.txt pyinstaller
+
+      - name: Build with PyInstaller
+        run: pyinstaller Blicsa.spec --noconfirm
+
+      - name: Smoke test (headless)
+        timeout-minutes: 5
+        run: |
+          chmod +x dist/Blicsa-onefile
+          cp dist/Blicsa-onefile dist/Blicsa-linux
+          xvfb-run -a ./dist/Blicsa-linux --smoke-test
+          echo "smoke-test exit code: $?"
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: Blicsa-linux
+          path: dist/Blicsa-linux
+          if-no-files-found: error
+
+  release:
+    needs: [build-windows, build-macos, build-linux]
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/v')
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: Collect binaries and checksums
+        run: |
+          mkdir -p release
+          find artifacts -type f -exec cp {} release/ \;
+          cd release
+          # SHA-256 de cada binário: é o que permite conferir que o arquivo baixado é o
+          # mesmo que o CI produziu, e o que o registro no INPI congela.
+          sha256sum * > SHA256SUMS.txt
+          cat SHA256SUMS.txt
+          ls -la
+
+      - name: Publish release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "${GITHUB_REF_NAME}" \
+            --title "Blicsa ${GITHUB_REF_NAME}" \
+            --notes-file .github/release-notes.md \
+            release/*
