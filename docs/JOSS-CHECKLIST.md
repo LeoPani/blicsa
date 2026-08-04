@@ -49,8 +49,8 @@ Legenda: **✅ atendido** · **⏳ pendente** · **➖ não aplicável**
 | 20 | `CITATION.cff` válido | ✅ | versão `2.0.0`, autor `Paniago, Leonardo`, licença MIT, palavras-chave. Teste automatizado impede divergir de `main.py::__version__`. **Falta o ORCID**, que só Leonardo pode informar |
 | 21 | Arquivo `paper.md` com o artigo | ⏳ | **não escrito.** É o entregável central da submissão e depende de decisão de autoria |
 | 22 | `paper.bib` com as referências | ⏳ | as referências já estão em [`metodos.md`](metodos.md) e podem ser convertidas |
-| 23 | Release versionada com tag | ✅ | `v2.0.0` — decisão de Leonardo em 04/08 (ver "Numeração" abaixo) |
-| 24 | DOI de arquivamento (Zenodo/figshare) | ⏳ | integração do Zenodo precisa ser ativada **antes** de publicar a release |
+| 23 | Release versionada com tag | ✅ | [`v2.0.0`](https://github.com/LeoPani/blicsa/releases/tag/v2.0.0) — três binários + `SHA256SUMS.txt`, run `30960516974` |
+| 24 | DOI de arquivamento (Zenodo/figshare) | ⏳ | **a v2.0.0 foi publicada antes de a integração do Zenodo existir, então não gerou DOI.** Ativar a integração e republicar a release (ou publicar uma `v2.0.1`) — ver `RELATORIO-V2.md` §7 |
 | 25 | ORCID do autor de correspondência | ⏳ | precisa ser informado por Leonardo |
 | 26 | Autoria substancial declarada | ⏳ | decisão de Leonardo |
 
