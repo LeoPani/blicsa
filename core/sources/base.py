@@ -38,13 +38,17 @@ class PaginationLimitError(IOError):
     #: Chave i18n da mensagem que a UI deve exibir.
     i18n_key = "browse.error_page_limit"
 
-    def __init__(self, limite: int = 0, page: int = 0, per_page: int = 0):
+    def __init__(self, limite: int = 0, page: int = 0, per_page: int = 0, fonte: str = ""):
         super().__init__(
             f"paginação limitada a {limite} resultados "
             f"(página {page} × {per_page} por página excede o teto)")
         self.limite = int(limite)
         self.page = int(page)
         self.per_page = int(per_page)
+        self.fonte = str(fonte or "")
+        #: Parâmetros da mensagem. OpenAlex e PubMed têm o mesmo teto e a mesma saída
+        #: (importar em vez de navegar); só o nome da fonte muda.
+        self.i18n_args = {"fonte": self.fonte}
 
 # Identidade única do app nas APIs (OpenAlex/Crossref pedem um mailto de contato).
 MAILTO = "blicsa.app@gmail.com"
@@ -57,6 +61,9 @@ class SearchProvider:
     #: `0` = sem teto conhecido. Quem tem teto declara o seu e a navegação avisa ao chegar
     #: lá, em vez de devolver erro genérico ou página em branco.
     BROWSE_MAX_RESULTS = 0
+
+    #: Nome da fonte como aparece para o usuário nas mensagens.
+    DISPLAY_NAME = ""
 
     def __init__(self, mailto: str = MAILTO, cache: Optional[Dict[str, Any]] = None):
         self.mailto = mailto

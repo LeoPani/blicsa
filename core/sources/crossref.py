@@ -41,6 +41,7 @@ def _record_matches_language(record: Dict[str, Any], wanted: str) -> bool:
 
 
 class CrossrefProvider(SearchProvider):
+    DISPLAY_NAME = "Crossref"
     def count(self, query: str, filters: Optional[Dict[str, Any]] = None, cancel_event=None) -> int:
         """Total de resultados (message.total-results) numa request barata (rows=0)."""
         import re

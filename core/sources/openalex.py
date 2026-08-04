@@ -21,6 +21,7 @@ def openalex_api_key() -> str:
 
 
 class OpenAlexProvider(SearchProvider):
+    DISPLAY_NAME = "OpenAlex"
     #: Teto da paginação por `page` na API: `page × per_page` não pode passar de 10.000.
     #: Vale **só para a navegação**; a importação usa cursor e alcança o conjunto inteiro.
     BROWSE_MAX_RESULTS = 10_000
@@ -208,7 +209,7 @@ class OpenAlexProvider(SearchProvider):
         pp = max(1, min(200, per_page))
         pg = max(1, page)
         if self.BROWSE_MAX_RESULTS and pg * pp > self.BROWSE_MAX_RESULTS:
-            raise PaginationLimitError(self.BROWSE_MAX_RESULTS, pg, pp)
+            raise PaginationLimitError(self.BROWSE_MAX_RESULTS, pg, pp, self.DISPLAY_NAME)
         params: Dict[str, Any] = {"per_page": pp, "page": pg, "mailto": self.mailto}
         flt = self._oa_filter(query, filters)
         if flt:
@@ -229,7 +230,7 @@ class OpenAlexProvider(SearchProvider):
             # ficar defasado: o 400 de paginação vira a MESMA mensagem explicativa, nunca um
             # erro genérico. Só o 400; qualquer outro código continua subindo como está.
             if e.code == 400:
-                raise PaginationLimitError(self.BROWSE_MAX_RESULTS, pg, pp) from e
+                raise PaginationLimitError(self.BROWSE_MAX_RESULTS, pg, pp, self.DISPLAY_NAME) from e
             raise
         total = int(data.get("meta", {}).get("count", 0))
         records = [self._normalize_work(w) for w in data.get("results", [])]

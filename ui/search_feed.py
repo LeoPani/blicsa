@@ -225,6 +225,8 @@ class SearchFeedView(ctk.CTkFrame):
         self.browse_total = 0
         self.browse_page = 1
         self.browse_pages = 1
+        #: Há resultados além do que a paginação alcança? Muda o rótulo do pager.
+        self.browse_clipped = False
 
         self.grid_columnconfigure(1, weight=1)
         self.grid_rowconfigure(2, weight=1)   # a área de conteúdo é quem estica
@@ -412,14 +414,22 @@ class SearchFeedView(ctk.CTkFrame):
             pass
 
     def update_pager(self):
-        """Atualiza rótulo e habilitação das setas a partir do estado corrente."""
+        """Atualiza rótulo e habilitação das setas a partir do estado corrente.
+
+        O pager anuncia as páginas **navegáveis**, não as que os resultados dariam: com
+        366.949 resultados a conta dá 14.678 páginas, mas o OpenAlex só entrega 400. Prometer
+        as outras 14.278 é promessa quebrada — o total de resultados continua em destaque no
+        cabeçalho (`set_result_header`), que é o lugar dessa informação.
+        """
         from core.browse import format_count
 
         if self.browse_total <= 0:
             self.pager.grid_remove()
             return
         self.pager.grid()
-        self._page_lbl.configure(text=t("browse.page_of",
+        # "de 400 navegáveis" quando há resultados fora do alcance; "de 400" quando não há.
+        chave = "browse.page_of_navigable" if self.browse_clipped else "browse.page_of"
+        self._page_lbl.configure(text=t(chave,
                                         p=format_count(self.browse_page),
                                         t=format_count(self.browse_pages)))
         self._prev_btn.configure(state="normal" if self.browse_page > 1 else "disabled")
@@ -518,14 +528,18 @@ class SearchFeedView(ctk.CTkFrame):
         self.browse_session = session
         self.browse_total = int(getattr(page_obj, "total", 0) or 0)
         self.browse_page = int(getattr(page_obj, "page", 1) or 1)
-        self.browse_pages = int(getattr(page_obj, "pages", 1) or 1)
+        # `navigable_pages`, não `pages`: o pager só pode oferecer página que abre.
+        self.browse_pages = int(getattr(page_obj, "navigable_pages", None)
+                                or getattr(page_obj, "pages", 1) or 1)
+        self.browse_clipped = bool(getattr(page_obj, "clipped", False))
 
         erro = getattr(page_obj, "error", "")
         if erro:
             # Erro com mensagem própria (limite de uso da API) mostra a explicação e o que
             # fazer; o resto mostra o texto cru, que ao menos diz o que houve.
             chave = getattr(page_obj, "error_key", "")
-            self.show_error_state(t(chave) if chave else erro,
+            args = getattr(page_obj, "error_args", None) or {}
+            self.show_error_state(t(chave, **args) if chave else erro,
                                   on_retry=getattr(self, "on_retry", None))
             # A busca falhou: as facetas não vêm. Deixar "Carregando filtros…" na sidebar
             # daria a impressão de que ainda há algo a caminho.

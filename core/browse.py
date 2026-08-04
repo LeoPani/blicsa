@@ -80,13 +80,36 @@ class Page:
     error: str = ""
     #: Chave i18n do erro, quando ele tem uma mensagem própria (429 do OpenAlex, p.ex.).
     error_key: str = ""
+    #: Parâmetros da mensagem de erro (ex.: nome da fonte), aplicados no `t()`.
+    error_args: dict = field(default_factory=dict)
+    #: Teto de resultados alcançáveis por paginação, declarado pelo provider. `0` = sem teto.
+    browse_max: int = 0
 
     @property
     def pages(self) -> int:
-        """Total de páginas. Zero resultados → 1 página (vazia), nunca 0."""
+        """Total de páginas que os resultados dariam, ignorando o teto da API."""
         if self.total <= 0:
             return 1
         return max(1, -(-self.total // max(1, self.per_page)))
+
+    @property
+    def navigable_pages(self) -> int:
+        """Páginas que dá para ABRIR de verdade — é o número que o pager deve anunciar.
+
+        Uma busca com 366.949 resultados dá 14.678 páginas de 25, mas o OpenAlex recusa
+        além de 10.000 registros: só 400 existem. Anunciar 14.678 é prometer 14.278 páginas
+        que devolvem erro — o total de resultados continua no cabeçalho, que é onde a
+        informação honesta sobre o tamanho da busca pertence.
+        """
+        if self.browse_max <= 0:
+            return self.pages
+        teto = max(1, self.browse_max // max(1, self.per_page))
+        return max(1, min(self.pages, teto))
+
+    @property
+    def clipped(self) -> bool:
+        """Há resultados fora do alcance da paginação? Muda o rótulo do pager."""
+        return self.navigable_pages < self.pages
 
     @property
     def empty(self) -> bool:
@@ -103,6 +126,17 @@ def error_i18n_key(exc: Exception) -> str:
     """
     chave = getattr(exc, "i18n_key", "")
     return str(chave) if chave else ""
+
+
+def error_i18n_args(exc: Exception) -> dict:
+    """Parâmetros da mensagem de erro, quando ela é parametrizada.
+
+    O teto de paginação vale para OpenAlex e PubMed com a mesma explicação e a mesma saída;
+    o que muda é o nome da fonte. Sem isto, a mensagem teria de nomear uma fonte só — e
+    mentiria para a outra.
+    """
+    args = getattr(exc, "i18n_args", None)
+    return dict(args) if isinstance(args, dict) else {}
 
 
 def sort_to_api(sort: str) -> dict:
@@ -162,6 +196,9 @@ class BrowseSession:
         self.query = query
         self.base_filters = dict(base_filters or {})
         self.per_page = max(1, int(per_page))
+        # Teto de paginação do provider (0 = sem teto). Viaja em cada `Page` para o pager
+        # anunciar só o que existe.
+        self.browse_max = int(getattr(provider, "BROWSE_MAX_RESULTS", 0) or 0)
         self.sort = "relevance"
         self.active_facets: dict[str, list[str]] = {}
         self.page = 1
@@ -279,7 +316,8 @@ class BrowseSession:
             cacheada = self._cache[chave]
             # Página do cache também precisa do token corrente, senão a UI a descarta.
             return Page(records=cacheada.records, total=cacheada.total, page=cacheada.page,
-                        per_page=cacheada.per_page, token=token)
+                        per_page=cacheada.per_page, token=token,
+                        browse_max=self.browse_max)
 
         try:
             registros, total = self.provider.browse(
@@ -290,11 +328,12 @@ class BrowseSession:
             # continuar vendo quantos resultados existem — é o que dá sentido à sugestão de
             # refinar a busca ou importar tudo.
             return Page(page=self.page, per_page=self.per_page, token=token,
-                        total=self.total, error=str(e), error_key=error_i18n_key(e))
+                        total=self.total, error=str(e), error_key=error_i18n_key(e),
+                        error_args=error_i18n_args(e), browse_max=self.browse_max)
 
         self.total = int(total or 0)
         p = Page(records=list(registros), total=self.total, page=self.page,
-                 per_page=self.per_page, token=token)
+                 per_page=self.per_page, token=token, browse_max=self.browse_max)
         self._cache[chave] = p
         self._cache.move_to_end(chave)
         while len(self._cache) > CACHE_PAGINAS:

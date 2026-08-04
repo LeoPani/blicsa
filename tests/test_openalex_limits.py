@@ -316,3 +316,67 @@ def test_live_cursor_avanca_alem_de_10000():
         f"o cursor parou em {len(registros)} — se parou exatamente em 10.000, "
         "a importação voltou a usar paginação numerada")
     assert prov.total_available > 10_050
+
+
+# ── 4. Pager: anuncia só o que existe ─────────────────────────────────────────────
+
+def test_pager_anuncia_paginas_navegaveis_nao_as_teoricas():
+    """366.949 resultados dariam 14.678 páginas de 25; só 400 abrem. O pager anuncia 400.
+
+    Os dois lados: `pages` continua sendo a conta bruta (o cabeçalho precisa dela para dizer
+    quantos resultados existem), `navigable_pages` é o que o pager pode oferecer."""
+    from core.browse import Page
+
+    p = Page(total=366_949, per_page=25, browse_max=10_000)
+    assert p.pages == 14_678, "a conta bruta não pode mudar"
+    assert p.navigable_pages == 400, "o pager tem que anunciar 400, não 14.678"
+    assert p.clipped is True
+
+
+def test_pager_sem_teto_anuncia_tudo():
+    """Provider sem teto declarado: navegáveis == teóricas, e o rótulo não muda."""
+    from core.browse import Page
+
+    p = Page(total=366_949, per_page=25, browse_max=0)
+    assert p.navigable_pages == p.pages == 14_678
+    assert p.clipped is False
+
+
+def test_pager_busca_pequena_nao_e_cortada():
+    """O outro lado da guarda: 300 resultados cabem folgado no teto — nada de "navegáveis"."""
+    from core.browse import Page
+
+    p = Page(total=300, per_page=25, browse_max=10_000)
+    assert p.navigable_pages == p.pages == 12
+    assert p.clipped is False, "busca pequena não pode ganhar o rótulo de cortada"
+
+
+def test_pager_acompanha_o_per_page():
+    """Com 200 por página o teto vira 50 páginas, não 400."""
+    from core.browse import Page
+
+    assert Page(total=366_949, per_page=200, browse_max=10_000).navigable_pages == 50
+    assert Page(total=366_949, per_page=100, browse_max=10_000).navigable_pages == 100
+
+
+def test_pager_nunca_devolve_zero_paginas():
+    """Adversarial: total 0 e per_page maior que o teto não podem zerar o pager."""
+    from core.browse import Page
+
+    assert Page(total=0, per_page=25, browse_max=10_000).navigable_pages == 1
+    assert Page(total=5, per_page=999_999, browse_max=10_000).navigable_pages == 1
+
+
+def test_sessao_propaga_o_teto_para_a_pagina():
+    """O teto sai do provider e chega à Page sem ninguém precisar passar à mão."""
+    fake = FakeOpenAlex(total=366_949)
+    sess = BrowseSession(OpenAlexProvider(), query="x", per_page=25)
+    with patch("urllib.request.urlopen", side_effect=fake):
+        p = sess.fetch_page(1)
+    assert p.browse_max == 10_000
+    assert p.navigable_pages == 400 and p.pages == 14_678
+
+    # Também na página vinda do cache: sem isso o pager mudaria de rótulo ao voltar.
+    with patch("urllib.request.urlopen", side_effect=fake):
+        cacheada = sess.fetch_page(1)
+    assert cacheada.navigable_pages == 400, "página do cache perdeu o teto"
