@@ -1,0 +1,17 @@
+# Dependências para RODAR OS TESTES. Nada aqui vai para o app empacotado.
+#
+# Existiam de fato, mas não declaradas: o CI instalava `pytest pytest-cov` numa linha solta
+# do workflow, e `requests` não estava em lugar nenhum — funcionava na máquina de quem já o
+# tinha instalado por outro motivo, e quebrava a coleção de `tests/test_bridge.py` no runner
+# limpo do GitHub.
+#
+# Uso:
+#   pip install -r requirements-core.txt -r requirements-dev.txt
+#   pytest tests/ -q
+
+pytest==9.1.1
+pytest-cov==7.1.0
+
+# Só `tests/test_bridge.py` usa. O código de produção fala HTTP por `urllib` e não tem
+# `requests` como dependência — o teste do servidor-ponte é o único ponto que o pede.
+requests==2.34.2
