@@ -63,12 +63,12 @@ A métrica de relevância usa divergência KL e é **inspirada** no conceito de 
 termos de van Eck & Waltman, **não é a fórmula publicada por eles**. Os números não são
 numericamente comparáveis aos do VOSviewer. Detalhes em [métodos](metodos.md).
 
-## 7. Projetos anteriores à v1.0 podem reclusterizar
+## 7. Projetos anteriores à v2.0 podem reclusterizar
 
-Até a v1.0, a ordem de inserção dos nós no grafo não era determinística, e o Louvain podia
-chegar a partições diferentes com a mesma entrada. **Reabrir um projeto salvo antes da v1.0
+Até a v2.0, a ordem de inserção dos nós no grafo não era determinística, e o Louvain podia
+chegar a partições diferentes com a mesma entrada. **Reabrir um projeto salvo antes da v2.0
 pode produzir um agrupamento diferente do original.** O corpus, as métricas e as posições
-salvas não mudam — só o agrupamento pode diferir. A partir da v1.0 o resultado é reproduzível
+salvas não mudam — só o agrupamento pode diferir. A partir da v2.0 o resultado é reproduzível
 (semente fixa).
 
 ## 8. Sem análise de citações diretas

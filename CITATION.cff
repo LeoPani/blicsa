@@ -1,10 +1,23 @@
 cff-version: 1.2.0
 message: "If you use this software, please cite it as below."
-authors:
-  - family-names: "Pani"
-    given-names: "Leo"
+type: software
 title: "Blicsa"
-version: "2.0-upgrade"
-date-released: "2026-07-01"
+abstract: >-
+  Desktop application for bibliometric analysis: literature search across OpenAlex, Crossref
+  and PubMed, corpus building, co-occurrence knowledge maps (network, overlay and density),
+  and bibliometric statistics. Local-first: the corpus never leaves the user's machine.
+authors:
+  - family-names: "Paniago"
+    given-names: "Leonardo"
+version: "2.0.0"
+date-released: "2026-08-04"
+license: MIT
 url: "https://github.com/LeoPani/blicsa"
 repository-code: "https://github.com/LeoPani/blicsa"
+keywords:
+  - bibliometrics
+  - scientometrics
+  - science mapping
+  - network analysis
+  - co-word analysis
+  - OpenAlex

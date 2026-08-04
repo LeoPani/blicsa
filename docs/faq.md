@@ -73,9 +73,9 @@ o total e pede confirmação; essa é a proteção, no lugar de um corte silenci
 
 ## Reabri um projeto antigo e os clusters mudaram. É bug?
 
-É a mudança de determinismo da v1.0. Até então a partição podia variar entre execuções com a
+É a mudança de determinismo da v2.0. Até então a partição podia variar entre execuções com a
 mesma entrada; agora não varia mais. O corpus e as métricas continuam idênticos. Veja
-[limitações](limitacoes.md#7-projetos-anteriores-à-v10-podem-reclusterizar).
+[limitações](limitacoes.md#7-projetos-anteriores-à-v20-podem-reclusterizar).
 
 ## Onde ficam meus projetos?
 

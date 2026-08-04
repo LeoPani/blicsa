@@ -107,7 +107,7 @@ leis de Bradford e Lotka, e detecção de *bursts*. O que cada número significa
 **Meus Projetos → Salvar**. O `.blicsa` guarda corpus, mapa, posições do layout, rótulos de
 cluster, histórico de buscas e todos os parâmetros. Reabrir devolve exatamente o mesmo estado.
 
-> **Projetos salvos antes da v1.0** podem apresentar **clusterização diferente** da original ao
-> serem reabertos: até a v1.0 a ordem de inserção dos nós não era determinística, e o Louvain
-> podia chegar a uma partição distinta com a mesma entrada. A partir da v1.0 o resultado é
+> **Projetos salvos antes da v2.0** podem apresentar **clusterização diferente** da original ao
+> serem reabertos: até a v2.0 a ordem de inserção dos nós não era determinística, e o Louvain
+> podia chegar a uma partição distinta com a mesma entrada. A partir da v2.0 o resultado é
 > reproduzível. O corpus e as métricas não mudam — só o agrupamento pode diferir.

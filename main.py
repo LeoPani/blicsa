@@ -4,7 +4,12 @@ import logging
 logging.basicConfig(level=logging.INFO, format="%(message)s")
 import os
 
-__version__ = "1.1.0-beta"
+#: FONTE ÚNICA da versão do app. Rodapé, janela "Sobre", `--version` e o `CITATION.cff`
+#: derivam daqui. Antes havia cinco declarações independentes — `1.1.0-beta` aqui, `v3.0`
+#: no rodapé e na janela Sobre, `0.9.0` no CHANGELOG e `2.0-upgrade` no CITATION.cff — e o
+#: `v3.0` não correspondia a nenhuma versão que tivesse existido. Ele aparecia nas capturas
+#: de tela da documentação.
+__version__ = "2.0.0"
 
 try:
     if os.path.exists(".env"):
@@ -612,7 +617,7 @@ class BlicsaApp(ctk.CTk):
         self._progress_bar.grid(row=13, column=0, padx=16, pady=(0, 8), sticky="sew")
         self._progress_bar.grid_remove()
 
-        self._about_btn = ctk.CTkButton(sb, text="v3.0 • Blicsa Engine", font=ctk.CTkFont(size=10), text_color=TEXT_MUTED, fg_color="transparent", hover_color="#e0e0e0", corner_radius=0, command=self._show_about)
+        self._about_btn = ctk.CTkButton(sb, text=f"v{__version__} • Blicsa Engine", font=ctk.CTkFont(size=10), text_color=TEXT_MUTED, fg_color="transparent", hover_color="#e0e0e0", corner_radius=0, command=self._show_about)
         self._about_btn.grid(row=14, column=0, padx=22, pady=(0, 16), sticky="sw")
 
     # ── Drag-and-drop ──────────────────────────────────────────────────
@@ -796,7 +801,7 @@ class BlicsaApp(ctk.CTk):
             tk.Label(content, text="Blicsa", font=("Arial", 24, "bold"), bg="#F6F4EE", fg="#141414").pack(pady=(20, 0))
             
         tk.Label(content, text="just blink", font=("Arial", 12), bg="#F6F4EE", fg="#8A877F").pack(pady=(0, 10))
-        tk.Label(content, text="v3.0", font=("Arial", 10), bg="#F6F4EE", fg="#141414").pack(pady=5)
+        tk.Label(content, text=f"v{__version__}", font=("Arial", 10), bg="#F6F4EE", fg="#141414").pack(pady=5)
         
         tk.Label(content, text="Desenvolvido por ICSA/UFOP", font=("Arial", 10), bg="#F6F4EE", fg="#141414").pack(pady=5)
         tk.Label(content, text="Licença MIT", font=("Arial", 10), bg="#F6F4EE", fg="#141414").pack(pady=5)
@@ -5832,7 +5837,7 @@ if __name__ == "__main__":
             if not (en_keys == fr_keys == pt_keys):
                 print(f"Self-check FAILED: Translation keys do not match. Missing in fr: {en_keys - fr_keys}, Missing in pt: {en_keys - pt_keys}", file=sys.stderr)
                 sys.exit(1)
-            print("Blicsa v3.0-upgrade")
+            print(f"Blicsa v{__version__}")
             print("Self-check passed: Core modules imported successfully and catalogs match.")
             sys.exit(0)
         except Exception as e:
@@ -5919,7 +5924,7 @@ if __name__ == "__main__":
     lbl.place(relx=0.5, rely=0.5, anchor="center")
     
     # Version string
-    ver = tk.Label(content, text="v3.0", bg="#F6F4EE", fg="#8A877F", font=("Arial", 11))
+    ver = tk.Label(content, text=f"v{__version__}", bg="#F6F4EE", fg="#8A877F", font=("Arial", 11))
     ver.place(relx=0.98, rely=0.98, anchor="se")
     
     frames = []

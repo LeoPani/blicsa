@@ -9,6 +9,22 @@ Maps scientific literature into interactive networks to reveal research fronts, 
 ![License](https://img.shields.io/badge/License-MIT-green)
 ![Platform](https://img.shields.io/badge/Platform-macOS%20%7C%20Windows%20%7C%20Linux-lightgrey)
 [![CI](https://github.com/LeoPani/blicsa/actions/workflows/ci.yml/badge.svg)](https://github.com/LeoPani/blicsa/actions/workflows/ci.yml)
+![Coverage](https://img.shields.io/badge/coverage-69%25-yellow)
+![Version](https://img.shields.io/badge/version-2.0.0-blue)
+
+![Blicsa browsing search results](docs/evidence/v1_busca_navegacao.png)
+
+## Documentation
+
+| | |
+|---|---|
+| **[Overview](docs/index.md)** | what Blicsa is, who it is for, what it solves |
+| **[Installation](docs/installation.md)** · *[pt-BR](docs/instalacao.md)* | Windows, macOS, Linux |
+| **[Usage](docs/usage.md)** · *[pt-BR](docs/uso.md)* | full walkthrough with a reproducible sample dataset |
+| **[Maps](docs/mapas.md)** | what each visualisation means and how to read it |
+| **[Methods](docs/methods.md)** · *[pt-BR](docs/metodos.md)* | formulas and citations |
+| **[Known limitations](docs/limitacoes.md)** | what Blicsa does *not* do |
+| **[FAQ](docs/faq.md)** | including: does my data leave my machine? (no) |
 
 ---
 
@@ -163,6 +179,13 @@ blicsa/
 
 ---
 
+## How to cite
+
+Use the **Cite this repository** button on GitHub, which reads `CITATION.cff`, or:
+
+> Paniago, L. (2026). *Blicsa* (version 2.0.0) [Computer software].
+> https://github.com/LeoPani/blicsa
+
 ## License
 
-MIT License.
+MIT License — see [`LICENSE`](LICENSE).

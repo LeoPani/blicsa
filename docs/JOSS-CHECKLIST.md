@@ -19,7 +19,7 @@ Legenda: **✅ atendido** · **⏳ pendente** · **➖ não aplicável**
 | 5 | Exemplo funcional de uso | ✅ | [`docs/uso.md`](uso.md) + `docs/sample_dataset.csv` (200 registros reais do OpenAlex) |
 | 6 | Documentação da API / funcionalidade | ✅ | [`docs/index.md`](index.md), [`uso.md`](uso.md), [`mapas.md`](mapas.md) |
 | 7 | Testes automatizados | ✅ | 473 testes, `python -m pytest tests/ -q` |
-| 8 | Integração contínua | ✅ | GitHub Actions, matriz 3.11/3.12 — [workflow](../../actions/workflows/ci.yml) |
+| 8 | Integração contínua | ✅ | GitHub Actions, matriz 3.11/3.12 — [workflow](https://github.com/LeoPani/blicsa/actions/workflows/ci.yml) |
 | 9 | Diretrizes de contribuição | ✅ | `CONTRIBUTING.md` |
 | 10 | Código de conduta | ✅ | `CODE_OF_CONDUCT.md` (ver item 2b) |
 | 11 | Canal para reportar problemas | ✅ | GitHub Issues, descrito no `CONTRIBUTING.md` e no [FAQ](faq.md) |
@@ -46,45 +46,37 @@ Legenda: **✅ atendido** · **⏳ pendente** · **➖ não aplicável**
 
 | # | requisito | estado | observação |
 |---|---|---|---|
-| 20 | `CITATION.cff` válido | ⏳ | existe, mas declara `version: "2.0-upgrade"` — a **quinta** declaração de versão em desacordo (ver Bloqueio). Também traz o autor como `Pani, Leo`, enquanto os commits usam `Leonardo Paniago`; e falta ORCID |
+| 20 | `CITATION.cff` válido | ✅ | versão `2.0.0`, autor `Paniago, Leonardo`, licença MIT, palavras-chave. Teste automatizado impede divergir de `main.py::__version__`. **Falta o ORCID**, que só Leonardo pode informar |
 | 21 | Arquivo `paper.md` com o artigo | ⏳ | **não escrito.** É o entregável central da submissão e depende de decisão de autoria |
 | 22 | `paper.bib` com as referências | ⏳ | as referências já estão em [`metodos.md`](metodos.md) e podem ser convertidas |
-| 23 | Release versionada com tag | ⏳ | ver "Bloqueio" abaixo |
-| 24 | DOI de arquivamento (Zenodo/figshare) | ⏳ | depende do item 23 |
+| 23 | Release versionada com tag | ✅ | `v2.0.0` — decisão de Leonardo em 04/08 (ver "Numeração" abaixo) |
+| 24 | DOI de arquivamento (Zenodo/figshare) | ⏳ | integração do Zenodo precisa ser ativada **antes** de publicar a release |
 | 25 | ORCID do autor de correspondência | ⏳ | precisa ser informado por Leonardo |
 | 26 | Autoria substancial declarada | ⏳ | decisão de Leonardo |
 
 ---
 
-## Bloqueio para os itens 23–24: a numeração de versão está inconsistente
+## Numeração de versão — resolvida em 04/08
 
-A tag `v1.0.0` **já existe localmente**, apontando para `e3b4851` de **2026-07-03**, 105
-commits atrás do estado atual, e **nunca foi enviada ao remoto**. Enquanto isso o remoto já
-tem `v1.1.1-beta`, que é semanticamente **posterior** à v1.0.0.
+**Decisão: `v2.0.0`.** Número público não regride, e as mudanças justificam o salto maior
+(Python 3.11+, clusterização determinística alterando resultados de projetos antigos, busca
+reescrita). A tag local obsoleta `v1.0.0` — que apontava para um commit de 03/07, 105 commits
+atrás, e nunca fora publicada — foi apagada.
 
-Declarações de versão em desacordo no código:
+Como estava antes, com **cinco** declarações divergentes:
 
 | onde | diz |
 |---|---|
-| `main.py:7` (`__version__`) | `1.1.0-beta` |
-| `main.py:615` (rodapé da barra lateral) | `v3.0 • Blicsa Engine` |
-| `main.py:799` (janela "Sobre") | `v3.0` |
-| `CHANGELOG.md` (última entrada) | `0.9.0` |
-| `CITATION.cff` | `2.0-upgrade` |
-| tags locais | `v0.9.0`, `v1.0.0`, `v1.1.0-beta`, `v1.1.1-beta` |
-| tags no remoto | `v0.9.0`, `v1.1.1-beta` |
+| onde | dizia | agora |
+|---|---|---|
+| `main.py::__version__` | `1.1.0-beta` | **`2.0.0`** — fonte única |
+| rodapé da barra lateral | `v3.0 • Blicsa Engine` | derivado de `__version__` |
+| janela "Sobre" (2 pontos) | `v3.0` | derivado de `__version__` |
+| `--version` | `v3.0-upgrade` | derivado de `__version__` |
+| `CHANGELOG.md` | `0.9.0` | `2.0.0` |
+| `CITATION.cff` | `2.0-upgrade` | `2.0.0` |
 
-Publicar uma release `v1.0.0` agora exigiria **mover uma tag existente** e **regredir** em
-relação à `v1.1.1-beta` já pública. Como o DOI do Zenodo e o hash do INPI congelam exatamente
-a versão publicada, a escolha do número é decisão de Leonardo, não do processo de build.
-
-**Opções, para decidir:**
-
-- **(a)** apagar a tag local `v1.0.0` (nunca publicada) e recriá-la no commit atual — assume
-  que a numeração recomeça e que as tags `beta` foram experimentos;
-- **(b)** publicar como **`v2.0.0`**, respeitando a `v1.1.1-beta` já pública;
-- **(c)** publicar como **`v1.2.0`**, tratando as `beta` como a linha corrente.
-
-Em qualquer caso, as quatro declarações de versão no código precisam passar a concordar entre
-si e com a tag — inclusive o `v3.0` do rodapé, que não corresponde a nenhuma versão que já
-existiu.
+O `v3.0` não correspondia a nenhuma versão que tivesse existido — e aparecia nas capturas de
+tela da documentação. Dois testes automatizados agora impedem a divergência: um recusa
+literal de versão solto em `main.py`, outro exige que `CITATION.cff` concorde com
+`__version__`.

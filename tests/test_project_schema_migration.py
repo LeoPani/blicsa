@@ -259,3 +259,55 @@ def test_acessos_a_year_em_main_estao_guardados():
     assert not desprotegidos, (
         f"acesso a df[\"year\"] sem guarda nas linhas {desprotegidos} de main.py — "
         'preceda com `if "year" in df.columns`')
+
+
+# ── Versão do app: uma fonte só ───────────────────────────────────────────────────
+
+def test_versao_tem_fonte_unica_e_nada_hardcoded():
+    """Havia CINCO declarações independentes de versão, três delas dizendo `v3.0` — um
+    número que nunca existiu e que aparecia nas capturas de tela da documentação.
+
+    Agora `main.py::__version__` é a fonte, e rodapé, janela "Sobre" e `--version` derivam
+    dela. Este teste impede que um literal novo entre."""
+    import ast
+    import re
+
+    raiz = Path(__file__).parent.parent
+    fonte = (raiz / "main.py").read_text(encoding="utf-8")
+
+    versao = None
+    for no in ast.parse(fonte).body:
+        if isinstance(no, ast.Assign) and getattr(no.targets[0], "id", "") == "__version__":
+            versao = no.value.value
+    assert versao, "__version__ sumiu de main.py"
+    assert re.fullmatch(r"\d+\.\d+\.\d+", versao), f"versão fora de semver: {versao!r}"
+
+    # Nenhum literal de versão solto no código (comentários não contam).
+    soltos = []
+    for i, linha in enumerate(fonte.splitlines(), 1):
+        codigo = linha.split("#", 1)[0]
+        if re.search(r'["\']v\d+\.\d+', codigo):
+            soltos.append(i)
+    assert not soltos, f"versão hardcoded nas linhas {soltos} de main.py — use __version__"
+
+
+def test_citation_cff_concorda_com_a_versao_do_app():
+    """O `CITATION.cff` alimenta o botão "Cite this repository" do GitHub e o registro do
+    Zenodo. Divergir da versão publicada gera citação errada no DOI."""
+    import ast
+    import re
+
+    raiz = Path(__file__).parent.parent
+    fonte = (raiz / "main.py").read_text(encoding="utf-8")
+    versao = next(no.value.value for no in ast.parse(fonte).body
+                  if isinstance(no, ast.Assign)
+                  and getattr(no.targets[0], "id", "") == "__version__")
+
+    cff = (raiz / "CITATION.cff").read_text(encoding="utf-8")
+    m = re.search(r'^version:\s*"?([^"\n]+)"?', cff, re.M)
+    assert m, "CITATION.cff sem campo version"
+    assert m.group(1).strip() == versao, (
+        f"CITATION.cff diz {m.group(1).strip()!r}, main.py diz {versao!r}")
+
+    assert re.search(r'family-names:\s*"?Paniago', cff), "autor incorreto no CITATION.cff"
+    assert re.search(r"^license:\s*MIT", cff, re.M), "licença ausente no CITATION.cff"
