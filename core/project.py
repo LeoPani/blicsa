@@ -16,6 +16,67 @@ logger = logging.getLogger("blicsa.project")
 
 CURRENT_MANIFEST_VERSION = "1.0"
 
+#: Schema canônico de um registro, com o valor "vazio" de cada coluna.
+#:
+#: É o mesmo formato que os providers produzem (`_normalize_work`, `_record_from_medline`).
+#: Existe aqui porque um `.blicsa` salvo por uma versão antiga do app **não** tem
+#: necessariamente todas estas colunas, e o resto do código as acessa direto — `df["keywords"]`
+#: levanta `KeyError` e o cálculo de rede morre com uma mensagem de uma palavra só.
+SCHEMA_REGISTRO: dict[str, object] = {
+    "authors": "", "title": "", "year": 0, "source": "", "keywords": "",
+    "abstract": "", "citations": 0, "doi": "", "references": "", "origin": "",
+    "language": "", "is_oa": False, "oa_url": "",
+}
+
+#: Colunas que precisam ser numéricas: o filtro de período faz `df["year"] >= n`, que
+#: compara string com int e estoura se a coluna vier como texto.
+COLUNAS_NUMERICAS = ("year", "citations")
+
+
+def normalize_dataframe(df: pd.DataFrame) -> pd.DataFrame:
+    """Garante o schema canônico num DataFrame vindo de qualquer versão do app.
+
+    Preenche coluna ausente com o vazio do tipo e força `year`/`citations` a numérico.
+    **Não descarta colunas extras** — `language_source`, por exemplo, existe em projetos de
+    julho e não custa nada manter.
+
+    Por que na carga e não em cada uso: os acessos diretos a coluna estão espalhados por
+    `matrix_builders`, `nlp`, `map_animation` e `main`. Reparar num ponto é o que torna a
+    retrocompatibilidade uma propriedade do arquivo carregado, e não uma lembrança de quem
+    escreve a próxima função que lê um campo.
+    """
+    if df is None:
+        return df
+    if df.empty and not len(df.columns):
+        # DataFrame vazio ganha o schema mesmo assim: código que faz `df["year"]` numa
+        # busca sem resultado quebraria igual.
+        return pd.DataFrame({c: pd.Series(dtype="int64" if c in COLUNAS_NUMERICAS
+                                          else ("bool" if isinstance(v, bool) else "object"))
+                             for c, v in SCHEMA_REGISTRO.items()})
+
+    faltando = [c for c in SCHEMA_REGISTRO if c not in df.columns]
+    for coluna in faltando:
+        df[coluna] = SCHEMA_REGISTRO[coluna]
+    if faltando:
+        logger.warning("[Project] schema antigo: %d coluna(s) ausente(s) preenchida(s) — %s",
+                       len(faltando), ", ".join(faltando))
+
+    for coluna in COLUNAS_NUMERICAS:
+        df[coluna] = pd.to_numeric(df[coluna], errors="coerce").fillna(0).astype("int64")
+
+    # `is_oa` vindo como "true"/"false" de JSON antigo não pode virar bool truthy sempre.
+    if df["is_oa"].dtype == object:
+        df["is_oa"] = df["is_oa"].map(
+            lambda v: str(v).strip().lower() in ("true", "1", "sim", "yes") if isinstance(v, str)
+            else bool(v)).fillna(False)
+
+    # Texto ausente vira string vazia; `NaN` num campo de texto vira "nan" ao virar str.
+    for coluna, vazio in SCHEMA_REGISTRO.items():
+        if isinstance(vazio, str):
+            df[coluna] = df[coluna].fillna("").astype(str).replace({"nan": "", "None": ""})
+
+    return df
+
 # ── Projeto = PASTA (~/Blicsa/projects/<slug>/) ─────────────────────────────
 #   project.blicsa   snapshot salvo (formato ZIP atual, intocado)
 #   backlog.jsonl    APPEND-ONLY, uma linha JSON por ação (fora do ZIP de
@@ -229,8 +290,8 @@ def load_blicsa_project(path: str) -> dict:
 
         # Version Migration Hook
         if version != CURRENT_MANIFEST_VERSION:
-            print(f"[Project] Migrating project version from {version} to {CURRENT_MANIFEST_VERSION}")
-            # Insert migrations here if schema ever changes
+            logger.info("[Project] migrando projeto da versão %s para %s",
+                        version, CURRENT_MANIFEST_VERSION)
 
         # Read Config
         if "config.json" in zf.namelist():
@@ -241,7 +302,12 @@ def load_blicsa_project(path: str) -> dict:
             import io
             compressed_df = zf.read("dataset.json.gz")
             df_json = gzip.decompress(compressed_df).decode("utf-8")
-            result["df"] = pd.read_json(io.StringIO(df_json), orient="records")
+            # A normalização vale para QUALQUER versão, não só quando o manifesto diverge:
+            # os projetos de 30/07 declaram `version: 3` e mesmo assim vieram com uma coluna
+            # só. Confiar no número da versão para decidir se migra é como confiar no
+            # rótulo em vez de olhar a caixa.
+            result["df"] = normalize_dataframe(
+                pd.read_json(io.StringIO(df_json), orient="records"))
 
         # Read Layout
         if "layout.json" in zf.namelist():

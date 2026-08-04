@@ -175,6 +175,39 @@ CASOS = [
             alvo = PUBMED_MAX_FETCHABLE""",
      """            self.truncated_by_api = False""",
      "tests/test_pubmed_limits.py::test_fronteira_exata_do_teto"),
+
+    # ── Retrocompatibilidade de projetos .blicsa antigos ──
+    ("normalização some da carga (volta o KeyError 'keywords')",
+     "core/project.py",
+     """            result["df"] = normalize_dataframe(
+                pd.read_json(io.StringIO(df_json), orient="records"))""",
+     """            result["df"] = pd.read_json(io.StringIO(df_json), orient="records")""",
+     "tests/test_project_schema_migration.py::test_calculo_de_rede_nao_levanta_keyerror"),
+
+    ("colunas ausentes deixam de ser preenchidas",
+     "core/project.py",
+     """    for coluna in faltando:
+        df[coluna] = SCHEMA_REGISTRO[coluna]""",
+     "    pass",
+     "tests/test_project_schema_migration.py::test_projeto_antigo_carrega_com_schema_completo"),
+
+    ("year deixa de ser forçado a numérico",
+     "core/project.py",
+     """        df[coluna] = pd.to_numeric(df[coluna], errors="coerce").fillna(0).astype("int64")""",
+     "        pass",
+     "tests/test_project_schema_migration.py::test_ano_como_texto_ou_lixo_vira_numero"),
+
+    ("is_oa em texto volta a ser sempre verdadeiro",
+     "core/project.py",
+     """    if df["is_oa"].dtype == object:""",
+     "    if False:",
+     "tests/test_project_schema_migration.py::test_is_oa_em_texto_vira_booleano_correto"),
+
+    ("NaN volta a virar a palavra 'nan' na UI",
+     "core/project.py",
+     """            df[coluna] = df[coluna].fillna("").astype(str).replace({"nan": "", "None": ""})""",
+     "            pass",
+     "tests/test_project_schema_migration.py::test_nan_em_campo_de_texto_nao_vira_a_palavra_nan"),
 ]
 
 
