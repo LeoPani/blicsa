@@ -1,44 +1,56 @@
-import os
-import time
-import subprocess
-from PIL import ImageGrab
-import threading
+#!/usr/bin/env python3
+"""Captura o chat da IA em streaming — pela JANELA do app.
 
-def capture():
-    # Start the app
-    proc = subprocess.Popen(["python3", "main.py"], env=os.environ.copy())
-    
-    # Wait for app to load
-    time.sleep(5)
-    
-    # We need to simulate typing and sending. But pyautogui might not be installed.
-    # Instead, we can just patch main.py temporarily to start with a chat, OR
-    # we can use AppleScript to send keystrokes to the Python app!
-    
-    applescript = """
-    tell application "System Events"
-        # Type a question
-        keystroke "Qual a tendência de publicações sobre IA?"
-        delay 1
-        keystroke return
-    end tell
-    """
-    
-    subprocess.run(["osascript", "-e", applescript])
-    
-    # Wait for AI streaming to finish
-    time.sleep(15)
-    
-    # Ensure evidence directory exists
-    os.makedirs("docs/evidence", exist_ok=True)
-    
-    # Capture the screen (using screencapture command)
-    # We will just capture the whole screen or the active window
-    subprocess.run(["screencapture", "-x", "-m", "docs/evidence/chat_streaming_full.png"])
-    
-    print("Screenshot saved to docs/evidence/chat_streaming_full.png")
-    
-    proc.terminate()
-    
+A versão anterior terminava em `screencapture -x -m`, que grava o **display inteiro**. Foi
+essa linha que produziu a captura com o Dock e a barra de menu do autor, commitada e depois
+removida do histórico do repositório. `-m` e `-R` não aparecem mais aqui: a captura é por
+`CGWindowID` (`capture_window.py`), que grava a janela e nada além dela.
+
+Uso:
+    python3 scripts/capture_chat.py ["pergunta a digitar"]
+"""
+
+import os
+import subprocess
+import sys
+import time
+from pathlib import Path
+
+RAIZ = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(RAIZ))
+
+from scripts.capture_window import CapturaError, ativa_app, captura  # noqa: E402
+
+PERGUNTA_PADRAO = "Qual a tendência de publicações sobre IA?"
+DESTINO = RAIZ / "docs" / "evidence" / "chat_streaming_full.png"
+
+
+def main() -> int:
+    pergunta = sys.argv[1] if len(sys.argv) > 1 else PERGUNTA_PADRAO
+
+    proc = subprocess.Popen([sys.executable, "main.py"], cwd=str(RAIZ), env=os.environ.copy())
+    try:
+        time.sleep(6)
+        ativa_app()
+        subprocess.run(["osascript", "-e",
+                        f'tell application "System Events" to keystroke "{pergunta}"'],
+                       capture_output=True)
+        time.sleep(1)
+        subprocess.run(["osascript", "-e",
+                        'tell application "System Events" to keystroke return'],
+                       capture_output=True)
+        time.sleep(15)          # streaming da resposta
+
+        try:
+            caminho = captura(DESTINO)
+        except CapturaError as e:
+            print(f"FALHOU: {e}", file=sys.stderr)
+            return 1
+        print(f"OK: {caminho}")
+        return 0
+    finally:
+        proc.terminate()
+
+
 if __name__ == "__main__":
-    capture()
+    sys.exit(main())

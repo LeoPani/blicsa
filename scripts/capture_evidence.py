@@ -1,63 +1,74 @@
+#!/usr/bin/env python3
+"""Sobe o app numa tela específica e captura a JANELA.
+
+Histórico desta correção: a versão anterior usava `ImageGrab.grab(bbox=...)`, ou seja,
+capturava um **retângulo de coordenadas da tela**. Isso grava o que estiver naquela área — se
+outra janela estiver por cima, é ela que entra na imagem. Foi assim que uma captura deste
+repositório registrou o navegador do autor, e outra a tela inteira com o Dock. A captura por
+`CGWindowID` (em `capture_window.py`) não tem esse modo de falha.
+
+O fallback antigo para "despejo da árvore de widgets" também saiu: ele fazia a falha parecer
+sucesso, gerando um `.txt` no lugar da evidência que ninguém conferia.
+
+Uso:
+    python3 scripts/capture_evidence.py <fase> <tela>      # tela: home|corpus|analises|mapa
+"""
+
 import os
-import sys
-import time
-import threading
-from PIL import ImageGrab
 import subprocess
+import sys
+import threading
+import time
+from pathlib import Path
 
-def dump_widget_tree(widget, file, indent=0):
-    try:
-        geom = widget.winfo_geometry()
-        w_class = widget.winfo_class()
-        file.write(f"{'  ' * indent}{w_class} {geom}\n")
-    except Exception:
-        pass
-    for child in widget.winfo_children():
-        dump_widget_tree(child, file, indent + 1)
+RAIZ = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(RAIZ))
 
-def capture_screen(app, phase, screen_name, delay=2.0):
-    def _capture():
-        time.sleep(delay)
-        os.makedirs("docs/evidence", exist_ok=True)
+from scripts.capture_window import CapturaError, captura  # noqa: E402
+
+ABAS = {"corpus": "corpus", "analises": "viz", "mapa": "viz", "home": None}
+
+
+def agenda_captura(app, destino: Path, atraso: float = 2.5):
+    """Captura fora da thread da UI e encerra o app — o mainloop precisa estar rodando."""
+    def _tirar():
+        time.sleep(atraso)
         try:
-            # Attempt to screenshot
-            x = app.winfo_rootx()
-            y = app.winfo_rooty()
-            w = app.winfo_width()
-            h = app.winfo_height()
-            img = ImageGrab.grab(bbox=(x, y, x+w, y+h))
-            img.save(f"docs/evidence/{phase}_{screen_name}.png")
-            print(f"Captured screenshot for {phase}_{screen_name}")
-        except Exception as e:
-            print(f"Screenshot failed: {e}. Falling back to widget dump.")
-            with open(f"docs/evidence/{phase}_{screen_name}.txt", "w") as f:
-                dump_widget_tree(app, f)
-            print(f"Dumped widget tree for {phase}_{screen_name}")
-        app.quit()
-    threading.Thread(target=_capture, daemon=True).start()
+            caminho = captura(destino)
+            print(f"OK: {caminho}")
+        except CapturaError as e:
+            # Falha ALTA: sem imagem é melhor do que com a imagem errada.
+            print(f"FALHOU: {e}", file=sys.stderr)
+            os._exit(1)
+        finally:
+            app.quit()
 
-if __name__ == "__main__":
-    if sys.platform.startswith("linux") and "DISPLAY" not in os.environ and "XVFB_RUN_CALLED" not in os.environ:
-        print("Linux without DISPLAY detected. Re-running under xvfb-run...")
+    threading.Thread(target=_tirar, daemon=True).start()
+
+
+def main() -> int:
+    if sys.platform.startswith("linux") and "DISPLAY" not in os.environ \
+            and "XVFB_RUN_CALLED" not in os.environ:
         os.environ["XVFB_RUN_CALLED"] = "1"
-        sys.exit(subprocess.call(["xvfb-run", "-a", sys.executable] + sys.argv))
+        return subprocess.call(["xvfb-run", "-a", sys.executable] + sys.argv)
+
+    fase = sys.argv[1] if len(sys.argv) > 1 else "fase"
+    tela = sys.argv[2] if len(sys.argv) > 2 else "home"
 
     import importlib.util
-    spec = importlib.util.spec_from_file_location("main", "main.py")
+    spec = importlib.util.spec_from_file_location("main", str(RAIZ / "main.py"))
     main_mod = importlib.util.module_from_spec(spec)
     sys.modules["main"] = main_mod
     spec.loader.exec_module(main_mod)
-    
+
     app = main_mod.BlicsaApp()
-    
-    phase = sys.argv[1] if len(sys.argv) > 1 else "phaseX"
-    screen = sys.argv[2] if len(sys.argv) > 2 else "unknown"
-    
-    # Simple navigation logic if needed
-    if screen == "corpus":
-        app._switch_tab("corpus")
-    elif screen == "analises":
-        app._switch_tab("viz")
-        
-    capture_screen(app, phase, screen)
+    if ABAS.get(tela):
+        app._switch_tab(ABAS[tela])
+
+    agenda_captura(app, RAIZ / "docs" / "evidence" / f"{fase}_{tela}.png")
     app.mainloop()
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())
