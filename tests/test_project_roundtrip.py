@@ -251,3 +251,83 @@ def test_duas_voltas_seguidas_nao_degradam(tmp_path, projeto_completo):
     assert set(segunda["G"].nodes()) == set(primeira["G"].nodes())
     for no, dados in primeira["G"].nodes(data=True):
         assert segunda["G"].nodes[no] == dados
+
+
+# ── Ida e volta de TIPOS: a família de defeito que já mordeu duas vezes ────────────
+
+def test_tipo_de_cada_campo_sobrevive_a_ida_e_volta(tmp_path, projeto_completo):
+    """Genérico: para CADA campo do schema, o tipo tem que voltar o mesmo que entrou.
+
+    Dois defeitos reais desta família já foram corrigidos separadamente:
+
+    * `is_oa` gravado como a string `"false"` — e `bool("false")` é `True`, então **todo
+      registro antigo aparecia como Open Access**;
+    * id de cluster `int` virando `str` ao passar pelo JSON, o que fazia a marcação de IA
+      sumir depois de salvar e reabrir.
+
+    Os dois passaram por revisão. Um teste por campo não teria pego o segundo, porque
+    ninguém pensa em escrever um teste para o campo que ainda não quebrou — daí este ser
+    varredura sobre o schema inteiro, e não uma lista escrita à mão.
+    """
+    df_original = projeto_completo[0]
+    _, lido = _salva_e_recarrega(tmp_path, projeto_completo)
+    df_lido = lido["df"]
+
+    divergencias = []
+    for coluna in SCHEMA_REGISTRO:
+        for i in range(len(df_original)):
+            antes, depois = df_original.loc[i, coluna], df_lido.loc[i, coluna]
+            # `bool` é subclasse de `int` em Python: comparar `type()` e não `isinstance`,
+            # senão um bool virando 0/1 passaria despercebido.
+            if type(antes) is not type(depois):
+                divergencias.append(
+                    f"{coluna}[{i}]: {type(antes).__name__} → {type(depois).__name__}")
+    assert not divergencias, "tipos degradaram na ida e volta:\n  " + "\n  ".join(divergencias)
+
+
+def test_valores_falsy_nao_viram_vazio_generico(tmp_path, projeto_completo):
+    """Adversarial: `0`, `False` e `""` são todos falsy, e um `or ""` mal colocado os
+    achata no mesmo valor. Zero citações é um dado; ausência de citações não é."""
+    df, config, positions, G, labels, searches = projeto_completo
+    df = df.copy()
+    df.loc[0, "citations"] = 0
+    df.loc[0, "year"] = 0
+    df.loc[0, "is_oa"] = False
+    df.loc[0, "abstract"] = ""
+
+    _, lido = _salva_e_recarrega(tmp_path, (df, config, positions, G, labels, searches))
+    linha = lido["df"].loc[0]
+
+    assert linha["citations"] == 0 and type(linha["citations"]) is type(df.loc[0, "citations"])
+    assert linha["year"] == 0
+    assert linha["is_oa"] is False or linha["is_oa"] == False   # noqa: E712
+    assert type(linha["is_oa"]) is type(df.loc[0, "is_oa"]), "bool degradou"
+    assert linha["abstract"] == ""
+
+
+def test_tipos_das_chaves_de_cluster_e_origem_sobrevivem(tmp_path, projeto_completo):
+    """O outro defeito da família: id inteiro virando texto no JSON."""
+    df, config, positions, G, labels, searches = projeto_completo
+    origens = {0: "ia", 1: "usuario"}
+    destino = tmp_path / "origens.blicsa"
+    save_blicsa_project(str(destino), df, config, positions, G, labels, searches,
+                        cluster_label_origins=origens)
+    lido = load_blicsa_project(str(destino))
+
+    assert lido["cluster_labels"] == labels
+    assert all(type(k) is int for k in lido["cluster_labels"]), "id de cluster degradou"
+    assert lido["cluster_label_origins"] == origens
+    assert all(type(k) is int for k in lido["cluster_label_origins"]), "id da origem degradou"
+
+
+def test_projeto_sem_origens_abre_com_dicionario_vazio(tmp_path, projeto_completo):
+    """Retrocompatibilidade: projeto salvo antes deste campo abre sem marcar nada como IA.
+
+    Na dúvida, NÃO marcar: apontar como máquina um rótulo que a pessoa escreveu a faria
+    desconfiar do próprio trabalho."""
+    _, lido = _salva_e_recarrega(tmp_path, projeto_completo)   # salvo sem origens
+    assert lido["cluster_label_origins"] == {}
+
+    from ui.ai_marking import rotulo_cluster_e_de_ia
+    for cid in lido["cluster_labels"]:
+        assert rotulo_cluster_e_de_ia(cid, lido["cluster_label_origins"]) is False

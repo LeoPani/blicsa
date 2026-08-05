@@ -124,6 +124,10 @@ class BlicsaApp(ctk.CTk):
         self._candidate_counts: Counter          = Counter()
         self._candidate_scores: dict             = {}
         self._cluster_labels: dict[int, str]     = {}
+        #: Origem de cada rótulo: "ia" ou "usuario". Rótulo editado à mão DEIXA de ser
+        #: conteúdo de IA — marcar o texto que a pessoa escreveu seria tão errado quanto
+        #: deixar de marcar o que a máquina escreveu.
+        self._cluster_label_origins: dict = {}
         self._max_edge_weight: float             = 1.0
 
         # Configuration variables
@@ -970,16 +974,44 @@ class BlicsaApp(ctk.CTk):
             text_color="#000" if color == ACCENT else "white",
             command=cmd, **kw)
 
-    def _add_blink_message(self, role, text=""):
+    def _add_blink_message(self, role, text="", gerado_por_ia=True):
         from core.markdown_parser import configure_markdown_tags, insert_markdown
         row = ctk.CTkFrame(self._research_chat_history_main, fg_color="transparent")
         row.pack(fill="x", pady=5)
         
         from ui.design_tokens import BLUE, WHITE_CARD, INK
+        from ui.ai_marking import LARGURA_FAIXA, YELLOW as _AMARELO_IA, selo_ia
+
+        # Toda fala do assistente é conteúdo gerado por IA — e este método é o funil por onde
+        # passam o chat, os insights do corpus, as obras seminais, a análise temática, o
+        # Sankey, a historiografia e o assistente de importação. Marcar aqui cobre os sete
+        # sem espalhar a convenção por sete lugares que podem divergir.
+        # `gerado_por_ia=False` para texto do PRÓPRIO app (saudação, avisos): ele vem do
+        # catálogo i18n, escrito por quem desenvolveu, e marcá-lo como IA diria ao usuário
+        # que um modelo escreveu o que nós escrevemos. Diluir o sinal nos dois sentidos é
+        # igualmente ruim.
+        e_ia = role == "assistant" and gerado_por_ia
         bubble = ctk.CTkFrame(row, fg_color=BLUE if role == "user" else WHITE_CARD, corner_radius=0, border_width=0 if role == "user" else 2, border_color=INK)
         bubble.pack(side="right" if role == "user" else "left", padx=10, pady=2)
-        
-        tb = ctk.CTkTextbox(bubble, wrap="word", font=ctk.CTkFont(size=14), fg_color="transparent", text_color=WHITE_CARD if role == "user" else INK, corner_radius=0, width=550)
+
+        if e_ia:
+            # Faixa amarela à esquerda + selo textual. A cor NUNCA vem sozinha: em impressão
+            # P&B e para daltônicos, o selo é a informação que sobra.
+            # `fill="y"` sem `expand`: a faixa acompanha a altura do conteúdo em vez de
+            # esticar o bloco. Com `expand=True` o frame reservava a altura padrão do
+            # CTkFrame e deixava um vão branco embaixo do texto.
+            faixa = ctk.CTkFrame(bubble, width=LARGURA_FAIXA, height=1,
+                                 fg_color=_AMARELO_IA, corner_radius=0)
+            faixa.pack(side="left", fill="y", expand=False)
+            faixa.pack_propagate(False)
+            interno = ctk.CTkFrame(bubble, fg_color="transparent")
+            interno.pack(side="left", fill="both", expand=True)
+            selo_ia(interno).pack(anchor="w", padx=10, pady=(8, 0))
+            recipiente = interno
+        else:
+            recipiente = bubble
+
+        tb = ctk.CTkTextbox(recipiente, wrap="word", font=ctk.CTkFont(size=14), fg_color="transparent", text_color=WHITE_CARD if role == "user" else INK, corner_radius=0, width=550, height=42)
         tb.pack(padx=10, pady=10)
         
         if role == "assistant":
@@ -1026,7 +1058,7 @@ class BlicsaApp(ctk.CTk):
             self._blink_onboarding.destroy()
             self._blink_onboarding = None
         self._research_chat_history_main.pack(fill="both", expand=True, pady=(0, 20))
-        self._add_blink_message("assistant", t("blink.saudacao"))
+        self._add_blink_message("assistant", t("blink.saudacao"), gerado_por_ia=False)
 
     def _build_tab_home(self) -> ctk.CTkFrame:
         from ui.design_tokens import WHITE_CARD, MUTED, INK, RED, RED_HOV, PAPER, BLUE, ACCENT, ACCENT_HOV
@@ -1086,7 +1118,7 @@ class BlicsaApp(ctk.CTk):
         if not self._ia_configurada():
             self._mostrar_onboarding_ia()
         else:
-            self._add_blink_message("assistant", t("blink.saudacao"))
+            self._add_blink_message("assistant", t("blink.saudacao"), gerado_por_ia=False)
 
         input_f = ctk.CTkFrame(chat_container, fg_color="transparent")
         input_f.pack(fill="x", pady=(0, 20))
@@ -4614,8 +4646,14 @@ class BlicsaApp(ctk.CTk):
                 ("Nós",       70,  "e"),
                 ("Top Termos / Autores", 450, "w"),
             ])
+            from ui.ai_marking import rotulo_cluster_e_de_ia
             for c in gen.get_cluster_report():
                 label = self._cluster_labels.get(c["cluster_id"], "—")
+                # O selo vai no TEXTO da célula: a Treeview do Tk não aceita faixa colorida
+                # por linha, e a marcação não pode depender de cor de qualquer forma.
+                if label != "—" and rotulo_cluster_e_de_ia(c["cluster_id"],
+                                                           self._cluster_label_origins):
+                    label = f"[{t('ai.badge')}] {label}"
                 self._rank_tree.insert("", "end", values=(
                     f"C{c['cluster_id']}",
                     label,
@@ -4855,6 +4893,7 @@ class BlicsaApp(ctk.CTk):
                 positions=self._positions,
                 G=self._generator.G if self._generator else None,
                 cluster_labels=self._cluster_labels,
+                cluster_label_origins=self._cluster_label_origins,
                 searches=getattr(self, "_searches", []),
                 thumbnail_path=thumbnail_path
             )
@@ -4944,6 +4983,7 @@ class BlicsaApp(ctk.CTk):
         # 3. Restore layout and generator
         self._positions = project_data.get("positions", {})
         self._cluster_labels = project_data.get("cluster_labels", {})
+        self._cluster_label_origins = project_data.get("cluster_label_origins", {})
         
         G = project_data.get("G")
         if G is not None:
@@ -5174,6 +5214,7 @@ class BlicsaApp(ctk.CTk):
             report = self._generator.get_cluster_report()
             labels = analyst.label_clusters(report, context=self._field_var.get())
             self._cluster_labels = labels
+            self._cluster_label_origins = {cid: "ia" for cid in labels}
 
             self.after(0, self._set_idle, f"{len(labels)} clusters nomeados")
             log.info(f"[IA] {len(labels)} clusters nomeados.\n")

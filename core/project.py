@@ -222,7 +222,8 @@ def save_blicsa_project(
     G: nx.Graph | None,
     cluster_labels: dict | None,
     searches: list | None = None,
-    thumbnail_path: str | None = None
+    thumbnail_path: str | None = None,
+    cluster_label_origins: dict | None = None,
 ):
     """Save full Blicsa project to a .blicsa ZIP archive."""
     manifest = {
@@ -272,6 +273,15 @@ def save_blicsa_project(
             serialized_clusters = {str(k): str(v) for k, v in cluster_labels.items()}
             zf.writestr("clusters.json", json.dumps(serialized_clusters, indent=2, ensure_ascii=False))
 
+        # Origem de cada rótulo ("ia" | "usuario"). Arquivo separado para que projeto salvo
+        # por versão anterior continue abrindo: entrada ausente vira dicionário vazio, e
+        # nenhum rótulo é marcado como IA — na dúvida, NÃO marcar (marcar texto do usuário
+        # como máquina o faria desconfiar do próprio trabalho).
+        if cluster_label_origins:
+            zf.writestr("cluster_origins.json",
+                        json.dumps({str(k): str(v) for k, v in cluster_label_origins.items()},
+                                   indent=2, ensure_ascii=False))
+
 
 def load_blicsa_project(path: str) -> dict:
     """Load full Blicsa project from a .blicsa ZIP archive, with version migration hook."""
@@ -280,7 +290,8 @@ def load_blicsa_project(path: str) -> dict:
         "config": {},
         "positions": {},
         "G": None,
-        "cluster_labels": {}
+        "cluster_labels": {},
+        "cluster_label_origins": {},
     }
 
     with zipfile.ZipFile(path, "r") as zf:
@@ -347,5 +358,9 @@ def load_blicsa_project(path: str) -> dict:
 
             result["cluster_labels"] = {_id_cluster(k): v
                                         for k, v in serialized_clusters.items()}
+
+        if "cluster_origins.json" in zf.namelist():
+            origens = json.loads(zf.read("cluster_origins.json").decode("utf-8"))
+            result["cluster_label_origins"] = {_id_cluster(k): v for k, v in origens.items()}
 
     return result

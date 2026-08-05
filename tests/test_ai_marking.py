@@ -212,3 +212,43 @@ def test_toda_funcao_de_ia_do_client_esta_no_inventario():
     doc = INVENTARIO.read_text(encoding="utf-8")
     faltando = sorted(f for f in geradoras if f not in doc)
     assert not faltando, f"funções de IA fora do inventário: {faltando}"
+
+
+# ── Texto do próprio app NÃO é conteúdo de IA ─────────────────────────────────────
+
+def test_saudacao_do_app_nao_e_marcada_como_ia():
+    """A saudação vem do catálogo i18n — foi escrita por quem desenvolveu, não por um modelo.
+
+    Marcá-la como IA dilui o sinal no sentido oposto ao usual: diz ao usuário que uma máquina
+    escreveu o que nós escrevemos. Descoberto ao capturar a evidência: o selo "IA" aparecia
+    sobre `blink.saudacao`.
+    """
+    fonte = (RAIZ / "main.py").read_text(encoding="utf-8")
+
+    assert "gerado_por_ia=True" in fonte, "o parâmetro de distinção sumiu da assinatura"
+    # Toda chamada que renderiza a saudação tem que desligar a marcação.
+    for linha in fonte.splitlines():
+        if 't("blink.saudacao")' in linha and "_add_blink_message" in linha:
+            assert "gerado_por_ia=False" in linha, (
+                f"saudação marcada como IA: {linha.strip()}")
+
+
+def test_resposta_do_modelo_continua_marcada():
+    """O outro lado da guarda: desligar a marcação para texto do app não pode desligá-la
+    para o que o modelo escreve — que é o caso que justifica a convenção inteira."""
+    import ast
+
+    fonte = (RAIZ / "main.py").read_text(encoding="utf-8")
+    arvore = ast.parse(fonte)
+    metodo = next(n for n in ast.walk(arvore)
+                  if isinstance(n, ast.FunctionDef) and n.name == "_add_blink_message")
+    # Os defaults casam com os ÚLTIMOS argumentos; pegar o primeiro Constant devolveria o
+    # default de `text` ("") em vez do de `gerado_por_ia`.
+    nomes = [a.arg for a in metodo.args.args]
+    defaults = dict(zip(nomes[-len(metodo.args.defaults):], metodo.args.defaults))
+    assert defaults["gerado_por_ia"].value is True, (
+        "o padrão tem que ser MARCAR: esquecer o parâmetro numa chamada nova não pode "
+        "deixar conteúdo de IA sem selo")
+
+    corpo = ast.get_source_segment(fonte, metodo)
+    assert 'role == "assistant" and gerado_por_ia' in corpo
