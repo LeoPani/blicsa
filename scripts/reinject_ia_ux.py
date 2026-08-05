@@ -68,6 +68,42 @@ CASOS = [
      "O Blicsa não cobra nada e não intermedia pagamento.",
      "Configure abaixo.",
      "tests/test_ai_onboarding.py::test_custo_zero_esta_declarado_nos_tres_idiomas"),
+    # ── Fase 2: amarelo como marcador de IA ──
+    ("amarelo volta para a paleta de clusters (dado)",
+     "ui/design_tokens.py",
+     'CLUSTER_PALETTE = ["#DF3117", "#1E4DA0", "#C97B2D",',
+     'CLUSTER_PALETTE = ["#DF3117", "#1E4DA0", "#F5BE00",',
+     "tests/test_ai_marking.py::test_paleta_de_clusters_nao_tem_amarelo"),
+
+    ("badge de citações volta a ser amarelo",
+     "ui/search_feed.py",
+     'text=f"★ {cites}", fg_color=INK, text_color=WHITE,',
+     'text=f"★ {cites}", fg_color="#F5BE00", text_color=INK,',
+     "tests/test_ai_marking.py::test_badge_de_citacoes_nao_e_amarelo"),
+
+    ("bloco de IA perde o selo textual (fica só a cor)",
+     "ui/ai_marking.py",
+     "        self.selo = selo_ia(cabecalho)\n        self.selo.pack(side=\"left\")",
+     "        pass",
+     "tests/test_ai_marking.py::test_marcacao_sempre_carrega_o_rotulo_textual"),
+
+    ("rótulo editado pelo humano volta a ser marcado como IA",
+     "ui/ai_marking.py",
+     '            return str(origens[chave] or "").lower() == "ia"',
+     '            return True',
+     "tests/test_ai_marking.py::test_rotulo_editado_pelo_humano_perde_a_marcacao_de_ia"),
+
+    ("export perde o prefixo [IA]",
+     "ui/ai_marking.py",
+     'return f"{PREFIXO_EXPORT} {titulo}".strip()',
+     'return titulo',
+     "tests/test_ai_marking.py::test_export_marca_secoes_com_prefixo"),
+
+    ("nota de rodapé do export some",
+     "ui/ai_marking.py",
+     '"dos dados do corpus. Confira antes de citar."',
+     '"dos dados do corpus."',
+     "tests/test_ai_marking.py::test_nota_de_rodape_pede_verificacao_antes_de_citar"),
 ]
 
 

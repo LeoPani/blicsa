@@ -136,7 +136,8 @@ class ArticleCard(ctk.CTkFrame):
             
         cites = record.get("citations", 0)
         if cites > 0:
-            ctk.CTkLabel(title_frame, text=f"★ {cites}", fg_color="#F5BE00", text_color=INK, font=ctk.CTkFont(size=11, weight="bold"), corner_radius=0).pack(side="left", padx=(0, 6))
+            # Contagem de citações é DADO da base — o oposto de conteúdo gerado. Sem amarelo.
+            ctk.CTkLabel(title_frame, text=f"★ {cites}", fg_color=INK, text_color=WHITE, font=ctk.CTkFont(size=11, weight="bold"), corner_radius=0).pack(side="left", padx=(0, 6))
             
         if record.get("is_oa"):
             ctk.CTkLabel(title_frame, text="OPEN ACCESS", fg_color="#7A9E7E", text_color=WHITE, font=ctk.CTkFont(size=11, weight="bold"), corner_radius=0).pack(side="left", padx=(0, 6))

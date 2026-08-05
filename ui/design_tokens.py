@@ -22,5 +22,8 @@ RED_HOV = RED_HOVER
 
 CORNER_RADIUS = 0
 SPACING_GRID = 8
-CLUSTER_PALETTE = ["#DF3117", "#1E4DA0", "#F5BE00", "#141414", "#7A9E7E", "#B65CA2", "#5CB0B8", "#C97B2D"]
+#: Cores dos clusters do mapa. **Sem amarelo de propósito**: nó do mapa é DADO, e o amarelo
+#: do design system significa "gerado por IA" (ver docs/inventario-ia.md). Um cluster amarelo
+#: seria lido como "este cluster foi gerado por IA", que é falso.
+CLUSTER_PALETTE = ["#DF3117", "#1E4DA0", "#C97B2D", "#141414", "#7A9E7E", "#B65CA2", "#5CB0B8", "#8A6FB0"]
 FONT_FAMILY = ("Archivo", "Segoe UI", "Helvetica")

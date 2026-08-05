@@ -613,7 +613,8 @@ class BlicsaApp(ctk.CTk):
         )
         self._status_lbl.grid(row=13, column=0, padx=(32, 16), pady=(0, 2), sticky="sew")
 
-        self._progress_bar = ctk.CTkProgressBar(sb, mode="indeterminate", height=5, progress_color=YELLOW, fg_color=PAPER, border_width=1, border_color=INK, corner_radius=0)
+        # BLUE, não YELLOW: progresso é estado da aplicação, não conteúdo gerado por IA.
+        self._progress_bar = ctk.CTkProgressBar(sb, mode="indeterminate", height=5, progress_color=BLUE, fg_color=PAPER, border_width=1, border_color=INK, corner_radius=0)
         self._progress_bar.grid(row=13, column=0, padx=16, pady=(0, 8), sticky="sew")
         self._progress_bar.grid_remove()
 
@@ -1541,8 +1542,9 @@ class BlicsaApp(ctk.CTk):
         self._btn(br, "📈  Tendências", self._open_trends,
                   color=INK, hover=INK_HOV, height=44).grid(
             row=1, column=1, padx=4, pady=(4, 0), sticky="ew")
+        # BLUE: a nuvem de palavras é DADO do corpus, não conteúdo gerado por IA.
         self._btn(br, "☁  Word Cloud", self._show_wordcloud,
-                  color=YELLOW, hover=YELLOW_HOV, height=44).grid(
+                  color=BLUE, hover=BLUE_HOV, height=44).grid(
             row=1, column=2, columnspan=2, padx=4, pady=(4, 0), sticky="ew")
 
         # Row 2 Actions

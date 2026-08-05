@@ -21,7 +21,7 @@ import matplotlib.patches as mpatches
 import matplotlib.colors as mc
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg, NavigationToolbar2Tk
 
-from ui.styles import get_color, SIDEBAR_BG, CONTENT_BG, CARD_BG, CARD2_BG, ACCENT, ACCENT_HOV, TEXT_MUTED, BLUE, YELLOW, INK, INK_HOV, BLUE_HOV, YELLOW_HOV, RED_HOV
+from ui.styles import get_color, RED, SIDEBAR_BG, CONTENT_BG, CARD_BG, CARD2_BG, ACCENT, ACCENT_HOV, TEXT_MUTED, BLUE, YELLOW, INK, INK_HOV, BLUE_HOV, YELLOW_HOV, RED_HOV
 from core.matrix_builders import CLUSTER_PALETTE
 
 class HoverTooltip:
@@ -150,7 +150,8 @@ class DedupPreviewDialog(ctk.CTkToplevel):
                          ).pack(side="left")
             if is_low:
                 # Marcador CHAPADO amarelo do design system (canto reto, sem sombra).
-                ctk.CTkLabel(meta, text=t("dedup.low_confidence"), fg_color=YELLOW,
+                # RED: é aviso sobre a qualidade do DADO, não conteúdo de IA.
+                ctk.CTkLabel(meta, text=t("dedup.low_confidence"), fg_color=RED,
                              text_color=INK, corner_radius=0,
                              font=ctk.CTkFont(size=9, weight="bold")
                              ).pack(side="left", padx=(8, 0))
