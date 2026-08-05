@@ -684,7 +684,7 @@ class BlicsaApp(ctk.CTk):
         
         dlg = tk.Toplevel(self)
         dlg.title(t("menu_settings"))
-        dlg.geometry("400x300")
+        dlg.geometry("400x430")
         dlg.configure(bg="#F6F4EE")
         dlg.overrideredirect(True)
         dlg.attributes("-topmost", True)
@@ -745,6 +745,47 @@ class BlicsaApp(ctk.CTk):
             update_settings(openalex_api_key=chave_var.get().strip())
 
         chave_var.trace_add("write", _salvar_chave)
+
+        # ── IA: estado da chave + remoção + link para o tutorial ──────────────
+        # A chave NUNCA é exibida inteira aqui: capturas de tela dos Ajustes viram
+        # documentação, e uma chave legível numa imagem é uma chave comprometida.
+        from ai.onboarding import URL_CONSOLE_GROQ, mascarar
+        from core.settings import get_api_key, set_api_key
+
+        tk.Label(content, text=t("settings.ai_section"), font=("Arial", 12, "bold"),
+                 bg="#F6F4EE", fg="#141414").pack(pady=(16, 2))
+
+        estado_ia = tk.Label(content, font=("Arial", 10), bg="#F6F4EE", fg="#8A877F")
+        estado_ia.pack()
+
+        def _atualizar_estado_ia():
+            atual = (get_api_key() or "").strip()
+            estado_ia.config(text=t("ai.key_saved", chave=mascarar(atual)) if atual
+                             else t("ai.key_none"))
+            botao_remover.config(state="normal" if atual else "disabled")
+
+        def _remover_chave():
+            set_api_key("")
+            _atualizar_estado_ia()
+            # Volta o Blink ao onboarding: sem isso o chat ficaria aberto sem chave e
+            # falharia na primeira pergunta.
+            if hasattr(self, "_mostrar_onboarding_ia"):
+                try:
+                    self._mostrar_onboarding_ia()
+                except Exception:
+                    pass
+
+        linha_ia = tk.Frame(content, bg="#F6F4EE")
+        linha_ia.pack(pady=(6, 0))
+        botao_remover = tk.Button(linha_ia, text=t("ai.key_remove"), command=_remover_chave,
+                                  bg="#F6F4EE", fg="#141414", relief="flat",
+                                  highlightbackground="#141414", bd=2)
+        botao_remover.pack(side="left", padx=4)
+        tk.Button(linha_ia, text=t("ai.step1_button"),
+                  command=lambda: __import__("webbrowser").open(URL_CONSOLE_GROQ),
+                  bg="#F6F4EE", fg="#141414", relief="flat",
+                  highlightbackground="#141414", bd=2).pack(side="left", padx=4)
+        _atualizar_estado_ia()
 
         close = tk.Button(content, text=t("settings.ok"),
                           command=lambda: (_salvar_chave(), dlg.destroy()),
@@ -963,6 +1004,29 @@ class BlicsaApp(ctk.CTk):
         return tb, update_height, row
 
     # ── Tab: Importação ────────────────────────────────────────────────
+    def _ia_configurada(self) -> bool:
+        from ai.onboarding import tem_chave
+        return tem_chave()
+
+    def _mostrar_onboarding_ia(self):
+        """Troca o histórico do chat pelo painel de onboarding."""
+        from ui.ai_onboarding_panel import AIOnboardingPanel
+
+        if getattr(self, "_blink_onboarding", None) is not None:
+            return
+        self._research_chat_history_main.pack_forget()
+        self._blink_onboarding = AIOnboardingPanel(
+            self._blink_chat_container, on_saved=self._ocultar_onboarding_ia)
+        self._blink_onboarding.pack(fill="both", expand=True, pady=(0, 20))
+
+    def _ocultar_onboarding_ia(self):
+        """Chave salva: some o onboarding, volta o chat com a saudação."""
+        if getattr(self, "_blink_onboarding", None) is not None:
+            self._blink_onboarding.destroy()
+            self._blink_onboarding = None
+        self._research_chat_history_main.pack(fill="both", expand=True, pady=(0, 20))
+        self._add_blink_message("assistant", t("blink.saudacao"))
+
     def _build_tab_home(self) -> ctk.CTkFrame:
         from ui.design_tokens import WHITE_CARD, MUTED, INK, RED, RED_HOV, PAPER, BLUE, ACCENT, ACCENT_HOV
         from PIL import Image
@@ -1013,8 +1077,15 @@ class BlicsaApp(ctk.CTk):
         
         self._research_messages = [{"role": "system", "content": self._blink_system_prompt()}]
 
-
-        self._add_blink_message("assistant", t("blink.saudacao"))
+        # Sem chave configurada, o onboarding entra NO LUGAR do chat. Deixar o chat aparecer
+        # e falhar na primeira pergunta faria o usuário achar que a IA está quebrada, em vez
+        # de saber que falta um passo de configuração — e que ele leva dois minutos.
+        self._blink_chat_container = chat_container
+        self._blink_onboarding = None
+        if not self._ia_configurada():
+            self._mostrar_onboarding_ia()
+        else:
+            self._add_blink_message("assistant", t("blink.saudacao"))
 
         input_f = ctk.CTkFrame(chat_container, fg_color="transparent")
         input_f.pack(fill="x", pady=(0, 20))
