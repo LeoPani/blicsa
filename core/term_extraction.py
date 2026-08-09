@@ -53,7 +53,7 @@ from collections import Counter
 from dataclasses import dataclass, field as _dc_field
 from typing import Callable, Iterable, Sequence
 
-from core.nlp import STOP_WORDS, STOP_WORDS_EN, STOP_WORDS_PT, apply_thesaurus
+from core.nlp import STOP_WORDS, apply_thesaurus
 
 # Campos de origem dos termos.
 FIELDS = ("keywords", "title_abstract", "both")

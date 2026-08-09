@@ -1,4 +1,3 @@
-import customtkinter as ctk
 
 def fade_in(widget, duration_ms=300, steps=15, current_step=0):
     """

@@ -1063,7 +1063,6 @@ class NetworkGenerator:
 
     def get_author_hindex(self, n: int = 50) -> list[tuple[str, int, int, int, float]]:
         """Return [(author, h_index, g_index, papers, avg_citations)] sorted by h-index desc."""
-        import re as _re
         author_cites: dict[str, list[int]] = {}
         for _, row in self.df.iterrows():
             raw = str(row.get("authors", "") or "")

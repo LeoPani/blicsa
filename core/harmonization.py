@@ -1,6 +1,5 @@
 import difflib
 import re
-from collections import defaultdict
 
 
 def _dedup_key(title) -> str:

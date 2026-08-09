@@ -18,9 +18,8 @@ trilha são funções puras ou objetos sem Tk.
 
 from __future__ import annotations
 
-import math
 import time
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from typing import Callable, Iterable, Sequence
 
 # Acima disto, perguntar antes de baixar. Não é um teto: é uma confirmação.

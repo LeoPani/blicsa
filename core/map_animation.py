@@ -23,9 +23,9 @@ import shutil
 import subprocess
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Iterable, Sequence
+from typing import Sequence
 
-from core.map_render import NO_DATA_COLOR, overlay_color, print_pattern_for
+from core.map_render import overlay_color, print_pattern_for
 
 # Temas de renderização (mantendo o design system).
 THEMES = {

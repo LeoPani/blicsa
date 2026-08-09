@@ -51,7 +51,7 @@ except ImportError:
 
 from core.parsers import BibliometricParser, find_duplicates
 from core.matrix_builders import NetworkGenerator, CLUSTER_PALETTE
-from core.visualizer import compute_fa2_layout, build_plotly_map, build_plotly_density, export_plotly_html, export_figure_image, build_thematic_map, build_historiograph
+from core.visualizer import compute_fa2_layout, build_plotly_map, export_plotly_html, export_figure_image, build_thematic_map, build_historiograph
 from core.nlp import load_thesaurus
 from ai.client import GroqBibliometricAnalyst, AIClientError
 
@@ -6096,7 +6096,6 @@ if __name__ == "__main__":
             from core.parsers import BibliometricParser
             from core.matrix_builders import NetworkGenerator
             from core.visualizer import build_plotly_map
-            from core.nlp import extract_ngrams
             # Check translation parity
             import json, os
             locales_dir = os.path.join(os.path.dirname(__file__), "locales")

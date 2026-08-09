@@ -24,7 +24,7 @@ from __future__ import annotations
 import threading
 from collections import OrderedDict
 from dataclasses import dataclass, field
-from typing import Any, Callable, Iterable, Sequence
+from typing import Sequence
 
 # Rótulos i18n de cada faceta. A chave é a usada internamente; o valor é a chave do catálogo.
 FACET_LABELS = {

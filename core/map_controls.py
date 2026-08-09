@@ -22,7 +22,7 @@ from typing import Iterable
 
 import networkx as nx
 
-from core.map_render import NO_DATA_COLOR, overlay_color, print_pattern_for
+from core.map_render import overlay_color, print_pattern_for
 from core.matrix_builders import CLUSTER_PALETTE, _apply_clustering, _color_nodes
 
 # Faixa da resolução exposta na UI (o guia usa 1.0 como padrão e 1.20 no exemplo).

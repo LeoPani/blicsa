@@ -1,7 +1,7 @@
 import locale
 import json
 import os
-from typing import Dict, Any
+from typing import Dict
 
 _translations: Dict[str, str] = {}
 _fallback_translations: Dict[str, str] = {}

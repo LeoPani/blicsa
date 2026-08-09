@@ -1,7 +1,6 @@
 import time
 import urllib.request
 import urllib.parse
-import json
 import logging
 from collections import OrderedDict
 from typing import Iterator, Callable, Dict, Any, Optional

@@ -1,6 +1,5 @@
 import re
 import csv
-from pathlib import Path
 
 STOP_WORDS_EN: set[str] = {
     "the", "a", "an", "and", "or", "but", "in", "on", "at", "to", "for",
