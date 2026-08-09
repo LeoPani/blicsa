@@ -359,3 +359,46 @@ $ git grep -lE '@(qq|163|sina)\.com' origin/main -- tests/fixtures/ | wc -l
 $ git cat-file -s origin/main:docs/evidence/bugc_cards_compactos_alinhados.png
 467997   (a recaptura pela janela, não a tela cheia)
 ```
+
+---
+
+## Reauditoria — 2026-08-09 (Auditoria 2, Fase 2)
+
+Refeita sobre o estado atual, incluindo as **9 capturas novas** geradas desde a passagem
+anterior (Auditoria 1, Fase 1).
+
+| verificação | resultado |
+|---|---|
+| `scripts/check_secrets.py` (working tree + histórico) | nenhum segredo com formato de credencial real |
+| chaves `gsk_`/`sk-`/`AIza`/`ghp_` em `git log --all -p` | **nenhuma** |
+| `scripts/check_evidence_privacy.py` | **80 imagens · 80 OK · 0 para inspeção humana** |
+| arquivo de configuração local rastreado | nenhum (`.env*`, `settings.json` e o chaveiro estão fora) |
+| caminho com nome de usuário em código rastreado | **2 achados → corrigidos** |
+
+### Achado: caminho absoluto com o nome do usuário
+
+`scripts/reinject_ia_ux.py` e `scripts/reinject_openalex_limits.py` traziam
+
+```python
+RAIZ = pathlib.Path("/Users/leopani/PyBibliomics")
+```
+
+Dois problemas num só: o nome de usuário do autor viajava para dentro de um repositório
+público, e o script **só rodava na máquina dele** — quem clonasse receberia "trecho não
+encontrado" em todos os casos, o que numa submissão ao JOSS lê como matriz de reinjeção que
+não funciona. Passou a derivar de `__file__`; verificado rodando de `/tmp`, com os 27 defeitos
+da matriz do OpenAlex detectados.
+
+### E-mails que permanecem, com justificativa
+
+| e-mail | onde | decisão |
+|---|---|---|
+| `blicsa.app@gmail.com` | `SECURITY.md`, `CITATION.cff`, `mailto` das APIs | **público de propósito** — é o contato do projeto |
+| `blicsa@leopani.dev` | `extension/manifest.json` | idem |
+| `leopaniago@outlook.com`, `leopaniago2@gmail.com` | **apenas** neste relatório e em `RELATORIO-LIMPEZA-REPO.md`, como achado documentado | mantidos: são o autor do commit, presentes nos metadados de 103 commits do git — removê-los do texto do relatório não os removeria do histórico, e o relatório precisa nomear o que auditou |
+| `pybibliomics@example.com`, `redacted@example.org` | `docs/BUGREPORT.md` | endereços de exemplo, não existem |
+
+### Veredito
+
+**Seguro para publicar — mantido.** Nenhum achado novo de dado pessoal de terceiro. O único
+achado desta passagem era de portabilidade e privacidade do próprio autor, e foi corrigido.

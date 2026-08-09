@@ -10,7 +10,10 @@ import subprocess
 import sys
 import tempfile
 
-RAIZ = pathlib.Path("/Users/leopani/PyBibliomics")
+# Derivado do próprio arquivo, não fixo: o caminho absoluto anterior carregava o nome
+# de usuário do autor para dentro de um repositório público e fazia o script rodar só
+# na máquina dele — quem clonasse recebia "trecho não encontrado" em todos os casos.
+RAIZ = pathlib.Path(__file__).resolve().parent.parent
 
 #: Segundos por caso. Generoso para o teste mais pesado, curto o bastante para
 #: que um laço infinito seja detectado em vez de travar a suíte.
