@@ -104,6 +104,146 @@ CASOS = [
      '"dos dados do corpus. Confira antes de citar."',
      '"dos dados do corpus."',
      "tests/test_ai_marking.py::test_nota_de_rodape_pede_verificacao_antes_de_citar"),
+
+    # ── Fase 3: contexto de pesquisa por projeto ──
+    ("contexto do usuário passa a vir DEPOIS dos dados do corpus",
+     "core/research_context.py",
+     '            partes.append(f"{cabecalho_corpus}\\n{cortado}")',
+     '            partes.insert(-1, f"{cabecalho_corpus}\\n{cortado}")',
+     "tests/test_research_context.py::test_contexto_do_usuario_vem_antes_dos_dados_do_corpus"),
+
+    ("corte calcula o orçamento como se o contexto não existisse",
+     "core/research_context.py",
+     "        teto = orcamento - len(montado) - 2 - len(cabecalho_corpus) - 1",
+     "        teto = orcamento - len(fixo) - 2 - len(cabecalho_corpus) - 1",
+     "tests/test_research_context.py::test_orcamento_e_respeitado_com_corpus_gigante"),
+
+    ("corte sacrifica o contexto do usuário em vez dos abstracts",
+     "core/research_context.py",
+     "        teto = orcamento - len(fixo) - 2\n",
+     "        teto = 200\n",
+     "tests/test_research_context.py::test_corte_sacrifica_abstracts_e_preserva_o_contexto_do_usuario"),
+
+    ("corte parte um registro do corpus ao meio",
+     "core/research_context.py",
+     "    for sep in SEPARADORES:\n"
+     "        pedaco = texto[:util]\n"
+     "        pos = pedaco.rfind(sep)\n"
+     "        if pos > 0:\n"
+     "            return texto[:pos] + MARCA_CORTE\n"
+     '    return ""',
+     "    return texto[:util] + MARCA_CORTE",
+     "tests/test_research_context.py::test_corte_nao_parte_registro_ao_meio"),
+
+    ("toco de abstract entra no lugar de descartar o bloco",
+     "core/research_context.py",
+     "        if cortado and len(cortado) >= min(MINIMO_CORPUS, len(corpus)):",
+     "        if cortado:",
+     "tests/test_research_context.py::test_titulo_sem_abstract_nao_entra_como_se_fosse_evidencia"),
+
+    ("papel e idioma passam a ser cortados junto",
+     "core/research_context.py",
+     "    partes: list[str] = [p for p in (papel, idioma) if p]",
+     "    partes: list[str] = [p[:20] for p in (papel, idioma) if p]",
+     "tests/test_research_context.py::test_papel_e_idioma_nunca_sao_cortados"),
+
+    ("cabeçalho de contexto sai mesmo com o campo vazio",
+     "core/research_context.py",
+     "    if contexto:\n        bloco = f",
+     "    if True:\n        bloco = f",
+     "tests/test_research_context.py::test_sem_contexto_nao_sobra_cabecalho_orfao"),
+
+    ("normalizar deixa de tolerar valor não-texto de projeto antigo",
+     "core/research_context.py",
+     "    if texto is None or isinstance(texto, bool):\n        return \"\"\n"
+     "    if not isinstance(texto, str):\n        texto = str(texto)",
+     "    pass",
+     "tests/test_research_context.py::test_normalizar_tolera_lixo_de_projeto_antigo"),
+
+    ("separador do bloco de corpus volta a ser barra escapada",
+     "core/research_context.py",
+     '    return "\\n\\n---\\n".join(r for r in registros if r and r.strip())',
+     '    return "\\\\n\\\\n---\\\\n".join(r for r in registros if r and r.strip())',
+     "tests/test_research_context.py::test_bloco_corpus_usa_quebra_de_linha_de_verdade"),
+
+    ("leitor do config devolve o valor cru do arquivo",
+     "core/project.py",
+     "    return normalizar(config.get(CHAVE_CONTEXTO_PESQUISA))",
+     '    return config.get(CHAVE_CONTEXTO_PESQUISA) or ""',
+     "tests/test_research_context.py::test_leitor_do_config_sempre_devolve_texto"),
+
+    ("análises das outras telas deixam de receber o contexto",
+     "ai/client.py",
+     "            system_prompt=self._system_com_contexto(system),",
+     "            system_prompt=system,",
+     "tests/test_research_context.py::test_toda_analise_leva_o_contexto_ao_modelo"),
+
+    ("fábrica do analista para de repassar o contexto",
+     "main.py",
+     "            contexto_pesquisa=self._contexto_pesquisa(),",
+     "",
+     "tests/test_research_context.py::test_main_passa_o_contexto_ao_criar_o_analista"),
+
+    ("chat volta a montar o bloco de corpus com barra escapada",
+     "main.py",
+     "                        corpus_txt = bloco_corpus(abstracts)",
+     '                        corpus_txt = "\\\\n\\\\n---\\\\n".join(abstracts)',
+     "tests/test_research_context.py::test_main_nao_monta_mais_o_bloco_com_barra_escapada"),
+
+    ("análise do mapa reaproveita o system prompt congelado",
+     "main.py",
+     "                system_prompt = self._blink_system_prompt(dados_corpus=full_context)",
+     '                system_prompt = self._research_messages[0]["content"]',
+     "tests/test_research_context.py::test_main_nao_reaproveita_system_prompt_congelado"),
+
+    ("texto de exemplo do campo vira valor enviado ao modelo",
+     "ui/research_context_bar.py",
+     '        if self._mostrando_exemplo:\n            return ""\n'
+     '        return normalizar(self.campo.get("1.0", "end"))',
+     '        return normalizar(self.campo.get("1.0", "end"))',
+     "tests/test_research_context_ui.py::test_exemplo_nunca_e_devolvido_como_valor"),
+
+    ("indicador de contexto fica amarelo (cor reservada para IA)",
+     "ui/research_context_bar.py",
+     "                                      fg_color=BLUE, text_color=WHITE_CARD,",
+     '                                      fg_color="#F5BE00", text_color=INK,',
+     "tests/test_research_context_ui.py::test_indicador_nao_e_amarelo"),
+
+    ("indicador acende com o campo vazio",
+     "core/research_context.py",
+     "    return bool(normalizar(texto))",
+     "    return True",
+     "tests/test_research_context_ui.py::test_indicador_apagado_sem_contexto"),
+
+    ("teste de conexão perde o User-Agent (chave boa vira 'chave recusada')",
+     "ai/onboarding.py",
+     '            "User-Agent": USER_AGENT,\n',
+     "",
+     "tests/test_ai_onboarding.py::test_teste_de_conexao_manda_user_agent"),
+
+    ("User-Agent volta a ser literal em ai/client.py",
+     "ai/client.py",
+     '        "User-Agent": USER_AGENT\n    }\n    if api_key:',
+     '        "User-Agent": "Blicsa/1.0 (Python)"\n    }\n    if api_key:',
+     "tests/test_ai_onboarding.py::test_teste_de_conexao_usa_o_mesmo_user_agent_do_cliente"),
+
+    (".env volta a sobrescrever o ambiente real (chave velha vence a boa)",
+     "main.py",
+     "                    os.environ.setdefault(k.strip(), v.strip().strip('\"').strip(\"'\"))",
+     "                    os.environ[k.strip()] = v.strip().strip('\"').strip(\"'\")",
+     "tests/test_ai_onboarding.py::test_main_carrega_dotenv_com_setdefault"),
+
+    ("diálogo de insights volta a renderizar IA sem marcação",
+     "main.py",
+     "        marcado = AIContentFrame(dlg)",
+     "        marcado = ctk.CTkFrame(dlg)",
+     "tests/test_ai_marking.py::test_dialogo_de_insights_e_marcado"),
+
+    ("análise de obras seminais perde a marcação textual",
+     "main.py",
+     "        insert_markdown(self._seminal_box, f\"{marcar_texto_export('')} {text}\".strip())",
+     "        insert_markdown(self._seminal_box, text)",
+     "tests/test_ai_marking.py::test_analise_seminal_e_marcada"),
 ]
 
 

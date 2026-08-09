@@ -6,6 +6,15 @@ import urllib.error
 import time
 
 
+#: Como o Blicsa se identifica em toda requisição HTTP à API de IA.
+#:
+#: **Não é cosmético.** O Groq fica atrás de Cloudflare, que responde `403` com `error code:
+#: 1010` a cliente sem User-Agent reconhecível — antes de a chave ser sequer avaliada. Toda
+#: requisição do app precisa carregá-lo, senão o diagnóstico devolve "chave recusada" para
+#: uma chave perfeitamente válida.
+USER_AGENT = "Blicsa/1.0 (Python)"
+
+
 class AIClientError(Exception):
     """Falha REAL na chamada de IA (rede, auth, quota). PROIBIDO devolver
     string de erro como se fosse conteúdo: quem chama decide como exibir."""
@@ -54,7 +63,7 @@ def call_openai_chat_history(
     url = base_url.rstrip("/") + "/chat/completions"
     headers = {
         "Content-Type": "application/json",
-        "User-Agent": "Blicsa/1.0 (Python)"
+        "User-Agent": USER_AGENT
     }
     if api_key:
         headers["Authorization"] = f"Bearer {api_key}"
@@ -79,10 +88,37 @@ def call_openai_chat_history(
 
 class AIAnalyst:
 
-    def __init__(self, api_key: str | None = None, base_url: str | None = None, model: str | None = None):
+    def __init__(self, api_key: str | None = None, base_url: str | None = None,
+                 model: str | None = None, contexto_pesquisa: str = ""):
         self.api_key = api_key or os.environ.get("AI_API_KEY", os.environ.get("GROQ_API_KEY"))
         self.base_url = base_url or os.environ.get("AI_BASE_URL", "https://api.groq.com/openai/v1")
         self.model = model or os.environ.get("AI_MODEL", "llama-3.3-70b-versatile")
+
+        #: Contexto de pesquisa do projeto. Fica no ANALISTA, não em cada método, porque a
+        #: alternativa era um parâmetro novo em `generate_insights`, `generate_sankey_...`,
+        #: `generate_thematic_...`, `generate_historiograph_...`, `generate_seminal_...` e
+        #: `label_clusters` — seis lugares para esquecer um, e a próxima análise a ser escrita
+        #: nasceria sem contexto. Aqui, todas passam por `_chat` e recebem de graça.
+        self.contexto_pesquisa = contexto_pesquisa or ""
+
+    def _system_com_contexto(self, papel: str) -> str:
+        """Papel da análise + contexto de pesquisa do usuário, na ordem canônica.
+
+        Não injeta diretiva de idioma: os prompts destas análises pedem português no texto
+        (ver `generate_insights`). É uma lacuna de i18n conhecida e anterior a esta fase —
+        registrada em docs/RELATORIO-IA-UX.md, não corrigida aqui para não misturar escopo.
+        """
+        from core.research_context import montar_system_prompt
+
+        cabecalho = "Contexto de pesquisa informado pelo usuário (leve em conta ao responder):"
+        try:
+            from core.i18n import t
+            cabecalho = t("ai.contexto_prompt") or cabecalho
+        except Exception:
+            pass
+        return montar_system_prompt(papel=papel, idioma="",
+                                    contexto_usuario=self.contexto_pesquisa,
+                                    cabecalho_contexto=cabecalho)
 
     def chat_history(self, messages: list[dict], temperature: float = 0.7) -> str:
         if not self.api_key:
@@ -96,7 +132,10 @@ class AIAnalyst:
             base_url=self.base_url,
             api_key=self.api_key,
             model=self.model,
-            system_prompt=system,
+            # Ponto único por onde passam TODAS as análises das outras telas. É o que faz o
+            # contexto chegar ao Sankey, ao mapa temático, à historiografia e às obras
+            # seminais sem que cada um precise lembrar de repassá-lo.
+            system_prompt=self._system_com_contexto(system),
             user_prompt=user,
             temperature=temperature
         )
@@ -115,7 +154,7 @@ class AIAnalyst:
         url = self.base_url.rstrip("/") + "/chat/completions"
         headers = {
             "Content-Type": "application/json",
-            "User-Agent": "Blicsa/1.0 (Python)"
+            "User-Agent": USER_AGENT
         }
         if self.api_key:
             headers["Authorization"] = f"Bearer {self.api_key}"

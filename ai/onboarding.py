@@ -97,10 +97,21 @@ def testar_chave(chave: str, base_url: str = BASE_URL_PADRAO,
         "max_tokens": 1,
     }).encode("utf-8")
 
+    from ai.client import USER_AGENT
+
     req = urllib.request.Request(
         f"{base_url.rstrip('/')}/chat/completions",
         data=corpo,
-        headers={"Authorization": f"Bearer {chave}", "Content-Type": "application/json"},
+        headers={
+            "Authorization": f"Bearer {chave}",
+            "Content-Type": "application/json",
+            # Sem isto o Cloudflare do Groq responde 403 (`error code: 1010`) ANTES de olhar
+            # a chave, e o diagnóstico abaixo classifica como "invalida" — ou seja, o
+            # onboarding dizia "confira se copiou a chave inteira" para uma chave correta.
+            # O `ai/client.py` sempre mandou o cabeçalho; só o teste de conexão não mandava,
+            # então a IA funcionava e a tela que existe para configurá-la reprovava a chave.
+            "User-Agent": USER_AGENT,
+        },
         method="POST",
     )
 

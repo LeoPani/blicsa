@@ -8,6 +8,7 @@ Estes testes guardam duas coisas: que **todo** ponto de IA é marcado, e que **n
 dado usa amarelo.
 """
 
+import ast
 import json
 import re
 import subprocess
@@ -231,6 +232,84 @@ def test_saudacao_do_app_nao_e_marcada_como_ia():
         if 't("blink.saudacao")' in linha and "_add_blink_message" in linha:
             assert "gerado_por_ia=False" in linha, (
                 f"saudação marcada como IA: {linha.strip()}")
+
+
+# ── Pontos de renderização FORA do funil do chat ──────────────────────────────────
+
+def _metodo_do_main(nome: str) -> "ast.FunctionDef":
+    fonte = (RAIZ / "main.py").read_text(encoding="utf-8")
+    return next(n for n in ast.walk(ast.parse(fonte))
+                if isinstance(n, ast.FunctionDef) and n.name == nome)
+
+
+def _chama(no: "ast.AST", funcao: str) -> bool:
+    """`funcao(...)` é de fato CHAMADA dentro de `no`?
+
+    Buscar a string no código-fonte não serve: a linha de `import` contém o nome e faz o
+    teste passar mesmo quando a chamada foi removida.
+    """
+    return any(isinstance(n, ast.Call)
+               and ((isinstance(n.func, ast.Name) and n.func.id == funcao)
+                    or (isinstance(n.func, ast.Attribute) and n.func.attr == funcao))
+               for n in ast.walk(no))
+
+def test_dialogo_de_insights_e_marcado():
+    """Sankey, mapa temático e historiografia renderizam em `_show_insights`, que **não**
+    passa por `_add_blink_message`.
+
+    Descoberto ao preparar a captura `ia_marcacao_insights`: o inventário declarava os três
+    pontos como "faixa + selo" e não havia marcação nenhuma na tela. O funil do chat cobre
+    sete pontos, e a existência do funil escondeu que estes três não estão nele.
+    """
+    metodo = _metodo_do_main("_show_insights")
+
+    # A CHAMADA, não a menção: a primeira versão deste teste procurava a string
+    # "AIContentFrame" no corpo do método e passava a verde com o defeito reinjetado —
+    # a linha de `import` sozinha já satisfazia a busca. Achado pela reinjeção.
+    assert _chama(metodo, "AIContentFrame"), "o diálogo de insights renderiza IA sem marcação"
+
+    corpo = ast.get_source_segment((RAIZ / "main.py").read_text(encoding="utf-8"), metodo)
+    assert "marcado.corpo" in corpo, "o texto não está DENTRO do bloco marcado"
+
+
+def test_analise_seminal_e_marcada():
+    """Marcação textual, porque o destino é um textbox já montado no grid da aba."""
+    assert _chama(_metodo_do_main("_show_seminal_insights"), "marcar_texto_export"), (
+        "a análise seminal renderiza IA sem marcação")
+
+
+def test_todo_renderizador_de_ia_do_main_esta_marcado():
+    """Guarda estrutural: os workers de IA só podem entregar o resultado a um renderizador
+    que marque. Um `self.after(0, self._nova_tela, resultado)` novo cai aqui."""
+    import ast
+
+    MARCADOS = {"_add_blink_message", "_show_insights", "_show_seminal_insights",
+                "_show_ai_error_dialog", "_set_idle", "_set_busy", "_inject_ai_context"}
+    fonte = (RAIZ / "main.py").read_text(encoding="utf-8")
+    arvore = ast.parse(fonte)
+
+    destinos = set()
+    for n in ast.walk(arvore):
+        if not (isinstance(n, ast.FunctionDef) and
+                ("_worker" in n.name or n.name.startswith("_ai_"))):
+            continue
+        corpo = ast.get_source_segment(fonte, n) or ""
+        if "analyst." not in corpo and "AIAnalyst" not in corpo:
+            continue
+        for chamada in ast.walk(n):
+            # Só `self.<metodo>`: `self.after(0, algum_widget.pack_forget)` é manipulação de
+            # widget, não entrega de conteúdo gerado.
+            if (isinstance(chamada, ast.Call) and isinstance(chamada.func, ast.Attribute)
+                    and chamada.func.attr == "after" and len(chamada.args) >= 2
+                    and isinstance(chamada.args[1], ast.Attribute)
+                    and isinstance(chamada.args[1].value, ast.Name)
+                    and chamada.args[1].value.id == "self"):
+                destinos.add(chamada.args[1].attr)
+
+    fora = sorted(d for d in destinos if d not in MARCADOS)
+    assert not fora, (
+        f"worker de IA entrega o resultado a renderizador não declarado: {fora}. "
+        "Ou ele marca o conteúdo, ou não deveria receber saída de modelo.")
 
 
 def test_resposta_do_modelo_continua_marcada():

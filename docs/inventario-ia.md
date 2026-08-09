@@ -38,16 +38,32 @@ O texto do conteúdo gerado **não** fica sobre o amarelo: só o selo fica.
 
 ## Pontos marcados
 
-| # | onde | função que gera | marcação |
-|---|---|---|---|
-| 1 | Respostas do Blink no chat | `AIAnalyst.chat_history_stream` | faixa + selo |
-| 2 | Insights bibliométricos do corpus | `generate_insights` | faixa + selo |
-| 3 | Rótulos de cluster | `label_clusters` | selo na legenda e no painel de clusters |
-| 4 | Análise de obras seminais | `generate_seminal_insights` | faixa + selo |
-| 5 | Análise temática (quadrantes) | `generate_thematic_insights` | faixa + selo |
-| 6 | Análise do Sankey | `generate_sankey_insights` | faixa + selo |
-| 7 | Historiografia | `generate_historiograph_insights` | faixa + selo |
-| 8 | Assistente de importação | `_trigger_import_ai_assistant` | faixa + selo |
+| # | onde | função que gera | renderiza em | marcação |
+|---|---|---|---|---|
+| 1 | Respostas do Blink no chat | `AIAnalyst.chat_history_stream` | `_add_blink_message` | faixa + selo |
+| 2 | Insights bibliométricos do corpus | `generate_insights` | — **sem chamador** | (ver abaixo) |
+| 3 | Rótulos de cluster | `label_clusters` | Treeview de clusters | selo textual `[IA]` na célula |
+| 4 | Análise de obras seminais | `generate_seminal_insights` | `_show_seminal_insights` — **sem chamador** | prefixo `[IA]` |
+| 5 | Análise temática (quadrantes) | `generate_thematic_insights` | `_show_insights` | faixa + selo |
+| 6 | Análise do Sankey | `generate_sankey_insights` | `_show_insights` | faixa + selo |
+| 7 | Historiografia | `generate_historiograph_insights` | `_show_insights` | faixa + selo |
+| 8 | Assistente de importação | `_trigger_import_ai_assistant` | `_add_blink_message` | faixa + selo |
+
+### A coluna "renderiza em" existe por causa de um erro que esta tabela escondeu
+
+Na primeira redação, a tabela dizia "faixa + selo" para os pontos 5, 6 e 7 — e **não havia
+marcação nenhuma** na tela. Os três renderizam em `_show_insights`, um diálogo próprio que
+nunca passa pelo funil `_add_blink_message`. O erro sobreviveu porque a existência do funil
+sugeria que tudo passava por ele.
+
+Foi encontrado ao preparar a captura `ia_marcacao_insights`: não havia o que fotografar.
+`tests/test_ai_marking.py::test_todo_renderizador_de_ia_do_main_esta_marcado` agora varre os
+workers de IA e falha se algum entregar o resultado a um renderizador não declarado aqui.
+
+**Pontos 2 e 4 não estão ligados a nenhuma tela.** `generate_insights` e
+`generate_seminal_insights` existem em `ai/client.py` e nenhum botão os dispara. O
+renderizador do ponto 4 já marca, para que a marcação não seja o que falta no dia em que ele
+for ligado; o ponto 2 não tem renderizador para marcar.
 
 ## Rótulos de cluster: IA vs. humano
 

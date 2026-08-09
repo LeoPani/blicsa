@@ -298,5 +298,10 @@
   "ai.key_remove": "Supprimer la clé",
   "ai.badge": "IA",
   "settings.ai_section": "Intelligence artificielle",
-  "ai.key_none": "Aucune clé configurée"
+  "ai.key_none": "Aucune clé configurée",
+  "ai.contexto_titulo": "Contexte de recherche",
+  "ai.contexto_placeholder": "Ex. : j'étudie les coopératives de récupérateurs de déchets dans le sud du Brésil. Ici, « informalité » relève de la sociologie du travail, non du droit fiscal. Cette revue sert au chapitre 2 d'une thèse.",
+  "ai.contexto_ativo": "CONTEXTE ACTIF",
+  "ai.contexto_ajuda": "Accompagne chaque réponse de l'IA, sur cet écran et les autres. Enregistré dans le projet, sur votre machine.",
+  "ai.contexto_prompt": "Contexte de recherche fourni par l'utilisateur (à prendre en compte dans la réponse) :"
 }

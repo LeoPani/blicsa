@@ -249,6 +249,83 @@ def test_persistencia_entre_reinicios(tmp_path, monkeypatch):
         "mensagem de falha do pytest vira log de CI)")
 
 
+# ── A requisição de teste tem que CHEGAR ao provedor ──────────────────────────────
+
+def test_teste_de_conexao_manda_user_agent():
+    """Sem User-Agent, o Cloudflare do Groq responde 403 (`error code: 1010`) ANTES de olhar
+    a chave — e o diagnóstico classificava isso como "invalida".
+
+    O efeito era o pior possível para esta tela: quem colasse uma chave **correta** lia
+    "confira se copiou a chave inteira, sem espaços, e se ela ainda está ativa". A IA
+    funcionava normalmente depois, porque `ai/client.py` sempre mandou o cabeçalho — só o
+    teste de conexão não mandava. A tela que existe para configurar a chave era a única que
+    a reprovava.
+
+    Encontrado ao tentar gerar as capturas com chamada real ao modelo: a chave do ambiente
+    era boa e `testar_chave` dizia que não.
+    """
+    from ai.client import USER_AGENT
+
+    capturado = {}
+
+    def _espia(req, *a, **kw):
+        capturado["headers"] = {k.lower(): v for k, v in req.headers.items()}
+        return _resposta_ok()
+
+    with patch("urllib.request.urlopen", side_effect=_espia):
+        diagnosticar(CHAVE_FALSA)
+
+    assert "user-agent" in capturado["headers"], (
+        "requisição sem User-Agent — o Cloudflare do Groq devolve 403 antes de avaliar a chave")
+    assert capturado["headers"]["user-agent"] == USER_AGENT
+
+
+def test_teste_de_conexao_usa_o_mesmo_user_agent_do_cliente():
+    """Um só valor. Divergir faria a tela de configuração e o uso real terem destinos
+    diferentes no Cloudflare — que é exatamente o bug que acabou de acontecer."""
+    from ai.client import USER_AGENT
+
+    fonte = (RAIZ / "ai/client.py").read_text(encoding="utf-8")
+    assert fonte.count('"User-Agent": USER_AGENT') == 2, (
+        "algum ponto de `ai/client.py` voltou a ter o User-Agent literal")
+    assert USER_AGENT.strip()
+
+
+def test_dotenv_nao_sobrescreve_o_ambiente_real(tmp_path, monkeypatch):
+    """`.env` preenche o que falta; não manda no que já existe.
+
+    Era o contrário, e o efeito foi concreto: uma chave revogada no `.env` do diretório de
+    trabalho vencia a chave válida exportada no shell. A IA devolvia 401, o app dizia "falha
+    na requisição de IA" e nada na tela ligava o erro a um arquivo que o usuário não lembrava
+    que existia. Encontrado ao gerar as capturas com chamada real.
+    """
+    (tmp_path / ".env").write_text('GROQ_API_KEY="do-arquivo"\nAI_MODEL=do-arquivo\n',
+                                   encoding="utf-8")
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setenv("GROQ_API_KEY", "do-shell")
+    monkeypatch.delenv("AI_MODEL", raising=False)
+
+    # Replica o bloco de carga do topo de `main.py` (importar main aqui subiria a UI).
+    import os as _os
+    for linha in (tmp_path / ".env").read_text(encoding="utf-8").splitlines():
+        if "=" in linha and not linha.strip().startswith("#"):
+            k, v = linha.strip().split("=", 1)
+            _os.environ.setdefault(k.strip(), v.strip().strip('"').strip("'"))
+
+    assert _os.environ["GROQ_API_KEY"] == "do-shell", "o .env sobrescreveu o ambiente real"
+    assert _os.environ["AI_MODEL"] == "do-arquivo", "o .env deixou de preencher o que faltava"
+
+
+def test_main_carrega_dotenv_com_setdefault():
+    """Guarda na fonte: o teste acima replica o bloco, então precisa de um par que confira
+    que o bloco replicado ainda é o que o `main.py` faz."""
+    fonte = (RAIZ / "main.py").read_text(encoding="utf-8")
+    trecho = fonte.split("import json", 1)[0]
+    assert "os.environ.setdefault(k.strip()" in trecho, (
+        "o carregador de .env voltou a sobrescrever o ambiente real")
+    assert "os.environ[k.strip()] =" not in trecho
+
+
 # ── Tutorial e i18n ───────────────────────────────────────────────────────────────
 
 def test_url_do_tutorial_e_a_correta():

@@ -297,5 +297,10 @@
   "ai.key_remove": "Remover chave",
   "ai.badge": "IA",
   "settings.ai_section": "Inteligência artificial",
-  "ai.key_none": "Nenhuma chave configurada"
+  "ai.key_none": "Nenhuma chave configurada",
+  "ai.contexto_titulo": "Contexto de pesquisa",
+  "ai.contexto_placeholder": "Ex.: estudo cooperativas de catadores de recicláveis no Sul do Brasil. Aqui \"informalidade\" é categoria da sociologia do trabalho, não do direito tributário. A revisão é para o capítulo 2 de uma tese.",
+  "ai.contexto_ativo": "CONTEXTO ATIVO",
+  "ai.contexto_ajuda": "Vai junto em toda resposta da IA, nesta e nas outras telas. Fica salvo no projeto, na sua máquina.",
+  "ai.contexto_prompt": "Contexto de pesquisa informado pelo usuário (leve em conta ao responder):"
 }

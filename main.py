@@ -17,7 +17,17 @@ try:
             for line in f:
                 if "=" in line and not line.strip().startswith("#"):
                     k, v = line.strip().split("=", 1)
-                    os.environ[k.strip()] = v.strip().strip('"').strip("'")
+                    # `setdefault`, não atribuição: o ambiente REAL vence o arquivo.
+                    #
+                    # Era o contrário, e o efeito foi este: uma chave velha no `.env` do
+                    # diretório de trabalho sobrescrevia silenciosamente a chave válida que
+                    # o usuário tinha acabado de exportar no shell. A IA respondia 401, o
+                    # app mostrava "falha na requisição", e não havia nada na tela ligando
+                    # o erro a um arquivo que o usuário nem lembrava que existia.
+                    #
+                    # É também a semântica que todo mundo espera de `.env` (dotenv, docker
+                    # compose, 12-factor): o arquivo preenche o que falta, não manda.
+                    os.environ.setdefault(k.strip(), v.strip().strip('"').strip("'"))
 except Exception:
     pass
 import json
@@ -129,6 +139,13 @@ class BlicsaApp(ctk.CTk):
         #: deixar de marcar o que a máquina escreveu.
         self._cluster_label_origins: dict = {}
         self._max_edge_weight: float             = 1.0
+
+        #: Contexto de pesquisa do projeto ativo. String simples, e não `StringVar`, porque
+        #: ele sobrevive à destruição da tela do Blink: `_refresh_language` reconstrói todos
+        #: os widgets, e uma análise disparada de outra aba precisa do contexto mesmo que o
+        #: chat nunca tenha sido montado nesta sessão.
+        self._research_context: str = ""
+        self._research_context_bar = None
 
         # Configuration variables
         self._map_type_var = ctk.StringVar(value=MAP_TYPES[0])
@@ -798,15 +815,50 @@ class BlicsaApp(ctk.CTk):
                           highlightbackground="#141414", bd=2)
         close.pack(side="bottom", pady=20)
 
-    def _blink_system_prompt(self) -> str:
-        """System prompt do Blink + diretiva dinâmica de idioma (via get_lang())."""
+    def _on_research_context_change(self, texto: str):
+        """Espelha a barra na variável que sobrevive à reconstrução da tela.
+
+        Sem isso, trocar de idioma (que destrói e remonta todos os widgets) apagaria o
+        contexto que a pessoa acabou de escrever, sem aviso e sem jeito de recuperar.
+        """
+        self._research_context = texto
+
+    def _contexto_pesquisa(self) -> str:
+        """Contexto de pesquisa do projeto ativo, normalizado. Vazio quando não há.
+
+        Ponto único de leitura: a barra é a fonte da verdade enquanto a tela do Blink existe,
+        e a variável guarda o valor quando ela não existe (o app pode disparar análise de IA
+        a partir de outra aba, sem nunca ter montado o chat).
+        """
+        from core.research_context import normalizar
+
+        barra = getattr(self, "_research_context_bar", None)
+        if barra is not None:
+            try:
+                if barra.winfo_exists():
+                    return barra.valor()
+            except Exception:
+                pass
+        return normalizar(getattr(self, "_research_context", ""))
+
+    def _blink_system_prompt(self, dados_corpus: str = "") -> str:
+        """System prompt na ordem fixa: papel → idioma → contexto do usuário → corpus.
+
+        A ordem e o corte de orçamento moram em `core/research_context.py`, sem Tk, para
+        serem testáveis sem abrir janela. Ver o cabeçalho daquele módulo para o porquê de o
+        contexto do usuário vir **antes** dos dados e de o corte sacrificar abstracts.
+        """
         from core.i18n import get_lang
-        base = t("blink.system_prompt")
-        lang_names = {"pt_BR": "Brazilian Portuguese", "en": "English", "fr": "French"}
-        target = lang_names.get(get_lang(), "English")
-        directive = (f"IMPORTANT: Always respond to the user in {target}, "
-                     f"regardless of the language of this prompt.")
-        return f"{base}\n\n{directive}"
+        from core.research_context import diretiva_idioma, montar_system_prompt
+
+        return montar_system_prompt(
+            papel=t("blink.system_prompt"),
+            idioma=diretiva_idioma(get_lang()),
+            contexto_usuario=self._contexto_pesquisa(),
+            dados_corpus=dados_corpus,
+            cabecalho_contexto=t("ai.contexto_prompt"),
+            cabecalho_corpus=t("blink.rag_contexto"),
+        )
 
     def _refresh_language(self):
         curr_tab = getattr(self, '_current_tab_key', "home")
@@ -1103,7 +1155,16 @@ class BlicsaApp(ctk.CTk):
                 self._switch_tab(self._previous_tab_key)
                 
         self._blink_back_btn = ctk.CTkButton(title_f, text=t("blink.voltar"), width=100, height=30, fg_color="#E0E0E0", text_color=INK, hover_color="#C0C0C0", command=_go_back)
-        
+
+        # Contexto de pesquisa ACIMA da conversa, não escondido em Ajustes: ele enquadra tudo
+        # o que vem depois, e o usuário precisa ver o que a IA está levando em conta sem
+        # precisar procurar. O indicador aceso é a prova de que está indo junto.
+        from ui.research_context_bar import ResearchContextBar
+        self._research_context_bar = ResearchContextBar(
+            chat_container, valor=getattr(self, "_research_context", ""),
+            on_change=self._on_research_context_change)
+        self._research_context_bar.pack(fill="x", pady=(0, 16))
+
         self._research_chat_history_main = ctk.CTkScrollableFrame(chat_container, fg_color="transparent")
         self._research_chat_history_main.pack(fill="both", expand=True, pady=(0, 20))
         from core.markdown_parser import configure_markdown_tags, insert_markdown
@@ -1133,11 +1194,12 @@ class BlicsaApp(ctk.CTk):
             
             self._add_blink_message("user", msg)
             
-            system_prompt = self._blink_system_prompt()
+            corpus_txt = ""
             if self._dataframe is not None and not self._dataframe.empty:
                 try:
                     from sklearn.feature_extraction.text import TfidfVectorizer
                     from sklearn.metrics.pairwise import cosine_similarity
+                    from core.research_context import bloco_corpus
                     df = self._dataframe.dropna(subset=['abstract'])
                     if not df.empty:
                         docs = df['abstract'].astype(str).tolist()
@@ -1146,22 +1208,27 @@ class BlicsaApp(ctk.CTk):
                         query_vec = vectorizer.transform([msg])
                         sims = cosine_similarity(query_vec, tfidf_matrix).flatten()
                         top_indices = sims.argsort()[-5:][::-1]
-                        
+
                         abstracts = []
                         for idx in top_indices:
                             if sims[idx] > 0.01:
                                 row = df.iloc[idx]
                                 title = row.get("title", "")
                                 abs_txt = str(row.get("abstract", ""))[:300]
-                                abstracts.append(f"Title: {title}\\nAbstract: {abs_txt}...")
-                        
-                        if abstracts:
-                            ctx = "\\n\\n---\\n".join(abstracts)
-                            system_prompt += f"\\n\\n{t('blink.rag_contexto')}\\n{ctx}"
+                                abstracts.append(f"Title: {title}\nAbstract: {abs_txt}...")
+
+                        # `bloco_corpus` usa o MESMO separador que o corte de orçamento
+                        # procura. Aqui havia `"\\n\\n---\\n"` — barra escapada duas vezes,
+                        # que mandava ao modelo a sequência literal de dois caracteres `\n`
+                        # em vez de quebra de linha, e não deixava fronteira onde cortar.
+                        corpus_txt = bloco_corpus(abstracts)
                 except Exception as ex:
                     log.info(f"[Blink RAG] Error: {ex}")
-            
-            system_prompt = system_prompt[:4000]
+
+            # O truncamento cego (`[:4000]`) saiu daqui: ele cortava o FIM do prompt, e o fim
+            # passou a ser o lugar dos abstracts só por acidente de montagem. Agora o corte é
+            # explícito sobre quem cede — ver core/research_context.py.
+            system_prompt = self._blink_system_prompt(dados_corpus=corpus_txt)
             self._research_messages[0] = {"role": "system", "content": system_prompt}
             self._research_messages.append({"role": "user", "content": msg})
             
@@ -2246,7 +2313,11 @@ class BlicsaApp(ctk.CTk):
             
             self.after(0, self._update_stats_tab)
             self.after(0, self._set_idle, f"{len(combined)} registros carregados")
-            self.after(0, lambda: self._switch_tab("viz"))
+            # "analises", não "viz": `viz` não existe em `self._tabs`, e `_switch_tab`
+            # esconde TODAS as abas antes de tentar mostrar a pedida. O efeito era a tela
+            # ficar em branco logo depois de carregar o arquivo, até o usuário clicar em
+            # algum item da navegação. Ver `test_switch_tab_so_usa_abas_que_existem`.
+            self.after(0, lambda: self._switch_tab("analises"))
         except Exception as exc:
             log.info(f"[ERRO] {exc}\n")
             self.after(0, self._set_idle, "Erro ao carregar")
@@ -2362,14 +2433,27 @@ class BlicsaApp(ctk.CTk):
 
     def _show_insights(self, text: str):
         """Insights de IA num diálogo (corrige chamada a método INEXISTENTE:
-        Sankey/Temático/Historiografia quebravam mesmo com a IA ok)."""
+        Sankey/Temático/Historiografia quebravam mesmo com a IA ok).
+
+        Este diálogo é ponto de renderização de IA e estava SEM marcação, embora o
+        `docs/inventario-ia.md` já declarasse Sankey, mapa temático e historiografia como
+        "faixa + selo". Descoberto ao preparar a captura `ia_marcacao_insights`: não havia
+        marcação nenhuma para fotografar. O funil do chat (`_add_blink_message`) cobre os
+        outros pontos, mas estes três nunca passam por ele.
+        """
+        from ui.ai_marking import AIContentFrame
+
         dlg = ctk.CTkToplevel(self)
         dlg.title("Blicsa — Insights de IA")
         dlg.geometry("720x560")
         dlg.configure(fg_color=CONTENT_BG)
-        box = ctk.CTkTextbox(dlg, wrap="word", fg_color=WHITE_CARD, text_color=INK,
+
+        marcado = AIContentFrame(dlg)
+        marcado.pack(fill="both", expand=True, padx=16, pady=16)
+
+        box = ctk.CTkTextbox(marcado.corpo, wrap="word", fg_color=WHITE_CARD, text_color=INK,
                              corner_radius=0, border_width=2, border_color=INK)
-        box.pack(fill="both", expand=True, padx=16, pady=16)
+        box.pack(fill="both", expand=True)
         from ui.components import insert_markdown
         insert_markdown(box, text)
         box.configure(state="disabled")
@@ -3221,9 +3305,13 @@ class BlicsaApp(ctk.CTk):
                 context = (f"Resultados em revisão: {len(records_list)} "
                            f"(selecionados {len(selected_idx)}). "
                            f"Idiomas {langs} · Anos {years} · Fontes {top_sources}.")
-                system_prompt = (self._blink_system_prompt() +
-                                 f"\n\nContexto (resultados EM REVISÃO):\n{context}" +
-                                 (f"\n\nAmostra de abstracts em revisão:\n{rag}" if rag else ""))
+                # O resumo é o PRIMEIRO registro do bloco, de propósito: o corte de orçamento
+                # come do fim, então o que sobra sempre inclui a caracterização do conjunto.
+                # Perder abstracts de amostra é aceitável; perder "são 412 resultados, 80%
+                # em inglês" muda o que a resposta pode afirmar.
+                from core.research_context import bloco_corpus
+                system_prompt = self._blink_system_prompt(
+                    dados_corpus=bloco_corpus([context] + (sample if rag else [])))
                 user_msg = ("Analise estes resultados em revisão: o que há de bom no conjunto, "
                             "possíveis vieses e o que ajustar antes de consolidar o corpus?")
                 messages = [{"role": "system", "content": system_prompt},
@@ -4112,10 +4200,12 @@ class BlicsaApp(ctk.CTk):
                 self._switch_tab("home")
                 self._add_blink_message("user", prompt_msg)
                 
-                # Setup context
-                system_prompt = self._research_messages[0]["content"]
-                system_prompt += f"\n\nContexto atual:\n{full_context}"
-                
+                # Remonta em vez de reaproveitar `_research_messages[0]`: aquele valor foi
+                # congelado quando a tela foi construída, e o contexto de pesquisa pode ter
+                # sido escrito depois. Reaproveitar mandava o prompt SEM o contexto que o
+                # usuário está vendo marcado como ativo na tela.
+                system_prompt = self._blink_system_prompt(dados_corpus=full_context)
+
                 messages = [{"role": "system", "content": system_prompt}, {"role": "user", "content": prompt_msg}]
                 self._research_messages.append({"role": "user", "content": prompt_msg})
                 
@@ -4226,9 +4316,9 @@ class BlicsaApp(ctk.CTk):
                 self._switch_tab("home")
                 self._add_blink_message("user", prompt_msg)
                 
-                system_prompt = self._research_messages[0]["content"]
-                system_prompt += f"\n\nContexto atual (Corpus Selecionado):\n{context}"
-                
+                system_prompt = self._blink_system_prompt(
+                    dados_corpus=f"Corpus selecionado:\n{context}")
+
                 messages = [{"role": "system", "content": system_prompt}, {"role": "user", "content": prompt_msg}]
                 self._research_messages.append({"role": "user", "content": prompt_msg})
                 
@@ -4319,9 +4409,9 @@ class BlicsaApp(ctk.CTk):
                 self._switch_tab("home")
                 self._add_blink_message("user", prompt_msg)
                 
-                system_prompt = self._research_messages[0]["content"]
-                system_prompt += f"\n\nContexto atual (Busca em Configuração):\n{context}"
-                
+                system_prompt = self._blink_system_prompt(
+                    dados_corpus=f"Busca em configuração:\n{context}")
+
                 messages = [{"role": "system", "content": system_prompt}, {"role": "user", "content": prompt_msg}]
                 self._research_messages.append({"role": "user", "content": prompt_msg})
                 
@@ -4384,8 +4474,25 @@ class BlicsaApp(ctk.CTk):
 
 
     def _show_seminal_insights(self, text: str):
+        """Análise de obras seminais na aba própria.
+
+        A marcação aqui é TEXTUAL (`[IA]` + selo no rótulo da aba), e não faixa + selo: o
+        destino é um `CTkTextbox` que já existe no grid da aba, e envolvê-lo num
+        `AIContentFrame` reconstruiria o layout do painel inteiro. O texto sobrevive a
+        impressão P&B e a copiar-e-colar, que é o que a convenção exige de fato — ver a mesma
+        decisão na Treeview de clusters.
+
+        Sem chamador hoje: `generate_seminal_insights` existe no cliente mas nenhuma tela a
+        dispara. A marcação fica pronta para quando for ligada, porque é aqui que ela seria
+        esquecida. Registrado em docs/inventario-ia.md.
+        """
+        from ui.ai_marking import marcar_texto_export
         from ui.components import insert_markdown
-        insert_markdown(self._seminal_box, text)
+
+        self._seminal_box.configure(state="normal")
+        self._seminal_box.delete("1.0", "end")
+        insert_markdown(self._seminal_box, f"{marcar_texto_export('')} {text}".strip())
+        self._seminal_box.configure(state="disabled")
 
     def _create_seminal_library(self):
         if self._dataframe is None:
@@ -4862,6 +4969,10 @@ class BlicsaApp(ctk.CTk):
                 "extra_sw":     self._extra_sw_var.get(),
                 "cluster_algorithm": self._cluster_alg_var.get(),
                 "cluster_resolution": self._cluster_res_var.get(),
+                # Contexto de pesquisa: chave nova no config. Projeto salvo por versão
+                # anterior não a tem, e `research_context_do_config` devolve "" nesse caso —
+                # a ausência é indistinguível de "sem contexto", que é o comportamento certo.
+                "research_context": self._contexto_pesquisa(),
             }
 
             # Fase 3: bloco único com os parâmetros do mapa, para o projeto reabrir com o
@@ -4926,7 +5037,8 @@ class BlicsaApp(ctk.CTk):
             self._restore_project_data(project_data)
             self._set_idle("Projeto carregado com sucesso")
             if self._dataframe is not None and not self._dataframe.empty:
-                self.after(0, lambda: self._switch_tab("viz"))
+                # Idem: "viz" não é chave de aba. Carregar um projeto deixava a tela branca.
+                self.after(0, lambda: self._switch_tab("analises"))
             messagebox.showinfo("Sucesso", "Projeto carregado com sucesso!")
         except Exception as e:
             self._set_idle("Erro ao carregar projeto")
@@ -4953,6 +5065,20 @@ class BlicsaApp(ctk.CTk):
         for key, var, _ in setters:
             if (v := config.get(key)) is not None:
                 var.set(v)
+
+        # Contexto de pesquisa. Fora do laço acima porque não é `StringVar`: ele precisa
+        # sobreviver à reconstrução dos widgets. `research_context_do_config` tolera chave
+        # ausente (projeto antigo), `None` e tipo errado — um campo de texto opcional nunca
+        # pode impedir um `.blicsa` de abrir.
+        from core.project import research_context_do_config
+        self._research_context = research_context_do_config(config)
+        barra = getattr(self, "_research_context_bar", None)
+        if barra is not None:
+            try:
+                if barra.winfo_exists():
+                    barra.definir(self._research_context)
+            except Exception:
+                pass
 
         # Fase 3: parâmetros do mapa. `from_dict` tolera projeto de versão anterior (sem o
         # bloco) e valores corrompidos — um `.blicsa` antigo nunca pode deixar de abrir.
@@ -5000,7 +5126,10 @@ class BlicsaApp(ctk.CTk):
         return GroqBibliometricAnalyst(
             api_key=self._api_key_var.get().strip() or None,
             base_url=self._ai_base_url_var.get().strip() or None,
-            model=self._ai_model_var.get().strip() or None
+            model=self._ai_model_var.get().strip() or None,
+            # Lido AGORA, não guardado: o analista é criado por análise, e o contexto pode
+            # ter mudado desde a última.
+            contexto_pesquisa=self._contexto_pesquisa(),
         )
 
     def _on_ai_provider_change(self, provider):
@@ -5610,9 +5739,22 @@ class BlicsaApp(ctk.CTk):
             self._gallery_chat_history.see("end")
             self._gallery_chat_history.configure(state="disabled")
             
+            # Remontado a cada turno, e não só na primeira mensagem: o chat da galeria é
+            # persistente entre visitas à aba, e um contexto escrito depois da primeira
+            # pergunta nunca chegaria ao modelo se o system fosse congelado ali.
+            from core.i18n import get_lang
+            from core.research_context import diretiva_idioma, montar_system_prompt
+            system = montar_system_prompt(
+                papel=("Você é o 'Blink', um assistente focado em analisar mapas "
+                       "bibliométricos na galeria. Use markdown."),
+                idioma=diretiva_idioma(get_lang()),
+                contexto_usuario=self._contexto_pesquisa(),
+                cabecalho_contexto=t("ai.contexto_prompt"))
             if not hasattr(self, '_gallery_messages') or not self._gallery_messages:
-                self._gallery_messages = [{"role": "system", "content": "Você é o 'Blink', um assistente focado em analisar mapas bibliométricos na galeria. Use markdown."}]
-            
+                self._gallery_messages = [{"role": "system", "content": system}]
+            else:
+                self._gallery_messages[0] = {"role": "system", "content": system}
+
             self._gallery_messages.append({"role": "user", "content": msg})
             
             import threading

@@ -297,5 +297,10 @@
   "ai.key_remove": "Remove key",
   "ai.badge": "AI",
   "settings.ai_section": "Artificial intelligence",
-  "ai.key_none": "No key configured"
+  "ai.key_none": "No key configured",
+  "ai.contexto_titulo": "Research context",
+  "ai.contexto_placeholder": "E.g.: I study waste-picker cooperatives in southern Brazil. Here \"informality\" is a category from the sociology of work, not from tax law. This review is for chapter 2 of a thesis.",
+  "ai.contexto_ativo": "CONTEXT ON",
+  "ai.contexto_ajuda": "Goes with every AI answer, on this screen and the others. Saved with the project, on your machine.",
+  "ai.contexto_prompt": "Research context provided by the user (take it into account when answering):"
 }

@@ -33,6 +33,31 @@ SCHEMA_REGISTRO: dict[str, object] = {
 COLUNAS_NUMERICAS = ("year", "citations")
 
 
+#: Chave do contexto de pesquisa no `config.json` do `.blicsa`.
+#:
+#: Vive no config, e não num arquivo próprio dentro do ZIP, porque é **parâmetro do projeto**
+#: como o campo de análise e a resolução do cluster — e porque o config já é um dicionário
+#: livre: acrescentar uma chave não muda a versão do manifesto e nem quebra a leitura de
+#: quem não a conhece. A retrocompatibilidade sai de graça e nos dois sentidos: um `.blicsa`
+#: novo abre numa versão antiga do app (que ignora a chave) e vice-versa.
+CHAVE_CONTEXTO_PESQUISA = "research_context"
+
+
+def research_context_do_config(config: dict | None) -> str:
+    """Contexto de pesquisa gravado no projeto, ou "" — nunca levanta.
+
+    Projeto de versão anterior não tem a chave; `.blicsa` editado à mão pode ter `None`, um
+    número ou um dicionário no lugar do texto. Nenhum desses casos pode impedir o projeto de
+    abrir: seria perder dataset, mapa e parâmetros por causa de um campo de texto opcional —
+    exatamente o modo de falha que o `_id_cluster` já corrigiu para os rótulos.
+    """
+    from core.research_context import normalizar
+
+    if not isinstance(config, dict):
+        return ""
+    return normalizar(config.get(CHAVE_CONTEXTO_PESQUISA))
+
+
 def normalize_dataframe(df: pd.DataFrame) -> pd.DataFrame:
     """Garante o schema canônico num DataFrame vindo de qualquer versão do app.
 
