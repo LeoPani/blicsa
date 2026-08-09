@@ -463,7 +463,13 @@ class BlicsaApp(ctk.CTk):
         import os
         
         self._welcome_frame = ctk.CTkFrame(self, fg_color=PAPER, corner_radius=0)
-        self._welcome_frame.place(relx=0, rely=0, relwidth=1, relheight=1)
+        # Só na PRIMEIRA montagem. `_refresh_language` destrói tudo e chama `_build_layout`
+        # de novo — e como esta tela é um `place()` por cima de tudo (que `_switch_tab` não
+        # remove), trocar de idioma no meio do trabalho devolvia o usuário para
+        # "novo projeto / abrir projeto" com o corpus dele intacto, porém invisível atrás.
+        # Medido na Auditoria 1: aba continuava 'corpus', a tela mostrava as boas-vindas.
+        if not getattr(self, "_boas_vindas_dispensadas", False):
+            self._welcome_frame.place(relx=0, rely=0, relwidth=1, relheight=1)
         
         center = ctk.CTkFrame(self._welcome_frame, fg_color="transparent")
         center.place(relx=0.5, rely=0.5, anchor="center")
@@ -481,11 +487,11 @@ class BlicsaApp(ctk.CTk):
         cards_frame.pack()
         
         def new_proj():
-            self._welcome_frame.place_forget()
+            self._dispensa_boas_vindas()
             self._create_project_flow()
 
         def load_proj():
-            self._welcome_frame.place_forget()
+            self._dispensa_boas_vindas()
             self._switch_tab("projects")
             
         # corner_radius=0: os dois cards estavam com 20, violando o "canto zero" do design
@@ -500,6 +506,16 @@ class BlicsaApp(ctk.CTk):
                            border_width=2, border_color=INK, corner_radius=0,
                            command=load_proj)
         c2.grid(row=0, column=1, padx=30)
+
+    def _dispensa_boas_vindas(self):
+        """Tira a tela de boas-vindas e marca que ela não deve voltar sozinha.
+
+        A marca é o que sobrevive ao `_build_layout` da troca de idioma. Sem ela, quem
+        escolheu um caminho era devolvido ao começo toda vez que mexesse no seletor.
+        """
+        self._boas_vindas_dispensadas = True
+        if getattr(self, "_welcome_frame", None) is not None:
+            self._welcome_frame.place_forget()
 
     def _build_layout(self):
         self.grid_columnconfigure(1, weight=1)

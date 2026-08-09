@@ -133,8 +133,70 @@ class BibliometricParser:
     # ------------------------------------------------------------------ #
     #  Web of Science TXT                                                  #
     # ------------------------------------------------------------------ #
+    def _wos_e_etiquetado(self) -> bool:
+        """O `.txt` do Web of Science vem em dois sabores, e só um tem tabulação.
+
+        *Tab delimited* é uma planilha com cabeçalho de siglas. *Plain text* é etiquetado,
+        um campo por linha (`AU Silva, J`), registros fechados por `ER` — e é a opção que a
+        interface do WoS oferece primeiro. Lido como TSV, o etiquetado produz **zero
+        registros e nenhum erro**: o usuário importava o arquivo certo e via um corpus vazio.
+        """
+        with open(self.file_path, encoding="utf-8-sig", errors="ignore") as f:
+            for linha in f:
+                if "\t" in linha:
+                    return False
+                if linha.startswith(("PT ", "PT\t")):
+                    return True
+        return False
+
+    def _load_wos_etiquetado(self) -> pd.DataFrame:
+        """Export *plain text* do WoS: `TAG valor`, continuação com três espaços, `ER` fecha.
+
+        `FN`/`VR` (cabeçalho do arquivo) e `EF` (fim) não pertencem a registro nenhum.
+        """
+        registros: list[dict] = []
+        atual: dict[str, str] = {}
+        tag: str | None = None
+
+        with open(self.file_path, encoding="utf-8-sig", errors="ignore") as f:
+            for bruta in f:
+                linha = bruta.rstrip("\r\n")
+                if not linha.strip():
+                    continue
+                if linha.startswith("ER"):
+                    if atual:
+                        registros.append(atual)
+                    atual, tag = {}, None
+                    continue
+                if linha.startswith("EF"):
+                    break
+                if linha.startswith("   ") and tag:
+                    # Continuação: autores e referências ocupam várias linhas. O separador
+                    # é `; ` porque é o que o resto do Blicsa espera em autores e keywords.
+                    atual[tag] = f"{atual.get(tag, '')}; {linha.strip()}".strip("; ")
+                    continue
+                nova = linha[:2].strip()
+                if len(nova) == 2 and linha[2:3] in (" ", ""):
+                    tag = nova
+                    if tag in ("FN", "VR"):
+                        tag = None
+                        continue
+                    atual[tag] = linha[3:].strip()
+
+        if atual:                      # arquivo sem `ER` no último registro
+            registros.append(atual)
+
+        campos = ["AU", "TI", "PY", "SO", "DE", "AB", "TC", "DI", "CR"]
+        return pd.DataFrame(
+            [{c: r.get(c, "") for c in campos} for r in registros],
+            columns=campos,
+        )
+
     def load_wos_txt(self) -> pd.DataFrame:
-        raw = pd.read_csv(self.file_path, sep="\t", skiprows=1, encoding="utf-8-sig")
+        if self._wos_e_etiquetado():
+            raw = self._load_wos_etiquetado()
+        else:
+            raw = pd.read_csv(self.file_path, sep="\t", skiprows=1, encoding="utf-8-sig")
         df = pd.DataFrame()
         df["authors"]    = raw.get("AU", _EMPTY.copy()).fillna("")
         df["title"]      = raw.get("TI", _EMPTY.copy()).fillna("")

@@ -419,6 +419,59 @@ CASOS = [
      "        if cluster_label_origins:",
      "        if False:",
      "tests/test_mapas_adversariais.py::test_ida_e_volta_preserva_mapa_clusters_rotulos_e_parametros"),
+
+    # ── Auditoria 1, Fase 2: fluxo de ponta a ponta ──
+    ("tela de boas-vindas volta sozinha ao trocar de idioma",
+     "main.py",
+     '        if not getattr(self, "_boas_vindas_dispensadas", False):\n'
+     "            self._welcome_frame.place(relx=0, rely=0, relwidth=1, relheight=1)",
+     "        self._welcome_frame.place(relx=0, rely=0, relwidth=1, relheight=1)",
+     "tests/test_fluxo_auditoria.py::test_trocar_de_idioma_nao_devolve_o_usuario_ao_inicio"),
+
+    # A primeira versão deste caso renomeava o método e inseria um stub — mutação que não
+    # tocava o caminho da PRIMEIRA abertura, então o teste ficava verde com razão. O defeito
+    # certo é a guarda invertida: a tela nunca aparece, nem para quem nunca escolheu nada.
+    ("boas-vindas somem para quem ainda não escolheu nada",
+     "main.py",
+     '        if not getattr(self, "_boas_vindas_dispensadas", False):',
+     '        if getattr(self, "_boas_vindas_dispensadas", False):',
+     "tests/test_fluxo_auditoria.py::test_boas_vindas_aparecem_na_primeira_abertura"),
+
+    ("import do WoS volta a ler só o formato tab-delimited",
+     "core/parsers.py",
+     "        if self._wos_e_etiquetado():\n"
+     "            raw = self._load_wos_etiquetado()\n"
+     "        else:\n"
+     "            raw = pd.read_csv(self.file_path, sep=\"\\t\", skiprows=1, encoding=\"utf-8-sig\")",
+     '        raw = pd.read_csv(self.file_path, sep="\\t", skiprows=1, encoding="utf-8-sig")',
+     "tests/test_fluxo_auditoria.py::test_wos_etiquetado_e_lido"),
+
+    ("linha de continuação do WoS é ignorada (perde o 2º autor)",
+     "core/parsers.py",
+     "                if linha.startswith(\"   \") and tag:",
+     "                if False and tag:",
+     "tests/test_fluxo_auditoria.py::test_wos_etiquetado_junta_linhas_de_continuacao"),
+
+    ("último registro do WoS sem ER é descartado",
+     "core/parsers.py",
+     "        if atual:                      # arquivo sem `ER` no último registro\n"
+     "            registros.append(atual)",
+     "        pass",
+     "tests/test_fluxo_auditoria.py::test_ultimo_registro_sem_ER_nao_e_descartado"),
+
+    ("cabeçalho FN/VR do WoS vira registro fantasma",
+     "core/parsers.py",
+     '                    if tag in ("FN", "VR"):\n'
+     "                        tag = None\n"
+     "                        continue",
+     "                    pass",
+     "tests/test_fluxo_auditoria.py::test_cabecalho_do_arquivo_nao_vira_registro"),
+
+    ("aba órfã deixa de ser detectada",
+     "main.py",
+     '            "review":  self._build_tab_review(),',
+     '            "review_ORFA":  self._build_tab_review(),',
+     "tests/test_navegacao_abas.py::test_switch_tab_so_usa_abas_que_existem"),
 ]
 
 

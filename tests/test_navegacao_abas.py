@@ -64,3 +64,45 @@ def test_viz_nao_voltou():
     """A chave específica que causou o defeito, nomeada para que a regressão seja óbvia
     na saída do teste."""
     assert "viz" not in _chaves_pedidas()
+
+
+# ── Item 13 da Auditoria 1: nenhuma tela órfã, nenhum botão sem destino ──────────
+
+def _botoes_da_sidebar() -> set[str]:
+    """Chaves da lista literal que monta os botões de navegação em `_build_sidebar`."""
+    arvore = ast.parse(FONTE.read_text(encoding="utf-8"))
+    for n in ast.walk(arvore):
+        if not (isinstance(n, ast.List) and n.elts
+                and all(isinstance(e, ast.Tuple) and len(e.elts) == 3 for e in n.elts)):
+            continue
+        chaves = {e.elts[0].value for e in n.elts if isinstance(e.elts[0], ast.Constant)}
+        if {"home", "export"} <= chaves:
+            return chaves
+    raise AssertionError("não achei a lista de botões da sidebar em main.py")
+
+
+def test_a_extracao_da_sidebar_encontrou_os_botoes():
+    """Guarda do guarda: extrator vazio faria os testes abaixo passarem sem comparar nada."""
+    botoes = _botoes_da_sidebar()
+    assert len(botoes) >= 8, f"poucos botões extraídos: {botoes}"
+
+
+def test_nenhuma_aba_e_orfa():
+    """Aba registrada que nem tem botão nem é destino de `_switch_tab` é tela construída,
+    montada na memória e inalcançável — o caso da 'Meus Projetos' antes de `75fdb33`."""
+    orfas = sorted(_chaves_registradas() - _botoes_da_sidebar() - _chaves_pedidas())
+    assert not orfas, f"abas sem nenhum caminho até elas: {orfas}"
+
+
+def test_todo_botao_da_sidebar_tem_aba():
+    """O inverso: botão apontando para chave inexistente esconde todas as abas e deixa a
+    tela em branco, que é o mesmo modo de falha do `_switch_tab('viz')`."""
+    sem_destino = sorted(_botoes_da_sidebar() - _chaves_registradas())
+    assert not sem_destino, f"botão da sidebar sem aba correspondente: {sem_destino}"
+
+
+def test_review_e_alcancavel_por_codigo():
+    """`review` não tem botão de propósito — é tela de fluxo, entra depois da busca. O que
+    ela não pode é deixar de ter *qualquer* caminho."""
+    assert "review" in _chaves_registradas()
+    assert "review" in _chaves_pedidas(), "a tela de revisão ficou sem caminho até ela"
