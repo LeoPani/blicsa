@@ -41,9 +41,19 @@ def _finite(value, default=None):
 def _metric(attr: dict, *nomes, zero_is_missing: bool = False):
     """Primeira métrica presente entre `nomes`, como número finito ou None.
 
-    `zero_is_missing=True` para ano e citações médias: o grafo antigo gravava 0.0 quando não
-    achava o dado (ver `NetworkGenerator.compute_overlay_scores`), e 0 ali significa "não sei",
-    não "ano zero". Traduzir isso para None é o que faz o overlay ficar honesto.
+    `zero_is_missing=True` **só para o ano**: o grafo grava 0.0 quando não acha o dado (ver
+    `NetworkGenerator.compute_overlay_scores`), e como ano zero não existe, 0 ali significa
+    "não sei" sem ambiguidade.
+
+    Para **citações não**, e a diferença custou um defeito: zero citação é o valor mais comum
+    de artigo recente. Com `zero_is_missing` ligado, um corpus dos últimos dois anos saía com
+    o overlay inteiro cinza e a legenda anunciando "sem dado" sobre um dado que existia. Hoje
+    o escritor grava `None` quando não sabe, e 0 volta a querer dizer zero.
+
+    **Projeto anterior a esta correção**: o grafo salvo tem `citations_mean: 0.0` tanto para
+    "zero citações" quanto para "não sei", e nada aqui distingue os dois. Eles passam a
+    aparecer como zero. É a troca deliberada — a alternativa mantinha o caso comum quebrado
+    para preservar a leitura de um caso que o arquivo antigo já não sabia representar.
     """
     for nome in nomes:
         if nome in attr:
@@ -107,8 +117,13 @@ def build_sigma_payload(
                 "doc_freq": _metric(attr, "doc_freq"),
                 "relevance": _metric(attr, "relevance"),
                 "avg_year": _metric(attr, "year_mean", "avg_year", zero_is_missing=True),
-                "avg_citations": _metric(attr, "citations_mean", "avg_citations",
-                                         zero_is_missing=True),
+                # Ano de ESTREIA da linha do tempo. O `map.js` já o lia
+                # (`a.first_year || Math.round(a.avg_year)`, linhas 423 e 502) e ele nunca
+                # existiu neste payload: a animação da tela caía sempre no ano MÉDIO, e um
+                # termo usado de 2010 a 2020 só aparecia em 2015. Como `avg_year`, 0 aqui
+                # quer dizer "não sei" — ano zero não existe.
+                "first_year": _metric(attr, "first_year", zero_is_missing=True),
+                "avg_citations": _metric(attr, "citations_mean", "avg_citations"),
                 "citations_sum": _metric(attr, "citations_sum"),
                 # Força de ligação = grau ponderado; alimenta o seletor de tamanho do nó.
                 "strength": _finite(G.degree(node, weight="weight"), 0.0),

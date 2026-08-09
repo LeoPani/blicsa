@@ -43,7 +43,8 @@ def _grafo_pobre():
     G = nx.Graph()
     G.add_node("x", size=10, label="x")                       # nada além do rótulo
     G.add_node("y", size=10, label="y", group=0, occurrence=0,
-               year_mean=0.0, citations_mean=0.0)             # zeros = "não sei"
+               year_mean=0.0,          # ano zero não existe → sentinela de "não sei"
+               citations_mean=None)    # "não sei" em citações é None, não 0 (ver abaixo)
     G.add_edge("x", "y", weight=1)
     return G, {"x": (0.0, 0.0), "y": (1.0, 0.0)}
 
@@ -70,11 +71,39 @@ def test_missing_metrics_are_null_never_zero():
 
     assert por_chave["x"]["avg_year"] is None
     assert por_chave["x"]["avg_citations"] is None
-    # E o 0.0 gravado pelo compute_overlay_scores antigo também vira None ("não sei").
+    # E o 0.0 gravado como sentinela de ano também vira None ("não sei").
     assert por_chave["y"]["avg_year"] is None, "0.0 de ano deveria virar None"
     assert por_chave["y"]["avg_citations"] is None
     # Cluster ausente cai para 0 (é índice de grupo, não métrica de overlay).
     assert por_chave["x"]["cluster"] == 0
+
+
+def test_zero_citacoes_e_zero_e_nao_ausencia_de_dado():
+    """A assimetria entre ano e citações, que a Auditoria 1 encontrou medindo.
+
+    Este teste já existiu ao contrário: afirmava que `citations_mean=0.0` virava `None`,
+    e por isso a suíte inteira ficava verde sobre o defeito. **Zero citação é o valor mais
+    comum de artigo recente** — tratá-lo como ausência apagava o overlay inteiro num corpus
+    dos últimos dois anos, com a legenda anunciando "sem dado" sobre um dado que existia.
+    O payload chegava a se contradizer: `citations_sum: 0` ao lado de `avg_citations: null`.
+
+    Ano continua com 0 = "não sei", e a diferença é que **ano zero não existe**.
+    """
+    G = nx.Graph()
+    G.add_node("recente", size=10, label="recente", group=0, occurrence=5,
+               year_mean=2026.0, citations_mean=0.0, citations_sum=0)
+    G.add_node("sem_info", size=10, label="sem_info", group=0, occurrence=5,
+               year_mean=0.0, citations_mean=None, citations_sum=None)
+    G.add_edge("recente", "sem_info", weight=1)
+    p = build_sigma_payload(G, {"recente": (0.0, 0.0), "sem_info": (1.0, 0.0)})
+    por_chave = {n["key"]: n["attributes"] for n in p["nodes"]}
+
+    assert por_chave["recente"]["avg_citations"] == 0.0, "zero citações virou 'sem dado'"
+    assert por_chave["sem_info"]["avg_citations"] is None
+    # Contradição interna do payload: os dois campos falam do mesmo fato.
+    assert por_chave["recente"]["citations_sum"] == 0.0
+    # E a legenda não pode contar o nó com zero citações como "sem dado".
+    assert p["overlay"]["avg_citations"]["no_data"] == 1
 
 
 def test_no_nan_or_infinity_ever_reaches_the_json(tmp_path):

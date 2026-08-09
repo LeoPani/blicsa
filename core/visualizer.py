@@ -1,4 +1,6 @@
 import math
+import random
+
 import numpy as np
 import networkx as nx
 import plotly.graph_objects as go
@@ -12,8 +14,29 @@ PAPER_BG   = "#f8f9fa"
 ACCENT     = "#0f172a"
 TEXT_COLOR = "#334155"
 
+#: Semente das posições INICIAIS do ForceAtlas2. Mesmo valor de `_apply_clustering`, e pelo
+#: mesmo motivo — só que a clusterização já tinha a sua desde a v2.0.0 e o layout não.
+#:
+#: `fa2_modified` sorteia a posição inicial de cada nó com o `random` **global do processo**
+#: (`forceatlas2.py:125-126`), que ninguém semeia. O efeito medido: mesmo corpus, mesmo
+#: `PYTHONHASHSEED`, mapa diferente a cada execução — clusters e cores idênticos, coordenadas
+#: nunca. Uma figura publicada não podia ser refeita.
+SEMENTE_LAYOUT = 42
 
-def compute_fa2_layout(G: nx.Graph, iterations: int = 500, linlog: bool = False) -> dict:
+
+def posicoes_iniciais(G: nx.Graph, seed: int = SEMENTE_LAYOUT) -> dict:
+    """Posições iniciais reprodutíveis, na mesma distribuição que a biblioteca usaria.
+
+    Uniforme em [0, 1) para x e y, um `random.Random` **local**: semear o `random` global
+    consertaria o layout e quebraria qualquer outro sorteio do processo. A ordem é a de
+    `G.nodes()`, determinística porque `build_keyword_cooccurrence` insere com `sorted()`.
+    """
+    rng = random.Random(seed)
+    return {n: (rng.random(), rng.random()) for n in G.nodes()}
+
+
+def compute_fa2_layout(G: nx.Graph, iterations: int = 500, linlog: bool = False,
+                       seed: int = SEMENTE_LAYOUT) -> dict:
     if G.number_of_nodes() == 0:
         return {}
     if G.number_of_nodes() == 1:
@@ -33,7 +56,9 @@ def compute_fa2_layout(G: nx.Graph, iterations: int = 500, linlog: bool = False)
         gravity=1.0,
         verbose=False,
     )
-    return fa2.forceatlas2_networkx_layout(G, pos=None, iterations=iterations)
+    # `pos=None` deixaria a biblioteca sortear sem semente — é exatamente o defeito.
+    return fa2.forceatlas2_networkx_layout(
+        G, pos=posicoes_iniciais(G, seed), iterations=iterations)
 
 
 def build_plotly_map(

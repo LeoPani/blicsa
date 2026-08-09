@@ -332,6 +332,93 @@ CASOS = [
      "                                    contexto_usuario=self.contexto_pesquisa\n"
      "                                    + \"\\n\\n\" + diretiva_idioma(self._lang()),",
      "tests/test_analises_i18n.py::test_papel_e_idioma_precedem_o_contexto_do_usuario"),
+
+    # ── Auditoria 1, Fase 1: mapas com corpus adversariais ──
+    # Os dois defeitos que a bateria encontrou medindo, não lendo código.
+
+    ("ForceAtlas2 volta a sortear a posição inicial sem semente",
+     "core/visualizer.py",
+     "    return fa2.forceatlas2_networkx_layout(\n"
+     "        G, pos=posicoes_iniciais(G, seed), iterations=iterations)",
+     "    return fa2.forceatlas2_networkx_layout(G, pos=None, iterations=iterations)",
+     "tests/test_mapas_adversariais.py::test_layout_repetido_no_mesmo_processo_tambem_bate"),
+
+    ("semente do layout deixa de ser fixa (vira o relógio)",
+     "core/visualizer.py",
+     "    rng = random.Random(seed)",
+     "    import time as _t; rng = random.Random(_t.time_ns())",
+     "tests/test_mapas_adversariais.py::test_posicoes_iniciais_sao_a_fonte_da_reprodutibilidade"),
+
+    ("zero citação volta a ser lido como ausência de dado",
+     "core/sigma_exporter.py",
+     '                "avg_citations": _metric(attr, "citations_mean", "avg_citations"),',
+     '                "avg_citations": _metric(attr, "citations_mean", "avg_citations",\n'
+     '                                         zero_is_missing=True),',
+     "tests/test_sigma_export.py::test_zero_citacoes_e_zero_e_nao_ausencia_de_dado"),
+
+    ("escritor volta a gravar 0.0 como sentinela de citação ausente",
+     "core/matrix_builders.py",
+     '                self.G.nodes[node]["citations_mean"] = (\n'
+     '                    round(float(cits.mean()), 1) if tem_citacao else None)',
+     '                self.G.nodes[node]["citations_mean"] = (\n'
+     '                    round(float(cits.mean()), 1) if tem_citacao else 0.0)',
+     "tests/test_mapas_adversariais.py::test_ausencia_real_de_citacao_continua_sendo_ausencia"),
+
+    ("ano deixa de usar 0 como ausência (a assimetria se perde)",
+     "core/sigma_exporter.py",
+     '                "avg_year": _metric(attr, "year_mean", "avg_year", zero_is_missing=True),',
+     '                "avg_year": _metric(attr, "year_mean", "avg_year"),',
+     "tests/test_mapas_adversariais.py::test_ano_continua_usando_zero_como_ausencia"),
+
+    ("ordem de inserção dos nós deixa de ser ordenada (Louvain volta a variar)",
+     "core/matrix_builders.py",
+     "        for t in sorted(valid):",
+     "        for t in valid:",
+     "tests/test_mapas_adversariais.py::test_mapa_e_reproduzivel_entre_processos"),
+
+    ("termo volta a carregar quebra de linha (export de linha corrompe)",
+     "core/matrix_builders.py",
+     "                    apply_thesaurus(normalizar_termo(k).lower(), thesaurus)",
+     "                    apply_thesaurus(k.strip().lower(), thesaurus)",
+     "tests/test_mapas_adversariais.py::test_termo_com_quebra_nao_corrompe_export_de_linha"),
+
+    ("normalizar_termo passa a apagar caractere legítimo",
+     "core/nlp.py",
+     '    return _ESPACO_BRANCO.sub(" ", termo or "").strip()',
+     '    return re.sub(r"[^a-z0-9 ]", "", (termo or "").lower()).strip()',
+     "tests/test_mapas_adversariais.py::test_normalizar_termo_preserva_o_que_e_conteudo"),
+
+    ("export GEXF volta a gravar 0 no lugar de ausência",
+     "core/matrix_builders.py",
+     '                valor = data.get(chave)\n'
+     '                if valor is None:\n'
+     '                    data.pop(chave, None)',
+     '                valor = data.get(chave) or 0.0\n'
+     '                if False:\n'
+     '                    data.pop(chave, None)',
+     "tests/test_mapas_adversariais.py::test_export_nao_grava_zero_no_lugar_de_ausencia"),
+
+    ("VOSviewer volta a escrever a string None no score",
+     "core/matrix_builders.py",
+     '            cits_txt = "" if mean_cits is None else mean_cits',
+     '            cits_txt = mean_cits',
+     "tests/test_mapas_adversariais.py::test_export_nao_grava_zero_no_lugar_de_ausencia"),
+
+    ("builder deixa de gravar o ano de estreia (animação volta ao ano médio)",
+     "core/matrix_builders.py",
+     "                first_year=first_year,",
+     "                first_year=0,",
+     "tests/test_mapas_adversariais.py::test_termo_estreia_no_primeiro_ano_e_nao_no_ano_medio"),
+
+    # A primeira versão deste caso renomeava a chave na INICIALIZAÇÃO do dicionário de
+    # resultado, que a leitura sobrescreve adiante — mutação inócua, teste verde, e o furo
+    # era do caso de reinjeção, não do teste. Agora o defeito é o que de fato acontece: o
+    # arquivo de origens não chega a ser gravado no .blicsa.
+    ("ida e volta perde a origem do rótulo (IA vira humano)",
+     "core/project.py",
+     "        if cluster_label_origins:",
+     "        if False:",
+     "tests/test_mapas_adversariais.py::test_ida_e_volta_preserva_mapa_clusters_rotulos_e_parametros"),
 ]
 
 

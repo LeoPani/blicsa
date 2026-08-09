@@ -8,7 +8,7 @@ from collections import Counter
 from itertools import combinations
 import community as community_louvain
 
-from .nlp import extract_ngrams, apply_thesaurus
+from .nlp import extract_ngrams, apply_thesaurus, normalizar_termo
 
 CLUSTER_PALETTE = ['#DF3117', '#1E4DA0', '#F5BE00', '#141414', '#7A9E7E', '#B65CA2', '#5CB0B8', '#C97B2D']
 
@@ -109,7 +109,7 @@ def _extract_term_lists(
             if isinstance(kw_str, str) and kw_str.strip():
                 sep = ";" if ";" in kw_str else ","
                 kws = [
-                    apply_thesaurus(k.strip().lower(), thesaurus)
+                    apply_thesaurus(normalizar_termo(k).lower(), thesaurus)
                     for k in kw_str.split(sep) if k.strip()
                 ]
                 result.append(kws)
@@ -191,17 +191,26 @@ class NetworkGenerator:
                 years = years[years > 0]
                 mean_year = float(years.mean()) if not years.empty else 0.0
                 
+                # `None`, e não `0.0`, como sentinela de "sem dado".
+                #
+                # Ano zero não existe, então 0 pode significar "não sei" sem ambiguidade. Já
+                # **zero citações é o valor mais comum de artigo recente** — usar 0 como
+                # sentinela apagava a métrica inteira: num corpus dos últimos dois anos, todo
+                # nó saía cinza e a legenda dizia "sem dado" sobre um dado que estava lá.
+                # O payload chegava a se contradizer, com `citations_sum: 0` ao lado de
+                # `avg_citations: null` para o mesmo nó.
                 cits = matches["citations"].dropna()
-                mean_cits = float(cits.mean()) if not cits.empty else 0.0
-                sum_cits = float(cits.sum()) if not cits.empty else 0.0
-                
+                tem_citacao = not cits.empty
+
                 self.G.nodes[node]["year_mean"] = round(mean_year, 1)
-                self.G.nodes[node]["citations_mean"] = round(mean_cits, 1)
-                self.G.nodes[node]["citations_sum"] = int(sum_cits)
+                self.G.nodes[node]["citations_mean"] = (
+                    round(float(cits.mean()), 1) if tem_citacao else None)
+                self.G.nodes[node]["citations_sum"] = (
+                    int(cits.sum()) if tem_citacao else None)
             else:
                 self.G.nodes[node]["year_mean"] = self.G.nodes[node].get("year_mean", 0.0)
-                self.G.nodes[node]["citations_mean"] = self.G.nodes[node].get("citations_mean", 0.0)
-                self.G.nodes[node]["citations_sum"] = self.G.nodes[node].get("citations_sum", 0)
+                self.G.nodes[node]["citations_mean"] = self.G.nodes[node].get("citations_mean")
+                self.G.nodes[node]["citations_sum"] = self.G.nodes[node].get("citations_sum")
 
     # ------------------------------------------------------------------ #
     #  Pre-computation / preview                                           #
@@ -312,6 +321,12 @@ class NetworkGenerator:
         for t in sorted(valid):
             yrs = term_years.get(t, [])
             year_mean = round(sum(yrs) / len(yrs), 1) if yrs else 0
+            # Ano de ESTREIA, que é coisa diferente do ano médio. `timeline_frames` faz o nó
+            # entrar na animação no `first_year` e, sem ele, cai no `year_mean`: um termo
+            # usado de 2010 a 2020 estreava em 2015, e os quadros de 2010 a 2014 saíam vazios
+            # com o corpus tendo documentos ali. A animação promete mostrar o campo se
+            # formando; sem esta linha ela mostrava outra coisa.
+            first_year = min(yrs) if yrs else 0
             self.G.add_node(
                 t,
                 size=int(10 + counts[t] * 2),
@@ -326,6 +341,7 @@ class NetworkGenerator:
                 doc_freq=doc_freq.get(t, 0),
                 relevance=round(self._term_scores.get(t, 0), 3),
                 year_mean=year_mean,
+                first_year=first_year,
             )
 
         cooc: Counter = Counter()
@@ -860,6 +876,13 @@ class NetworkGenerator:
         G = self.G.copy()
         for n, data in G.nodes(data=True):
             data.pop("title", None)  # HTML strings break some GML parsers
+            # GML não tem nulo. Desde que "não sei" passou a ser `None` de verdade (e não o
+            # 0.0 que mentia), escrever o atributo levantava `NetworkXError: None is not a
+            # string` e o arquivo nem chegava a existir. **Omitir** é a representação certa
+            # de ausência num formato sem nulo — gravar 0 seria reintroduzir a mentira no
+            # arquivo que o usuário abre no Gephi.
+            for chave in [k for k, v in data.items() if v is None]:
+                data.pop(chave)
         nx.write_gml(G, output_path)
 
     def export_pajek(self, output_path: str):
@@ -872,9 +895,19 @@ class NetworkGenerator:
         for n, data in G.nodes(data=True):
             data.pop("title", None)
             data.pop("color", None)
-            data["year_mean"] = float(data.get("year_mean", 0.0))
-            data["citations_mean"] = float(data.get("citations_mean", 0.0))
-            data["citations_sum"] = int(data.get("citations_sum", 0))
+            # `.get(chave, padrao)` NÃO cobre chave presente valendo `None` — o padrão só vale
+            # para chave ausente, e `float(None)` levanta. Desde que "não sei" virou `None` de
+            # verdade em citações, este era o caminho que quebrava o export inteiro.
+            # Atributo desconhecido é **omitido**, como no GML: gravar 0 poria no arquivo do
+            # Gephi a mesma mentira que a correção tirou da tela.
+            for chave in ("year_mean", "citations_mean", "citations_sum"):
+                valor = data.get(chave)
+                if valor is None:
+                    data.pop(chave, None)
+                else:
+                    data[chave] = int(valor) if chave == "citations_sum" else float(valor)
+            for chave in [k for k, v in data.items() if v is None]:
+                data.pop(chave)
         nx.write_gexf(G, output_path)
 
     def export_vosviewer(self, map_path: str, network_path: str, positions: dict | None = None):
@@ -890,9 +923,15 @@ class NetworkGenerator:
             cluster = self.G.nodes[node].get("group", 0)
             weight = self.G.nodes[node].get("occurrence", self.G.degree(node, weight="weight"))
             mean_yr = self.G.nodes[node].get("year_mean", 0.0)
-            mean_cits = self.G.nodes[node].get("citations_mean", 0.0)
-            
-            map_rows.append(f"{idx}\t{node}\t{x}\t{y}\t{cluster}\t{weight}\t{mean_yr}\t{mean_cits}")
+            mean_cits = self.G.nodes[node].get("citations_mean")
+
+            # Campo VAZIO para "não sei", nunca a string "None" nem um 0 inventado. Num TSV
+            # lido pelo VOSviewer, "None" no lugar de um score vira coluna corrompida, e 0
+            # vira "o menos citado do mapa" — a mesma mentira que a correção das citações
+            # tirou do overlay, reaparecendo no arquivo exportado.
+            cits_txt = "" if mean_cits is None else mean_cits
+
+            map_rows.append(f"{idx}\t{node}\t{x}\t{y}\t{cluster}\t{weight}\t{mean_yr}\t{cits_txt}")
             
         with open(map_path, "w", encoding="utf-8") as f:
             f.write("\n".join(map_rows))

@@ -101,6 +101,25 @@ def load_thesaurus(csv_path: str) -> dict[str, str]:
     return mapping
 
 
+#: Qualquer sequência de espaço em branco, inclusive quebra de linha e tabulação.
+_ESPACO_BRANCO = re.compile(r"\s+")
+
+
+def normalizar_termo(termo: str) -> str:
+    """Termo do vocabulário sem espaço em branco de controle no meio.
+
+    `strip()` sozinho limpa só as pontas, e quebra de linha **dentro** de um termo passava
+    inteira para o nome do nó. Isso não é um conceito de duas linhas: é artefato de CSV ou
+    RIS malformado, que o Blicsa importa.
+
+    O custo era real e invisível na tela. Pajek e VOSviewer são formatos de **um registro por
+    linha**: um termo com `\\n` partia o registro em vários, e o arquivo exportado deixava de
+    ser legível — inclusive pelo próprio networkx que o havia escrito. Medido na Auditoria 1:
+    `nx.read_pajek` levantava `ValueError` sobre o arquivo gerado pelo `export_pajek`.
+    """
+    return _ESPACO_BRANCO.sub(" ", termo or "").strip()
+
+
 def apply_thesaurus(term: str, thesaurus: dict[str, str] | None) -> str:
     if not thesaurus:
         return term
