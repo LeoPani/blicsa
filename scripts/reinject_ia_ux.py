@@ -256,22 +256,24 @@ CASOS = [
 
     ("a cláusula de idioma volta a um prompt só (mapa temático)",
      "ai/client.py",
-     '''            "## Temas Emergentes e Básicos\\n"
+     '''                      ("ai.sec_emergentes", "Temas Emergentes e Básicos"))
+            +
             f"\\n{ESTILO_ANALISE}"''',
-     '''            "## Temas Emergentes e Básicos\\n"
+     '''                      ("ai.sec_emergentes", "Temas Emergentes e Básicos"))
+            +
             "\\nUse linguagem técnica acadêmica em português."''',
      "tests/test_analises_i18n.py::test_nenhum_literal_de_prompt_fixa_idioma"),
 
     ("o system das análises perde a diretiva de idioma",
      "ai/client.py",
-     "        return montar_system_prompt(papel=papel, idioma=diretiva_idioma(lang),",
+     "        return montar_system_prompt(papel=papel, idioma=diretiva_idioma(self._lang()),",
      '        return montar_system_prompt(papel=papel, idioma="",',
      "tests/test_analises_i18n.py::test_analise_pede_resposta_no_idioma_da_interface"),
 
     ("a diretiva das análises congela num idioma",
      "ai/client.py",
-     "            lang = get_lang()",
-     '            lang = "pt_BR"',
+     "            return get_lang()",
+     '            return "pt_BR"',
      "tests/test_analises_i18n.py::test_a_diretiva_muda_de_fato_entre_os_tres_idiomas"),
 
     ("o rótulo de cluster volta a ser pedido em português",
@@ -280,13 +282,55 @@ CASOS = [
      '"ID: Label conciso em português (2-5 palavras)\\n"',
      "tests/test_analises_i18n.py::test_nenhuma_analise_manda_responder_em_portugues"),
 
+    # Os três seguintes vêm da MEDIÇÃO com chamada real, não de leitura de código: a diretiva
+    # sozinha deixava 7 das 18 análises em português.
+
+    ("títulos de seção voltam a ser fixos em português",
+     "ai/client.py",
+     '''            + _secoes(("ai.sec_fluxo", "Fluxo de Conhecimento (Sankey)"),
+                      ("ai.sec_atores", "Principais Atores e Fontes"))
+            +''',
+     '''            + "## Fluxo de Conhecimento (Sankey)\\n## Principais Atores e Fontes\\n"
+            +''',
+     "tests/test_analises_i18n.py::test_secao_em_portugues_nao_sobra_fora_do_pt_BR"),
+
+    ("o nome da análise volta a ir em português ao modelo",
+     "ai/client.py",
+     """            f"Analise os dados do {_t('ai.obj_tematico', 'Mapa Temático')} abaixo:\\n\\n\"""",
+     '''            "Analise os dados do Mapa Temático abaixo:\\n\\n"''',
+     "tests/test_analises_i18n.py::test_nome_da_analise_nao_chega_em_portugues"),
+
+    ("o lembrete de idioma some do fim do turno do usuário",
+     "ai/client.py",
+     "            user_prompt=self._com_lembrete_de_idioma(user),",
+     "            user_prompt=user,",
+     "tests/test_analises_i18n.py::test_lembrete_de_idioma_encerra_o_turno_do_usuario"),
+
+    ("o lembrete vai para o começo do turno, onde o prompt o soterra",
+     "ai/client.py",
+     '        return f"{user}\\n\\n{diretiva_idioma(self._lang())}"',
+     '        return f"{diretiva_idioma(self._lang())}\\n\\n{user}"',
+     "tests/test_analises_i18n.py::test_lembrete_de_idioma_encerra_o_turno_do_usuario"),
+
+    ("catálogo com seção copiada do português (tradução de mentira)",
+     "locales/fr.json",
+     '"ai.sec_frentes": "Fronts de recherche émergents"',
+     '"ai.sec_frentes": "Frentes de Pesquisa Emergentes"',
+     "tests/test_analises_i18n.py::test_secoes_sao_traduzidas_de_fato_e_nao_copiadas"),
+
+    ("chave de seção some do catálogo francês",
+     "locales/fr.json",
+     '"ai.sec_quadrantes": "Analyse des quadrants stratégiques"',
+     '"ai.sec_quadrantes_REMOVIDA": "Analyse des quadrants stratégiques"',
+     "tests/test_analises_i18n.py::test_toda_chave_de_catalogo_usada_no_client_existe_nos_tres"),
+
     ("a diretiva vai parar depois do contexto do usuário",
      "ai/client.py",
-     "        return montar_system_prompt(papel=papel, idioma=diretiva_idioma(lang),\n"
+     "        return montar_system_prompt(papel=papel, idioma=diretiva_idioma(self._lang()),\n"
      "                                    contexto_usuario=self.contexto_pesquisa,",
      "        return montar_system_prompt(papel=papel, idioma=\"\",\n"
      "                                    contexto_usuario=self.contexto_pesquisa\n"
-     "                                    + \"\\n\\n\" + diretiva_idioma(lang),",
+     "                                    + \"\\n\\n\" + diretiva_idioma(self._lang()),",
      "tests/test_analises_i18n.py::test_papel_e_idioma_precedem_o_contexto_do_usuario"),
 ]
 

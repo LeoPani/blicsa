@@ -32,6 +32,32 @@ ESTILO_ANALISE_SEMINAL = ("Use linguagem técnica acadêmica. Seja direto, conci
                           "evite introduções longas. Foque em descrições práticas.")
 
 
+def _t(chave: str, padrao: str) -> str:
+    """Texto do catálogo, com o português como último recurso.
+
+    `t()` devolve a **própria chave** quando ela não existe em catálogo nenhum, e uma chave
+    crua (`ai.sec_frentes`) virando título de seção no relatório do usuário é pior do que o
+    português que esta correção veio tirar. Daí a checagem explícita.
+    """
+    try:
+        from core.i18n import t
+        valor = t(chave)
+    except Exception:
+        return padrao
+    return padrao if not valor or valor == chave else valor
+
+
+def _secoes(*pares: tuple[str, str]) -> str:
+    """As seções que a análise deve produzir, já no idioma da interface.
+
+    **Título de seção é conteúdo, não instrução.** O modelo copia estes literais para a
+    resposta — foi por isso que, medido com chamada real, um relatório com corpo em francês
+    saía encabeçado por "Frentes de Pesquisa Emergentes". Pior: o cabeçalho em português
+    puxava o corpo junto, e o `system` sozinho perdia a disputa em 4 das 6 análises em inglês.
+    """
+    return "".join(f"## {_t(chave, padrao)}\n" for chave, padrao in pares)
+
+
 class AIClientError(Exception):
     """Falha REAL na chamada de IA (rede, auth, quota). PROIBIDO devolver
     string de erro como se fosse conteúdo: quem chama decide como exibir."""
@@ -132,17 +158,36 @@ class AIAnalyst:
         """
         from core.research_context import diretiva_idioma, montar_system_prompt
 
-        cabecalho = "Contexto de pesquisa informado pelo usuário (leve em conta ao responder):"
-        lang = None
-        try:
-            from core.i18n import get_lang, t
-            lang = get_lang()
-            cabecalho = t("ai.contexto_prompt") or cabecalho
-        except Exception:
-            pass
-        return montar_system_prompt(papel=papel, idioma=diretiva_idioma(lang),
+        cabecalho = _t("ai.contexto_prompt",
+                       "Contexto de pesquisa informado pelo usuário (leve em conta ao responder):")
+        return montar_system_prompt(papel=papel, idioma=diretiva_idioma(self._lang()),
                                     contexto_usuario=self.contexto_pesquisa,
                                     cabecalho_contexto=cabecalho)
+
+    @staticmethod
+    def _lang() -> str | None:
+        """Idioma da interface, ou `None` (que `diretiva_idioma` lê como inglês)."""
+        try:
+            from core.i18n import get_lang
+            return get_lang()
+        except Exception:
+            return None
+
+    def _com_lembrete_de_idioma(self, user: str) -> str:
+        """A mesma diretiva do `system`, repetida no fim do turno do usuário.
+
+        Não é redundância decorativa — é o que a medição com chamada real exigiu. Só no
+        `system`, a diretiva perdia para o corpo do prompt: 7 das 18 análises saíam em
+        português, sendo 4 das 6 em inglês. O prompt de cada análise é longo e escrito em
+        português, e vem **depois** da diretiva; a última instrução do turno é a que o modelo
+        honra.
+
+        Vem de `diretiva_idioma`, a mesma função do `system` e do chat do Blink. Duas
+        redações do mesmo pedido, no mesmo prompt, é como se produz um modelo hesitante.
+        """
+        from core.research_context import diretiva_idioma
+
+        return f"{user}\n\n{diretiva_idioma(self._lang())}"
 
     def chat_history(self, messages: list[dict], temperature: float = 0.7) -> str:
         if not self.api_key:
@@ -160,7 +205,7 @@ class AIAnalyst:
             # contexto chegar ao Sankey, ao mapa temático, à historiografia e às obras
             # seminais sem que cada um precise lembrar de repassá-lo.
             system_prompt=self._system_com_contexto(system),
-            user_prompt=user,
+            user_prompt=self._com_lembrete_de_idioma(user),
             temperature=temperature
         )
 
@@ -218,7 +263,7 @@ class AIAnalyst:
     ) -> str:
         cluster_txt = ""
         if cluster_report:
-            cluster_txt = "\n\nComunidades (clusters) detectados:\n"
+            cluster_txt = f"\n\n{_t('ai.rot_clusters', 'Comunidades (clusters) detectados')}:\n"
             for c in cluster_report[:10]:
                 cluster_txt += (
                     f"  Cluster {c['cluster_id']} "
@@ -231,17 +276,18 @@ class AIAnalyst:
             top_years = sorted(
                 year_distribution.items(), key=lambda x: x[1], reverse=True
             )[:5]
-            year_txt = f"\n\nAnos com mais publicações: {top_years}"
+            year_txt = (f"\n\n{_t('ai.rot_anos', 'Anos com mais publicações')}: {top_years}")
 
         prompt = (
             f"Analise os dados bibliométricos abaixo:\n\n"
-            f"Estatísticas gerais: {summary_stats}\n"
-            f"Top 20 palavras-chave: {top_keywords}"
+            f"{_t('ai.rot_estatisticas', 'Estatísticas gerais')}: {summary_stats}\n"
+            f"{_t('ai.rot_keywords', 'Top 20 palavras-chave')}: {top_keywords}"
             f"{cluster_txt}{year_txt}\n\n"
             "Produza a análise em Markdown com as seções:\n"
-            "## Frentes de Pesquisa Emergentes\n"
-            "## Lacunas Científicas Identificadas\n"
-            "## Recomendações para Pesquisa Futura\n"
+            + _secoes(("ai.sec_frentes", "Frentes de Pesquisa Emergentes"),
+                      ("ai.sec_lacunas", "Lacunas Científicas Identificadas"),
+                      ("ai.sec_recomendacoes", "Recomendações para Pesquisa Futura"))
+            +
             f"\n{ESTILO_ANALISE}"
         )
         return self._chat(
@@ -289,11 +335,12 @@ class AIAnalyst:
 
     def generate_sankey_insights(self, relations_summary: str) -> str:
         prompt = (
-            "Analise as relações de fluxo (Sankey de Três Campos: Autores -> Palavras-Chave -> Periódicos) abaixo:\n\n"
+            f"Analise as relações de fluxo ({_t('ai.obj_sankey', 'Sankey de Três Campos')}) abaixo:\n\n"
             f"{relations_summary}\n\n"
             "Produza uma análise em Markdown com as seções:\n"
-            "## Fluxo de Conhecimento (Sankey)\n"
-            "## Principais Atores e Fontes\n"
+            + _secoes(("ai.sec_fluxo", "Fluxo de Conhecimento (Sankey)"),
+                      ("ai.sec_atores", "Principais Atores e Fontes"))
+            +
             f"\n{ESTILO_ANALISE}"
         )
         return self._chat(
@@ -303,12 +350,13 @@ class AIAnalyst:
 
     def generate_thematic_insights(self, quadrants_summary: str) -> str:
         prompt = (
-            "Analise os dados do Mapa Temático (Quadrantes de Callon: Centralidade vs Densidade) abaixo:\n\n"
+            f"Analise os dados do {_t('ai.obj_tematico', 'Mapa Temático')} abaixo:\n\n"
             f"{quadrants_summary}\n\n"
             "Produza uma análise em Markdown com as seções:\n"
-            "## Análise dos Quadrantes Estratégicos\n"
-            "## Temas Motores e Especializados\n"
-            "## Temas Emergentes e Básicos\n"
+            + _secoes(("ai.sec_quadrantes", "Análise dos Quadrantes Estratégicos"),
+                      ("ai.sec_motores", "Temas Motores e Especializados"),
+                      ("ai.sec_emergentes", "Temas Emergentes e Básicos"))
+            +
             f"\n{ESTILO_ANALISE}"
         )
         return self._chat(
@@ -318,11 +366,12 @@ class AIAnalyst:
 
     def generate_historiograph_insights(self, citation_paths: str) -> str:
         prompt = (
-            "Analise a historiografia de citações diretas entre os principais artigos abaixo:\n\n"
+            f"Analise a {_t('ai.obj_historiografia', 'historiografia de citações diretas')} abaixo:\n\n"
             f"{citation_paths}\n\n"
             "Produza uma análise em Markdown com as seções:\n"
-            "## Evolução Histórica (Historiografia)\n"
-            "## Marcos Científicos e Artigos Centrais\n"
+            + _secoes(("ai.sec_evolucao", "Evolução Histórica (Historiografia)"),
+                      ("ai.sec_marcos", "Marcos Científicos e Artigos Centrais"))
+            +
             f"\n{ESTILO_ANALISE}"
         )
         return self._chat(
@@ -337,7 +386,9 @@ class AIAnalyst:
             "Com base nessa lista e no seu conhecimento científico geral:\n"
             "1. Identifique os autores seminais (fundadores ou marcos da área) e suas respectivas obras/livros seminais.\n"
             "2. Forneça uma breve descrição (2-4 frases) explicando do que se trata cada livro ou artigo seminal específico identificado, destacando sua relevância e contribuição teórica para a ciência.\n\n"
-            f"Produza o relatório em Markdown estruturado por autores seminais. {ESTILO_ANALISE_SEMINAL}"
+            "Produza o relatório em Markdown sob a seção:\n"
+            + _secoes(("ai.sec_seminais", "Autores e Obras Seminais"))
+            + f"\nEstruture por autor seminal. {ESTILO_ANALISE_SEMINAL}"
         )
         return self._chat(
             system="Você é especialista em cientometria, história da ciência e mapeamento científico.",

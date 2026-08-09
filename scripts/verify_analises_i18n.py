@@ -63,11 +63,37 @@ MARCAS = {
     "fr": (r"\b(?:les|des|recherche|thèmes?|analyse|cette|avec)\b", "francês"),
 }
 
+#: Rótulo de cluster tem 2-5 palavras e quase nenhuma palavra funcional: a heurística acima
+#: devolve "?" para *toda* saída de `label_clusters`, nos três idiomas. Estes marcadores são
+#: **presos a QUADRANTES/os nós desta fixture** — o script controla a entrada, então a
+#: especificidade é legítima aqui e seria armadilha em qualquer outro lugar.
+MARCAS_CURTAS = {
+    "pt_BR": r"\b(?:gestão|resíduos|políticas?|públicas?|urbana|governança|informalidade|reciclagem)\b",
+    "en": r"\b(?:waste|management|public|polic(?:y|ies)|urban|governance|informality|recycling)\b",
+    "fr": r"\b(?:gestion|déchets|politiques?|publiques?|urbaine|gouvernance|informalité|recyclage)\b",
+}
+
+#: Abaixo disto a saída não tem massa para a heurística de palavras funcionais.
+CURTO = 12
+
 
 def _idioma_aparente(texto: str) -> str:
-    pontos = {lang: len(re.findall(rx, texto, re.I)) for lang, (rx, _) in MARCAS.items()}
+    """`pt_BR` | `en` | `fr` | `?`.
+
+    `?` significa **não verificado**, e é reportado à parte de "saiu na língua errada". Um
+    veredito de idioma que confunde "não consegui ler" com "está errado" é o mesmo defeito
+    que fazia o 403 do Cloudflare ser anunciado como chave recusada.
+    """
+    tabela = MARCAS_CURTAS if len(texto.split()) < CURTO else {
+        lang: rx for lang, (rx, _) in MARCAS.items()}
+    pontos = {lang: len(re.findall(rx, texto, re.I)) for lang, rx in tabela.items()}
     vencedor = max(pontos, key=pontos.get)
-    return vencedor if pontos[vencedor] else "?"
+    if not pontos[vencedor]:
+        return "?"
+    # Empate entre dois idiomas é tão inconclusivo quanto zero acerto.
+    if list(pontos.values()).count(pontos[vencedor]) > 1:
+        return "?"
+    return vencedor
 
 
 def main() -> int:
@@ -85,6 +111,7 @@ def main() -> int:
     # que o 403 sem User-Agent produzia ao ser classificado como "chave recusada".
     furos: list[str] = []
     erros: list[str] = []
+    indeterminados: list[str] = []
 
     idioma_anterior = i18n.get_lang()
     try:
@@ -108,12 +135,17 @@ def main() -> int:
                     continue
                 texto = saida if isinstance(saida, str) else " ".join(map(str, saida.values()))
                 visto = _idioma_aparente(texto)
-                ok = visto == lang
                 amostra = re.sub(r"[#*`\n]+", " ", texto).strip()[:110]
-                print(f"  [{'OK  ' if ok else 'FURO'}] {nome}: saiu em {MARCAS.get(visto, ('', visto))[1]}"
-                      f" (esperado {esperado})\n         {amostra}…")
-                if not ok:
+                if visto == "?":
+                    marca, veredito = "????", "não deu para classificar — LEIA"
+                    indeterminados.append(f"{lang}/{nome}")
+                elif visto == lang:
+                    marca, veredito = "OK  ", f"saiu em {MARCAS[visto][1]}"
+                else:
+                    marca, veredito = "FURO", f"saiu em {MARCAS[visto][1]}"
                     furos.append(f"{lang}/{nome}: saiu em {visto}, esperado {lang}")
+                print(f"  [{marca}] {nome}: {veredito} (esperado {esperado})"
+                      f"\n         {amostra}…")
             print()
     finally:
         i18n.load_locales(idioma_anterior)
@@ -127,6 +159,13 @@ def main() -> int:
             print(f"  - {e}")
         print()
 
+    if indeterminados:
+        print(f"{len(indeterminados)} saída(s) que a heurística não classificou — leia as "
+              f"amostras acima antes de dar por verificado:")
+        for i in indeterminados:
+            print(f"  - {i}")
+        print()
+
     if furos:
         print(f"{len(furos)} análise(s) NÃO respeitaram o idioma da interface:")
         for f in furos:
@@ -137,8 +176,11 @@ def main() -> int:
         print("Nenhuma chamada completou. Verificação NÃO realizada.")
         return 2
 
-    print(f"{verificadas} chamada(s) completaram e todas responderam no idioma da interface.")
-    return 1 if erros else 0
+    conclusivas = verificadas - len(indeterminados)
+    print(f"{conclusivas} de {len(IDIOMAS) * len(ANALISES)} chamadas verificadas: todas "
+          f"responderam no idioma da interface.")
+    # Indeterminado não é aprovação. Sair 0 aqui transformaria "não consegui ler" em "passou".
+    return 1 if (erros or indeterminados) else 0
 
 
 if __name__ == "__main__":

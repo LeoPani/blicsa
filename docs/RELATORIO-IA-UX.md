@@ -265,10 +265,33 @@ o bug**, com o resultado dependendo do modelo do dia. O exemplo de formato ficou
 como formato: dois rótulos em português logo abaixo da regra seriam lidos como amostra do
 idioma esperado.
 
-Guardado por seis casos novos de reinjeção e por
-`tests/test_analises_i18n.py` — 42 testes, seis análises × três idiomas, medindo o
-`system_prompt` que **iria** ao modelo, mais uma varredura por AST que pega a cláusula de volta
-mesmo num ramo condicional que nenhum caso exercite.
+#### A suíte verde não bastou — de novo
+
+Com 42 testes verdes e 44/44 reinjeções detectadas, a primeira rodada de chamadas reais
+reprovou **7 das 18 análises**: 4 das 6 em inglês saíam em português, e mesmo respostas com
+corpo em francês vinham encabeçadas por *"Frentes de Pesquisa Emergentes"*.
+
+O que faltava não era diretiva — era o resto do prompt:
+
+| causa | medição | correção |
+|---|---|---|
+| títulos de seção fixos em português no prompt | o modelo os copia literalmente; em inglês, puxavam o corpo junto | 11 chaves `ai.sec_*` nos três catálogos |
+| nome da análise no corpo do prompt | `Mapa Temático` em **3 de 3** respostas em inglês | 7 chaves `ai.obj_*` / `ai.rot_*` |
+| diretiva só no `system` | perdia para um prompt longo em português vindo depois dela | repetida no fim do turno do usuário, da mesma `diretiva_idioma` |
+
+**Título de seção é conteúdo, não instrução.** Essa foi a distinção que faltava na primeira
+leitura: o que o modelo *copia* precisa estar traduzido; só o que ele *obedece* pode ficar em
+português. A diretiva no `system` governa como escrever; ela não reescreve o que foi mandado
+copiar.
+
+Depois das três correções: **18/18**, e zero vazamentos de termo em 18 chamadas adicionais.
+
+Guardado por 12 casos novos de reinjeção e por `tests/test_analises_i18n.py` — 94 testes.
+A matriz achou um furo no próprio arquivo: a extração de chaves de catálogo procurava
+`ast.Call` de `_t(...)` e **não via** as `ai.sec_*`, que chegam como tuplas dentro de
+`_secoes(...)`. A paridade passava a verde sobre um terço das chaves. Quem encontrou foi
+apagar `ai.sec_quadrantes` do catálogo francês e o teste continuar verde —
+`test_a_extracao_de_chaves_realmente_ve_as_secoes` existe por isso.
 
 ### Dois pontos do inventário não estão ligados a tela nenhuma
 
@@ -339,9 +362,9 @@ janela do navegador do autor). O mecanismo da correção de `1a33124` funcionou 
 
 - `python3 -m pytest tests/ -q` → **610 passed, 1 xfailed** (OBS-03 do Crossref, fora do
   escopo). Eram 557 antes desta rodada: **+53 testes**. ✅
-  *(652 depois da correção de idioma das análises, em 08/08.)*
+  *(705 depois da correção de idioma das análises, em 08–09/08.)*
 - `python3 scripts/reinject_ia_ux.py` → **38/38 defeitos detectados**. ✅
-  *(44/44 depois da correção de idioma das análises.)*
+  *(50/50 depois da correção de idioma das análises.)*
 - `python3 scripts/check_i18n_parity.py` → catálogos em paridade. ✅
 - `python3 scripts/check_evidence_privacy.py` → **71 imagens · 71 OK · 0 para inspeção
   humana**. ✅
