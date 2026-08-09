@@ -388,4 +388,72 @@ def load_blicsa_project(path: str) -> dict:
             origens = json.loads(zf.read("cluster_origins.json").decode("utf-8"))
             result["cluster_label_origins"] = {_id_cluster(k): v for k, v in origens.items()}
 
+    migrar_citacoes_ambiguas(result.get("G"), result.get("df"))
     return result
+
+
+#: Nós cujo `citations_mean` vale exatamente zero. Só eles são ambíguos.
+def _nos_com_citacao_zero(G) -> set:
+    return {n for n, d in G.nodes(data=True) if d.get("citations_mean") == 0}
+
+
+def migrar_citacoes_ambiguas(G, df) -> int:
+    """Desfaz a ambiguidade do `citations_mean: 0.0` de projeto antigo. Devolve quantos nós
+    foram recalculados.
+
+    ## O que era ambíguo
+
+    Até 09/08/2026 o escritor gravava `0.0` em duas situações **diferentes**:
+
+    - o termo aparece em documentos com **zero citação** (valor verdadeiro), e
+    - o termo aparece em documentos **sem dado de citação** (valor desconhecido).
+
+    O leitor tratava os dois como "não sei", e o efeito era um corpus recente inteiro cinza no
+    overlay. Hoje o escritor grava `None` para desconhecido — mas **o arquivo já salvo não tem
+    como ser lido**: `0.0` sozinho não diz qual dos dois casos era.
+
+    ## Por que dá para migrar
+
+    O `.blicsa` guarda o **dataset inteiro**, com a coluna `citations`. A ambiguidade só existe
+    no grafo derivado; a fonte está ali do lado. Recalcular do dataset responde a pergunta que o
+    grafo não responde.
+
+    A migração é por **conteúdo, não por número de versão**: o `normalize_dataframe` acima
+    existe porque projetos de 30/07 declaravam `version: 3` e vinham com uma coluna só. Confiar
+    no rótulo em vez de olhar a caixa já custou um bug neste arquivo.
+
+    ## Por que só os nós com zero
+
+    `compute_overlay_scores` é O(nós × documentos) — 36 s para 5.000 nós. Recalcular o grafo
+    inteiro faria toda abertura de projeto pagar o preço de uma ambiguidade que costuma atingir
+    poucos nós. Nó com valor diferente de zero é idêntico nos dois escritores, e nó já com
+    `None` é de projeto novo.
+
+    É idempotente: rodar sobre projeto novo recalcula os mesmos valores.
+    """
+    if G is None or df is None or getattr(df, "empty", True):
+        return 0
+    ambiguos = _nos_com_citacao_zero(G)
+    if not ambiguos:
+        return 0
+
+    try:
+        from core.matrix_builders import NetworkGenerator
+    except Exception as e:                       # pragma: no cover - só sem dependências
+        logger.warning("[Project] migração de citações indisponível: %s", e)
+        return 0
+
+    gen = NetworkGenerator(df)
+    gen.G = G
+    try:
+        gen.compute_overlay_scores(apenas=ambiguos)
+    except Exception as e:
+        # Projeto que abre com métrica velha é melhor do que projeto que não abre. A carga
+        # inteira já foi perdida uma vez por causa do rótulo de um cluster (`_id_cluster`).
+        logger.warning("[Project] migração de citações falhou, mantendo valores antigos: %s", e)
+        return 0
+
+    recalculados = len(ambiguos)
+    logger.info("[Project] citações recalculadas do dataset em %d nó(s) ambíguo(s)",
+                recalculados)
+    return recalculados

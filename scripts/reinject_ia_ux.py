@@ -472,6 +472,33 @@ CASOS = [
      '            "review":  self._build_tab_review(),',
      '            "review_ORFA":  self._build_tab_review(),',
      "tests/test_navegacao_abas.py::test_switch_tab_so_usa_abas_que_existem"),
+
+    # ── Etapa 2: migração das citações ambíguas de projeto antigo ──
+    ("carga deixa de migrar o citations_mean ambíguo",
+     "core/project.py",
+     '    migrar_citacoes_ambiguas(result.get("G"), result.get("df"))',
+     "    pass",
+     "tests/test_migracao_citacoes.py::test_projeto_antigo_recupera_a_citacao_que_o_grafo_perdeu"),
+
+    ("migração inventa citação onde havia zero de verdade",
+     "core/project.py",
+     "    ambiguos = _nos_com_citacao_zero(G)",
+     "    ambiguos = set(G.nodes())",
+     "tests/test_migracao_citacoes.py::test_so_os_nos_ambiguos_sao_recalculados"),
+
+    ("filtro de subconjunto do compute_overlay_scores deixa de valer",
+     "core/matrix_builders.py",
+     "        for node in (self.G.nodes if apenas is None else [n for n in self.G.nodes if n in apenas]):",
+     "        for node in self.G.nodes:",
+     "tests/test_migracao_citacoes.py::test_compute_overlay_scores_respeita_o_subconjunto"),
+
+    ("falha da migração volta a derrubar a carga do projeto",
+     "core/project.py",
+     "    except Exception as e:\n"
+     '        # Projeto que abre com métrica velha é melhor do que projeto que não abre. A carga',
+     "    except ZeroDivisionError as e:\n"
+     '        # Projeto que abre com métrica velha é melhor do que projeto que não abre. A carga',
+     "tests/test_migracao_citacoes.py::test_falha_da_migracao_nao_impede_o_projeto_de_abrir"),
 ]
 
 

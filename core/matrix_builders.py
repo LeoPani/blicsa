@@ -149,9 +149,19 @@ class NetworkGenerator:
         _color_nodes(self.G, partition)
         return partition
 
-    def compute_overlay_scores(self):
+    def compute_overlay_scores(self, apenas: set | None = None):
+        """Métricas de overlay a partir do dataframe.
+
+        `apenas` restringe o recálculo a um subconjunto de nós. Serve à migração de projeto
+        antigo (`core.project.migrar_citacoes_ambiguas`), que precisa desta **mesma** lógica
+        de casamento nó↔documento — reescrevê-la lá criaria dois casadores para o mesmo
+        campo, que é a inconsistência já catalogada em `docs/AUDITORIA-ARQUITETURA.md` §4.
+
+        Sem `apenas`, o custo é O(nós × documentos): 36 s para 5.000 nós. É por isso que a
+        migração passa só os nós ambíguos, e não o grafo inteiro.
+        """
         import re
-        for node in self.G.nodes:
+        for node in (self.G.nodes if apenas is None else [n for n in self.G.nodes if n in apenas]):
             node_lower = str(node).lower().strip()
             matches = pd.DataFrame()
             

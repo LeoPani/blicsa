@@ -2,6 +2,55 @@
 
 All notable changes to this project will be documented in this file.
 
+## [Não publicado]
+
+### ⚠️ Resultados podem diferir de versões anteriores
+
+Três correções mudam o que aparece na tela para um projeto criado antes delas. Nenhuma
+altera o seu **corpus**: os registros, os autores, os anos e as citações continuam exatamente
+como foram coletados. O que muda é o que o Blicsa **calcula** a partir deles.
+
+**1. O mapa agora sai igual toda vez.** Antes, gerar o mapa duas vezes a partir do mesmo
+corpus produzia desenhos diferentes — os mesmos agrupamentos, em posições diferentes. A
+biblioteca de layout sorteava o ponto de partida de cada nó sem semente fixa. Se você publicou
+uma figura, não conseguiria refazê-la. Agora consegue.
+
+*O que fazer:* nada. Projetos salvos guardam as posições e continuam abrindo com o mapa que
+você viu. A diferença aparece só se você mandar **recalcular** o mapa — e aí o novo desenho é
+o que se repetirá dali em diante.
+
+**2. Zero citação deixou de ser lido como "sem informação".** Um termo que aparece só em
+artigos ainda não citados — o caso mais comum de corpus recente — era pintado de cinza no mapa
+de superposição, com a legenda dizendo "sem dado". O dado existia: era zero.
+
+*O que fazer:* nada, na maioria dos casos. Ao abrir um projeto antigo, o Blicsa **recalcula
+essa métrica a partir do corpus guardado dentro do próprio arquivo** e desfaz a confusão
+sozinho — um termo com citações volta a mostrar suas citações, e um termo genuinamente sem
+citação mostra zero. A única exceção é projeto salvo **sem o corpus junto**: nesse caso não há
+de onde recalcular, e os termos afetados passam a aparecer como zero em vez de cinza.
+
+**3. Os agrupamentos ficaram reprodutíveis** (já valia desde a v2.0.0). A ordem de inserção
+dos nós não era determinística e o algoritmo de comunidades podia chegar a divisões diferentes
+com a mesma entrada. Hoje há semente fixa.
+
+*O que fazer:* se um agrupamento publicado precisa ser preservado exatamente, guarde a figura
+exportada antes de reabrir o projeto.
+
+### Corrigido
+
+- **Import do Web of Science no formato "plain text" trazia zero registros.** O arquivo é
+  aceito, a importação termina sem erro, e o corpus fica vazio. Era o formato que a interface
+  do Web of Science oferece primeiro. Os dois formatos (`plain text` e `tab delimited`) agora
+  funcionam.
+- **Trocar o idioma no meio do trabalho devolvia à tela inicial.** O corpus continuava
+  carregado, mas coberto pela tela de "novo projeto / abrir projeto".
+- **As análises de IA saíam sempre em português**, mesmo com a interface em inglês ou francês —
+  mapa temático, Sankey, historiografia, obras seminais, insights e rótulos de cluster.
+- **Exportação para Gephi e VOSviewer podia gerar arquivo ilegível** quando um termo do corpus
+  continha quebra de linha (acontece com CSV e RIS malformados).
+- **A linha do tempo do mapa mostrava o ano errado.** Um termo usado desde 2010 só aparecia na
+  animação alguns anos depois, e os primeiros anos saíam vazios mesmo havendo publicações.
+
 ## [2.0.0] - 2026-08-04
 
 Primeira versão estável, e a base congelada para o registro de software e a submissão
