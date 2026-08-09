@@ -308,6 +308,31 @@ def save_blicsa_project(
                                    indent=2, ensure_ascii=False))
 
 
+#: Teto do que cada entrada do `.blicsa` pode ocupar DEPOIS de descomprimida.
+#:
+#: `zf.read(nome)` descomprime a entrada inteira para a memória antes de qualquer validação.
+#: Um ZIP de 199 KB com uma entrada de 200 MB de zeros já entrou na RAM num teste da
+#: Auditoria 2 — e a mesma técnica escala para gigabytes com um arquivo minúsculo.
+#:
+#: 400 MB é folgado para um corpus real: o `.blicsa` do dataset de exemplo tem 301 KB, e o
+#: dataset ainda vai comprimido em gzip dentro do ZIP.
+LIMITE_ENTRADA_BYTES = 400 * 1024 * 1024
+
+
+def _ler_entrada(zf: zipfile.ZipFile, nome: str) -> bytes:
+    """Lê uma entrada do `.blicsa` recusando o que for grande demais para ser corpus.
+
+    O teto é conferido no **cabeçalho** (`ZipInfo.file_size`), antes de descomprimir: checar
+    depois de ler seria constatar o estrago em vez de evitá-lo.
+    """
+    info = zf.getinfo(nome)
+    if info.file_size > LIMITE_ENTRADA_BYTES:
+        raise ValueError(
+            f"entrada '{nome}' declara {info.file_size / 1024 / 1024:.0f} MB descomprimidos, "
+            f"acima do teto de {LIMITE_ENTRADA_BYTES / 1024 / 1024:.0f} MB")
+    return zf.read(nome)
+
+
 def load_blicsa_project(path: str) -> dict:
     """Load full Blicsa project from a .blicsa ZIP archive, with version migration hook."""
     result = {
@@ -321,7 +346,7 @@ def load_blicsa_project(path: str) -> dict:
 
     with zipfile.ZipFile(path, "r") as zf:
         # Read Manifest
-        manifest = json.loads(zf.read("manifest.json").decode("utf-8"))
+        manifest = json.loads(_ler_entrada(zf, "manifest.json").decode("utf-8"))
         version = manifest.get("version", "1.0")
 
         # Version Migration Hook
@@ -331,12 +356,12 @@ def load_blicsa_project(path: str) -> dict:
 
         # Read Config
         if "config.json" in zf.namelist():
-            result["config"] = json.loads(zf.read("config.json").decode("utf-8"))
+            result["config"] = json.loads(_ler_entrada(zf, "config.json").decode("utf-8"))
 
         # Read Dataset
         if "dataset.json.gz" in zf.namelist():
             import io
-            compressed_df = zf.read("dataset.json.gz")
+            compressed_df = _ler_entrada(zf, "dataset.json.gz")
             df_json = gzip.decompress(compressed_df).decode("utf-8")
             # A normalização vale para QUALQUER versão, não só quando o manifesto diverge:
             # os projetos de 30/07 declaram `version: 3` e mesmo assim vieram com uma coluna
@@ -347,12 +372,12 @@ def load_blicsa_project(path: str) -> dict:
 
         # Read Layout
         if "layout.json" in zf.namelist():
-            serialized_pos = json.loads(zf.read("layout.json").decode("utf-8"))
+            serialized_pos = json.loads(_ler_entrada(zf, "layout.json").decode("utf-8"))
             result["positions"] = {k: v for k, v in serialized_pos.items()}
 
         # Read Network (Graph)
         if "network.json" in zf.namelist():
-            network_data = json.loads(zf.read("network.json").decode("utf-8"))
+            network_data = json.loads(_ler_entrada(zf, "network.json").decode("utf-8"))
             G = nx.Graph()
             for node in network_data.get("nodes", []):
                 G.add_node(node["id"], **node.get("attributes", {}))
@@ -362,13 +387,13 @@ def load_blicsa_project(path: str) -> dict:
             
         # Read Searches
         if "searches.json" in zf.namelist():
-            result["searches"] = json.loads(zf.read("searches.json").decode("utf-8"))
+            result["searches"] = json.loads(_ler_entrada(zf, "searches.json").decode("utf-8"))
         else:
             result["searches"] = []
 
         # Read Clusters (Labels)
         if "clusters.json" in zf.namelist():
-            serialized_clusters = json.loads(zf.read("clusters.json").decode("utf-8"))
+            serialized_clusters = json.loads(_ler_entrada(zf, "clusters.json").decode("utf-8"))
             # As chaves voltam a inteiro porque é o que o app usa (`dict[int, str]`, ids da
             # partição do Louvain) e a gravação as serializa com `str(k)`.
             #
@@ -385,7 +410,7 @@ def load_blicsa_project(path: str) -> dict:
                                         for k, v in serialized_clusters.items()}
 
         if "cluster_origins.json" in zf.namelist():
-            origens = json.loads(zf.read("cluster_origins.json").decode("utf-8"))
+            origens = json.loads(_ler_entrada(zf, "cluster_origins.json").decode("utf-8"))
             result["cluster_label_origins"] = {_id_cluster(k): v for k, v in origens.items()}
 
     migrar_citacoes_ambiguas(result.get("G"), result.get("df"))

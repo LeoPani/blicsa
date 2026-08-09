@@ -25,7 +25,10 @@ class ZoteroProvider(SearchProvider):
         import urllib.request
         try:
             req = urllib.request.Request(base_url, headers={'User-Agent': 'Blicsa'})
-            with urllib.request.urlopen(req) as res:
+            # Timeout explícito: sem ele o `urlopen` herda o do socket, que é
+            # `None` — a busca ficaria pendurada para sempre se o servidor não
+            # respondesse, e o worker roda numa thread que o usuário não pode matar.
+            with urllib.request.urlopen(req, timeout=30) as res:
                 data = json.loads(res.read().decode('utf-8'))
                 for i, item in enumerate(data):
                     if cancel_event and cancel_event.is_set(): break

@@ -223,3 +223,42 @@ def detect_bursts(
             
     bursts = sorted(bursts, key=lambda x: x["strength"], reverse=True)
     return bursts
+
+
+#: Caracteres que fazem uma célula de CSV virar fórmula ao ser aberta em planilha.
+#:
+#: `=`, `+`, `-` e `@` são reconhecidos por Excel e LibreOffice; tabulação e retorno de carro
+#: entram porque a planilha os ignora antes de olhar o primeiro caractere real.
+GATILHOS_DE_FORMULA = ("=", "+", "-", "@", "\t", "\r")
+
+#: Prefixo neutralizador. A aspa simples é a convenção do próprio Excel para "isto é texto":
+#: ela não aparece na célula e impede a avaliação.
+PREFIXO_SEGURO = "'"
+
+
+def neutralizar_formula(valor):
+    """Impede que um texto do corpus vire fórmula ao abrir o CSV exportado numa planilha.
+
+    O vetor é real e não exige nada de especial do atacante: basta um registro cujo campo de
+    palavra-chave contenha `=HYPERLINK("http://…")` ou `=cmd|'/C calc'!A0`. O Blicsa exporta
+    o termo tal como veio, o pesquisador abre no Excel para conferir os rankings, e a planilha
+    **avalia** a célula. Medido na Auditoria 2: 5 células no ranking e 14 nas arestas.
+
+    Não altera o dado — prefixa. O termo continua legível na célula e volta inteiro se o
+    arquivo for lido por um programa (que ignora a convenção da aspa).
+    """
+    if not isinstance(valor, str) or not valor:
+        return valor
+    return PREFIXO_SEGURO + valor if valor.startswith(GATILHOS_DE_FORMULA) else valor
+
+
+def neutralizar_formulas_no_df(df):
+    """Aplica `neutralizar_formula` a toda coluna de texto de um DataFrame."""
+    seguro = df.copy()
+    for coluna in seguro.columns:
+        # Sem filtrar por `dtype`: o pandas desta versão infere `str` (e não `object`) para
+        # coluna de texto, e a checagem `dtype == object` deixava passar TODAS as células —
+        # a neutralização existia e não neutralizava nada. `neutralizar_formula` já devolve
+        # o valor intacto quando não é texto, então aplicar em tudo é correto e barato.
+        seguro[coluna] = seguro[coluna].map(neutralizar_formula)
+    return seguro

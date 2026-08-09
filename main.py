@@ -4920,7 +4920,11 @@ class BlicsaApp(ctk.CTk):
             return
         if path := filedialog.asksaveasfilename(
                 defaultextension=".csv", filetypes=[("CSV", "*.csv")]):
-            self._dataframe.to_csv(path, index=False, encoding="utf-8-sig")
+            # O corpus é dado de terceiro: um título ou keyword começando com `=` vira
+            # fórmula quando o pesquisador abre o CSV no Excel. Ver `neutralizar_formula`.
+            from core.nlp import neutralizar_formulas_no_df
+            neutralizar_formulas_no_df(self._dataframe).to_csv(
+                path, index=False, encoding="utf-8-sig")
             self._record_export("csv", path)
             log.info(f"[Export] DataFrame → {path}")
 

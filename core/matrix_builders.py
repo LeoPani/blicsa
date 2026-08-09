@@ -8,7 +8,8 @@ from collections import Counter
 from itertools import combinations
 import community as community_louvain
 
-from .nlp import extract_ngrams, apply_thesaurus, normalizar_termo
+from .nlp import (apply_thesaurus, extract_ngrams, neutralizar_formulas_no_df,
+                  normalizar_termo)
 
 CLUSTER_PALETTE = ['#DF3117', '#1E4DA0', '#F5BE00', '#141414', '#7A9E7E', '#B65CA2', '#5CB0B8', '#C97B2D']
 
@@ -1140,8 +1141,10 @@ class NetworkGenerator:
                 "year_mean":        attrs.get("year_mean", ""),
             })
         (
-            pd.DataFrame(rows)
-            .sort_values("weighted_degree", ascending=False)
+            # Neutraliza fórmula antes de gravar: um termo do corpus começando com `=` vira
+            # fórmula quando o pesquisador abre o CSV no Excel. Ver `neutralizar_formula`.
+            neutralizar_formulas_no_df(
+                pd.DataFrame(rows).sort_values("weighted_degree", ascending=False))
             .to_csv(output_path, index=False, encoding="utf-8-sig")
         )
 
@@ -1156,8 +1159,8 @@ class NetworkGenerator:
             for u, v, d in self.G.edges(data=True)
         ]
         (
-            pd.DataFrame(rows)
-            .sort_values("weight", ascending=False)
+            neutralizar_formulas_no_df(
+                pd.DataFrame(rows).sort_values("weight", ascending=False))
             .to_csv(output_path, index=False, encoding="utf-8-sig")
         )
 

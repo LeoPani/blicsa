@@ -1,17 +1,95 @@
+import hmac
 import json
 import logging
-from http.server import BaseHTTPRequestHandler, HTTPServer
+import time
+from collections import deque
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import threading
 from typing import Callable, Dict, Any, Optional
 from core.sources.openalex import OpenAlexProvider
 
 logger = logging.getLogger("BridgeServer")
 
+#: Teto do corpo de um POST. Um registro bibliográfico com resumo cabe folgado em 1 MB; o que
+#: não cabe é engano ou ataque. Sem teto, `rfile.read(Content-Length)` alocava o que o cliente
+#: pedisse — 60 MB entraram na memória num teste da Auditoria 2.
+LIMITE_CORPO_BYTES = 1 * 1024 * 1024
+
+#: Profundidade máxima do JSON aceito. Um registro é raso; aninhamento de milhares de níveis
+#: só serve para gastar pilha e memória do processo que hospeda a interface do usuário.
+PROFUNDIDADE_MAXIMA_JSON = 40
+
+#: Janela e teto do limitador de taxa, por processo. Não é proteção contra a internet — o
+#: servidor só escuta em 127.0.0.1 — é contra extensão defeituosa em laço, que congelaria o
+#: app inteiro sem nunca ter má intenção.
+JANELA_TAXA_S = 10.0
+MAX_PEDIDOS_NA_JANELA = 60
+
+
+def profundidade_json(objeto, limite: int = PROFUNDIDADE_MAXIMA_JSON, nivel: int = 1) -> int:
+    """Profundidade do objeto já decodificado, parando assim que passa do limite.
+
+    Medir **depois** de decodificar é de propósito: o `json` do CPython usa varredura
+    iterativa e não estoura a pilha, então o custo real é a memória do objeto resultante — e
+    é ele que precisa ser recusado antes de seguir para o resto do app.
+    """
+    if nivel > limite:
+        return nivel
+    if isinstance(objeto, dict):
+        filhos = objeto.values()
+    elif isinstance(objeto, (list, tuple)):
+        filhos = objeto
+    else:
+        return nivel
+    maior = nivel
+    for filho in filhos:
+        maior = max(maior, profundidade_json(filho, limite, nivel + 1))
+        if maior > limite:
+            return maior
+    return maior
+
+
 class ExtensionBridgeHandler(BaseHTTPRequestHandler):
     bridge_token = ""
     on_add_record: Optional[Callable[[Dict[str, Any]], int]] = None
     on_expand: Optional[Callable[[Dict[str, Any]], Dict[str, Any]]] = None
-    
+
+    #: Instantes dos pedidos recentes, compartilhados por todas as instâncias do handler
+    #: (o `HTTPServer` cria uma por requisição).
+    _pedidos_recentes: deque = deque()
+    _trava_taxa = threading.Lock()
+
+    @classmethod
+    def _dentro_do_limite_de_taxa(cls) -> bool:
+        agora = time.monotonic()
+        with cls._trava_taxa:
+            while cls._pedidos_recentes and agora - cls._pedidos_recentes[0] > JANELA_TAXA_S:
+                cls._pedidos_recentes.popleft()
+            if len(cls._pedidos_recentes) >= MAX_PEDIDOS_NA_JANELA:
+                return False
+            cls._pedidos_recentes.append(agora)
+            return True
+
+    def _responder(self, codigo: int, corpo: bytes = b"", encerrar: bool = False):
+        """Responde e, quando pedido, **fecha a conexão**.
+
+        `encerrar=True` nas recusas que não leem o corpo (413, 429, Content-Length inválido):
+        sem isso a requisição fica com bytes por subir num socket que o servidor considera
+        reutilizável, e a próxima conexão espera para sempre. Medido: a suíte completa
+        passou a dar `TimeoutError` no bridge depois que as recusas foram acrescentadas —
+        um ataque de negação de serviço que a própria proteção criou.
+        """
+        if encerrar:
+            self.close_connection = True
+        self.send_response(codigo)
+        self.send_header("Content-Type", "application/json")
+        if encerrar:
+            self.send_header("Connection", "close")
+        self._send_cors_headers()
+        self.end_headers()
+        if corpo:
+            self.wfile.write(corpo)
+
     def _send_cors_headers(self):
         origin = self.headers.get("Origin", "")
         if origin.startswith("chrome-extension://") or origin.startswith("moz-extension://"):
@@ -31,7 +109,13 @@ class ExtensionBridgeHandler(BaseHTTPRequestHandler):
         if not auth_header.startswith('Bearer '):
             return False
         token = auth_header.split(' ')[1]
-        return token == self.bridge_token
+        # `compare_digest` e não `==`: a comparação de string do Python sai no primeiro byte
+        # diferente, e o tempo de resposta vaza quantos bytes iniciais o atacante acertou.
+        # O servidor é local, mas qualquer processo da máquina fala com ele, e o token é o
+        # que separa "extensão do usuário" de "qualquer programa que esteja rodando".
+        if not self.bridge_token:
+            return False
+        return hmac.compare_digest(token, self.bridge_token)
 
     def do_GET(self):
         if self.path == '/api/status':
@@ -54,21 +138,39 @@ class ExtensionBridgeHandler(BaseHTTPRequestHandler):
 
     def do_POST(self):
         if not self._validate_token():
-            self.send_response(401)
-            self._send_cors_headers()
-            self.end_headers()
-            self.wfile.write(b'{"error": "Unauthorized"}')
+            self._responder(401, b'{"error": "Unauthorized"}')
             return
 
-        content_length = int(self.headers.get('Content-Length', 0))
+        if not self._dentro_do_limite_de_taxa():
+            self._responder(429, b'{"error": "Too many requests"}', encerrar=True)
+            return
+
+        # `int()` sem guarda: um `Content-Length: abc` levantava `ValueError` **fora** de
+        # qualquer `try`, o handler morria com 500 e a conexão era cortada no meio. Medido
+        # na Auditoria 2.
+        try:
+            content_length = int(self.headers.get('Content-Length', 0) or 0)
+        except (TypeError, ValueError):
+            self._responder(400, b'{"error": "Invalid Content-Length"}', encerrar=True)
+            return
+
+        if content_length < 0 or content_length > LIMITE_CORPO_BYTES:
+            # Recusa ANTES de ler: o ponto do teto é não alocar o que o cliente pediu.
+            self._responder(413, b'{"error": "Payload too large"}', encerrar=True)
+            return
+
         post_data = self.rfile.read(content_length)
         try:
             data = json.loads(post_data)
         except json.JSONDecodeError:
-            self.send_response(400)
-            self._send_cors_headers()
-            self.end_headers()
-            self.wfile.write(b'{"error": "Invalid JSON"}')
+            self._responder(400, b'{"error": "Invalid JSON"}')
+            return
+        except RecursionError:
+            self._responder(400, b'{"error": "JSON too deep"}')
+            return
+
+        if profundidade_json(data) > PROFUNDIDADE_MAXIMA_JSON:
+            self._responder(400, b'{"error": "JSON too deep"}')
             return
 
         if self.path == '/api/add':
@@ -169,7 +271,9 @@ class BridgeServer:
     def start(self):
         if self.server:
             return
-        self.server = HTTPServer(('127.0.0.1', self.port), ExtensionBridgeHandler)
+        # `ThreadingHTTPServer`: com o servidor de thread única, uma requisição lenta
+        # (ou meio recusada) bloqueava todas as seguintes.
+        self.server = ThreadingHTTPServer(('127.0.0.1', self.port), ExtensionBridgeHandler)
         self.thread = threading.Thread(target=self.server.serve_forever, daemon=True)
         self.thread.start()
         logger.info(f"Bridge server started on port {self.port}")

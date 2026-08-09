@@ -2,7 +2,10 @@
 """Reinjeta cada defeito da camada de IA e confirma que o teste fica VERMELHO."""
 import pathlib, shutil, subprocess, sys, tempfile
 
-RAIZ = pathlib.Path("/Users/leopani/PyBibliomics")
+# Derivado do próprio arquivo, não fixo: o caminho absoluto anterior carregava o nome
+# de usuário do autor para dentro de um repositório público e fazia o script rodar só
+# na máquina dele — quem clonasse recebia "trecho não encontrado" em todos os casos.
+RAIZ = pathlib.Path(__file__).resolve().parent.parent
 TIMEOUT_S = 90
 
 CASOS = [
@@ -619,6 +622,70 @@ CASOS = [
      '                        t("busca.sem_resultado_titulo"), t("busca.sem_resultado")))',
      '                        "Busca concluída", "Nenhum registro encontrado para essa busca."))',
      "tests/test_busca_estados_de_erro.py::test_busca_sem_resultados_avisa_e_orienta"),
+
+    # ── Auditoria 2, Fase 1: segurança ──
+    ("fórmula volta a sair executável no CSV",
+     "core/nlp.py",
+     "    return PREFIXO_SEGURO + valor if valor.startswith(GATILHOS_DE_FORMULA) else valor",
+     "    return valor",
+     "tests/test_seguranca.py::test_export_csv_nao_carrega_celula_executavel"),
+
+    ("neutralização volta a depender do dtype do pandas",
+     "core/nlp.py",
+     "        seguro[coluna] = seguro[coluna].map(neutralizar_formula)",
+     "        if seguro[coluna].dtype == object:\n"
+     "            seguro[coluna] = seguro[coluna].map(neutralizar_formula)",
+     "tests/test_seguranca.py::test_neutralizacao_nao_depende_do_dtype_do_pandas"),
+
+    ("token do bridge volta a ser comparado com ==",
+     "core/bridge.py",
+     "        return hmac.compare_digest(token, self.bridge_token)",
+     "        return token == self.bridge_token",
+     "tests/test_seguranca.py::test_comparacao_de_token_e_em_tempo_constante"),
+
+    ("bridge volta a alocar o corpo que o cliente pedir",
+     "core/bridge.py",
+     "        if content_length < 0 or content_length > LIMITE_CORPO_BYTES:",
+     "        if False:",
+     "tests/test_seguranca.py::test_payload_gigante_e_recusado_sem_ser_lido"),
+
+    ("Content-Length inválido volta a derrubar o handler",
+     "core/bridge.py",
+     "            content_length = int(self.headers.get('Content-Length', 0) or 0)\n"
+     "        except (TypeError, ValueError):",
+     "            content_length = int(self.headers.get('Content-Length', 0) or 0)\n"
+     "        except ZeroDivisionError:",
+     "tests/test_seguranca.py::test_content_length_invalido_nao_derruba_o_handler"),
+
+    ("JSON profundo volta a ser aceito",
+     "core/bridge.py",
+     "        if profundidade_json(data) > PROFUNDIDADE_MAXIMA_JSON:",
+     "        if False:",
+     "tests/test_seguranca.py::test_json_profundo_e_recusado"),
+
+    ("limitador de taxa do bridge deixa de valer",
+     "core/bridge.py",
+     "        if not self._dentro_do_limite_de_taxa():",
+     "        if False:",
+     "tests/test_seguranca.py::test_limite_de_taxa_dispara"),
+
+    ("CORS volta a ecoar qualquer origem",
+     "core/bridge.py",
+     '            self.send_header("Access-Control-Allow-Origin", "null")',
+     '            self.send_header("Access-Control-Allow-Origin", origin)',
+     "tests/test_seguranca.py::test_cors_nao_libera_origem_arbitraria"),
+
+    ("zip bomb volta a ser descomprimido na memória",
+     "core/project.py",
+     "    if info.file_size > LIMITE_ENTRADA_BYTES:",
+     "    if False:",
+     "tests/test_seguranca.py::test_zip_bomb_e_recusado_antes_de_descomprimir"),
+
+    ("chamada ao Zotero volta a ficar sem timeout",
+     "core/sources/zotero.py",
+     "            with urllib.request.urlopen(req, timeout=30) as res:",
+     "            with urllib.request.urlopen(req) as res:",
+     "tests/test_seguranca.py::test_toda_chamada_de_rede_tem_timeout"),
 ]
 
 
