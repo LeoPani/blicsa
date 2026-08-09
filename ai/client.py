@@ -14,6 +14,23 @@ import time
 #: uma chave perfeitamente válida.
 USER_AGENT = "Blicsa/1.0 (Python)"
 
+#: Instrução de **registro** das análises — como escrever, não em que língua.
+#:
+#: A cláusula "em português" vivia aqui, repetida em cinco prompts, e era o que fazia o mapa
+#: temático e o Sankey saírem em português para quem usa o app em inglês ou francês. O idioma
+#: agora vem do `system` via `diretiva_idioma(get_lang())`, uma vez só, em `_system_com_contexto`.
+#:
+#: O prompt continua escrito em português de propósito: a diretiva diz ao modelo para responder
+#: no idioma da interface *independentemente do idioma deste prompt*. Traduzir os prompts seria
+#: multiplicar por três o que precisa ser mantido, sem ganho para o usuário.
+ESTILO_ANALISE = ("Use linguagem técnica acadêmica. Seja direto, conciso, objetivo e evite "
+                  "rodeios ou introduções longas. Foque em percepções práticas.")
+
+#: Variante das obras seminais, que descrevem obras em vez de apontar percepções. Mantida
+#: separada para que esta correção mude só o idioma — a redação de cada prompt fica como estava.
+ESTILO_ANALISE_SEMINAL = ("Use linguagem técnica acadêmica. Seja direto, conciso, objetivo e "
+                          "evite introduções longas. Foque em descrições práticas.")
+
 
 class AIClientError(Exception):
     """Falha REAL na chamada de IA (rede, auth, quota). PROIBIDO devolver
@@ -102,21 +119,28 @@ class AIAnalyst:
         self.contexto_pesquisa = contexto_pesquisa or ""
 
     def _system_com_contexto(self, papel: str) -> str:
-        """Papel da análise + contexto de pesquisa do usuário, na ordem canônica.
+        """Papel da análise + diretiva de idioma + contexto do usuário, na ordem canônica.
 
-        Não injeta diretiva de idioma: os prompts destas análises pedem português no texto
-        (ver `generate_insights`). É uma lacuna de i18n conhecida e anterior a esta fase —
-        registrada em docs/RELATORIO-IA-UX.md, não corrigida aqui para não misturar escopo.
+        A diretiva vem de `core.research_context.diretiva_idioma`, a **mesma** função que o
+        chat do Blink usa — e não de um texto equivalente escrito aqui. Duas cópias da mesma
+        regra divergem em silêncio, e o sintoma seria o chat responder em francês enquanto o
+        mapa temático responde noutra língua, na mesma janela.
+
+        É o ponto único de idioma das seis análises, pelo mesmo motivo que o contexto de
+        pesquisa mora no analista: injetá-lo prompt a prompt seria seis lugares para esquecer
+        um, e foi exatamente assim que os cinco prompts ficaram presos ao português.
         """
-        from core.research_context import montar_system_prompt
+        from core.research_context import diretiva_idioma, montar_system_prompt
 
         cabecalho = "Contexto de pesquisa informado pelo usuário (leve em conta ao responder):"
+        lang = None
         try:
-            from core.i18n import t
+            from core.i18n import get_lang, t
+            lang = get_lang()
             cabecalho = t("ai.contexto_prompt") or cabecalho
         except Exception:
             pass
-        return montar_system_prompt(papel=papel, idioma="",
+        return montar_system_prompt(papel=papel, idioma=diretiva_idioma(lang),
                                     contexto_usuario=self.contexto_pesquisa,
                                     cabecalho_contexto=cabecalho)
 
@@ -218,7 +242,7 @@ class AIAnalyst:
             "## Frentes de Pesquisa Emergentes\n"
             "## Lacunas Científicas Identificadas\n"
             "## Recomendações para Pesquisa Futura\n"
-            "\nUse linguagem técnica acadêmica em português. Seja direto, conciso, objetivo e evite rodeios ou introduções longas. Foque em percepções práticas."
+            f"\n{ESTILO_ANALISE}"
         )
         return self._chat(
             system="Você é especialista em cientometria, análise bibliométrica e mapeamento científico.",
@@ -240,8 +264,13 @@ class AIAnalyst:
             "Cada cluster é representado pelos termos/autores mais centrais.\n\n"
             + "\n".join(lines)
             + "\n\nPara cada cluster, responda SOMENTE no formato:\n"
-            "ID: Label conciso em português (2-5 palavras)\n"
-            "Exemplo:\n0: Aprendizado de Máquina\n1: Visão Computacional"
+            "ID: Label conciso (2-5 palavras)\n"
+            # O exemplo ilustra o FORMATO, não a língua — dizê-lo evita que o modelo leia dois
+            # rótulos em português como amostra do idioma esperado e contrarie a diretiva do
+            # `system`. Deixar "em português" na linha acima era pior: instrução explícita
+            # contra instrução explícita, com o resultado dependendo do modelo do dia.
+            "Exemplo do formato (os rótulos vão no idioma pedido no system):\n"
+            "0: Aprendizado de Máquina\n1: Visão Computacional"
         )
         raw = self._chat(
             system=(
@@ -265,7 +294,7 @@ class AIAnalyst:
             "Produza uma análise em Markdown com as seções:\n"
             "## Fluxo de Conhecimento (Sankey)\n"
             "## Principais Atores e Fontes\n"
-            "\nUse linguagem técnica acadêmica em português. Seja direto, conciso, objetivo e evite rodeios ou introduções longas. Foque em percepções práticas."
+            f"\n{ESTILO_ANALISE}"
         )
         return self._chat(
             system="Você é especialista em cientometria e mapeamento científico.",
@@ -280,7 +309,7 @@ class AIAnalyst:
             "## Análise dos Quadrantes Estratégicos\n"
             "## Temas Motores e Especializados\n"
             "## Temas Emergentes e Básicos\n"
-            "\nUse linguagem técnica acadêmica em português. Seja direto, conciso, objetivo e evite rodeios ou introduções longas. Foque em percepções práticas."
+            f"\n{ESTILO_ANALISE}"
         )
         return self._chat(
             system="Você é especialista em cientometria e mapeamento científico.",
@@ -294,7 +323,7 @@ class AIAnalyst:
             "Produza uma análise em Markdown com as seções:\n"
             "## Evolução Histórica (Historiografia)\n"
             "## Marcos Científicos e Artigos Centrais\n"
-            "\nUse linguagem técnica acadêmica em português. Seja direto, conciso, objetivo e evite rodeios ou introduções longas. Foque em percepções práticas."
+            f"\n{ESTILO_ANALISE}"
         )
         return self._chat(
             system="Você é especialista em cientometria e mapeamento científico.",
@@ -308,7 +337,7 @@ class AIAnalyst:
             "Com base nessa lista e no seu conhecimento científico geral:\n"
             "1. Identifique os autores seminais (fundadores ou marcos da área) e suas respectivas obras/livros seminais.\n"
             "2. Forneça uma breve descrição (2-4 frases) explicando do que se trata cada livro ou artigo seminal específico identificado, destacando sua relevância e contribuição teórica para a ciência.\n\n"
-            "Produza o relatório em Markdown estruturado por autores seminais. Use linguagem técnica acadêmica em português. Seja direto, conciso, objetivo e evite introduções longas. Foque em descrições práticas."
+            f"Produza o relatório em Markdown estruturado por autores seminais. {ESTILO_ANALISE_SEMINAL}"
         )
         return self._chat(
             system="Você é especialista em cientometria, história da ciência e mapeamento científico.",

@@ -244,6 +244,50 @@ CASOS = [
      "        insert_markdown(self._seminal_box, f\"{marcar_texto_export('')} {text}\".strip())",
      "        insert_markdown(self._seminal_box, text)",
      "tests/test_ai_marking.py::test_analise_seminal_e_marcada"),
+
+    # ── Idioma das análises ───────────────────────────────────────────────────────
+    # O defeito original: as cinco análises presas ao português por texto fixo no prompt.
+
+    ("as análises voltam a mandar responder em português",
+     "ai/client.py",
+     'ESTILO_ANALISE = ("Use linguagem técnica acadêmica. Seja direto, conciso, objetivo e evite "',
+     'ESTILO_ANALISE = ("Use linguagem técnica acadêmica em português. Seja direto, conciso, objetivo e evite "',
+     "tests/test_analises_i18n.py::test_estilo_das_analises_nao_carrega_idioma"),
+
+    ("a cláusula de idioma volta a um prompt só (mapa temático)",
+     "ai/client.py",
+     '''            "## Temas Emergentes e Básicos\\n"
+            f"\\n{ESTILO_ANALISE}"''',
+     '''            "## Temas Emergentes e Básicos\\n"
+            "\\nUse linguagem técnica acadêmica em português."''',
+     "tests/test_analises_i18n.py::test_nenhum_literal_de_prompt_fixa_idioma"),
+
+    ("o system das análises perde a diretiva de idioma",
+     "ai/client.py",
+     "        return montar_system_prompt(papel=papel, idioma=diretiva_idioma(lang),",
+     '        return montar_system_prompt(papel=papel, idioma="",',
+     "tests/test_analises_i18n.py::test_analise_pede_resposta_no_idioma_da_interface"),
+
+    ("a diretiva das análises congela num idioma",
+     "ai/client.py",
+     "            lang = get_lang()",
+     '            lang = "pt_BR"',
+     "tests/test_analises_i18n.py::test_a_diretiva_muda_de_fato_entre_os_tres_idiomas"),
+
+    ("o rótulo de cluster volta a ser pedido em português",
+     "ai/client.py",
+     '"ID: Label conciso (2-5 palavras)\\n"',
+     '"ID: Label conciso em português (2-5 palavras)\\n"',
+     "tests/test_analises_i18n.py::test_nenhuma_analise_manda_responder_em_portugues"),
+
+    ("a diretiva vai parar depois do contexto do usuário",
+     "ai/client.py",
+     "        return montar_system_prompt(papel=papel, idioma=diretiva_idioma(lang),\n"
+     "                                    contexto_usuario=self.contexto_pesquisa,",
+     "        return montar_system_prompt(papel=papel, idioma=\"\",\n"
+     "                                    contexto_usuario=self.contexto_pesquisa\n"
+     "                                    + \"\\n\\n\" + diretiva_idioma(lang),",
+     "tests/test_analises_i18n.py::test_papel_e_idioma_precedem_o_contexto_do_usuario"),
 ]
 
 

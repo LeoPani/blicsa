@@ -242,13 +242,33 @@ sair mexendo em `_add_blink_message` — o funil de marcação de sete pontos de
 a causa arrisca a convenção inteira por um defeito cosmético. É o próximo item, com escopo
 próprio.
 
-### As análises respondem sempre em português
+### ~~As análises respondem sempre em português~~ — corrigido em 08/08
 
-Os prompts de `generate_insights` e das quatro `generate_*_insights` pedem *"linguagem técnica
-acadêmica em português"* em texto fixo. Um usuário com a interface em inglês ou francês recebe
-o mapa temático e o Sankey em português. É anterior a esta fase e independente dela;
-`_system_com_contexto` deliberadamente **não** injeta diretiva de idioma para não mascarar a
+> Corrigido depois deste relatório, em escopo próprio. Registro mantido porque o raciocínio
+> de por que **não** corrigir na hora continua valendo para o próximo caso.
+
+Os prompts de `generate_insights` e das quatro `generate_*_insights` pediam *"linguagem técnica
+acadêmica em português"* em texto fixo. Um usuário com a interface em inglês ou francês recebia
+o mapa temático e o Sankey em português. Era anterior a esta fase e independente dela;
+`_system_com_contexto` deliberadamente **não** injetava diretiva de idioma para não mascarar a
 lacuna com uma correção pela metade.
+
+A correção usa `diretiva_idioma(get_lang())` — a mesma função do chat do Blink, não um texto
+equivalente escrito de novo — injetada no ponto único `_system_com_contexto`. Duas cópias da
+regra divergiriam em silêncio, e o sintoma seria o chat numa língua e o mapa temático noutra,
+na mesma janela.
+
+`label_clusters` entrou junto, embora não fosse uma das cinco: ela pedia *"Label conciso em
+português"* no prompt do usuário. Corrigir só as cinco poria a diretiva do `system` mandando
+responder em francês contra o `user` mandando rotular em português — **contradição pior do que
+o bug**, com o resultado dependendo do modelo do dia. O exemplo de formato ficou, agora dito
+como formato: dois rótulos em português logo abaixo da regra seriam lidos como amostra do
+idioma esperado.
+
+Guardado por seis casos novos de reinjeção e por
+`tests/test_analises_i18n.py` — 42 testes, seis análises × três idiomas, medindo o
+`system_prompt` que **iria** ao modelo, mais uma varredura por AST que pega a cláusula de volta
+mesmo num ramo condicional que nenhum caso exercite.
 
 ### Dois pontos do inventário não estão ligados a tela nenhuma
 
@@ -319,7 +339,9 @@ janela do navegador do autor). O mecanismo da correção de `1a33124` funcionou 
 
 - `python3 -m pytest tests/ -q` → **610 passed, 1 xfailed** (OBS-03 do Crossref, fora do
   escopo). Eram 557 antes desta rodada: **+53 testes**. ✅
+  *(652 depois da correção de idioma das análises, em 08/08.)*
 - `python3 scripts/reinject_ia_ux.py` → **38/38 defeitos detectados**. ✅
+  *(44/44 depois da correção de idioma das análises.)*
 - `python3 scripts/check_i18n_parity.py` → catálogos em paridade. ✅
 - `python3 scripts/check_evidence_privacy.py` → **71 imagens · 71 OK · 0 para inspeção
   humana**. ✅
