@@ -331,7 +331,6 @@ def test_contexto_corrompido_no_projeto_nao_derruba_a_abertura(tmp_path):
 #: Cada análise com argumentos plausíveis. Não é lista decorativa: é o que permite afirmar
 #: "todas recebem", em vez de "a que eu lembrei de testar recebe".
 CHAMADAS = {
-    "generate_insights": lambda a: a.generate_insights([("resíduos", 12)], {"docs": 40}),
     "generate_sankey_insights": lambda a: a.generate_sankey_insights("fluxo A -> B"),
     "generate_thematic_insights": lambda a: a.generate_thematic_insights("quadrante 1"),
     "generate_historiograph_insights": lambda a: a.generate_historiograph_insights("A cita B"),

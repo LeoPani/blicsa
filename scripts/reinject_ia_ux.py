@@ -314,8 +314,8 @@ CASOS = [
 
     ("catálogo com seção copiada do português (tradução de mentira)",
      "locales/fr.json",
-     '"ai.sec_frentes": "Fronts de recherche émergents"',
-     '"ai.sec_frentes": "Frentes de Pesquisa Emergentes"',
+     '"ai.sec_fluxo": "Flux de connaissances (Sankey)"',
+     '"ai.sec_fluxo": "Fluxo de Conhecimento (Sankey)"',
      "tests/test_analises_i18n.py::test_secoes_sao_traduzidas_de_fato_e_nao_copiadas"),
 
     ("chave de seção some do catálogo francês",
@@ -499,6 +499,65 @@ CASOS = [
      "    except ZeroDivisionError as e:\n"
      '        # Projeto que abre com métrica velha é melhor do que projeto que não abre. A carga',
      "tests/test_migracao_citacoes.py::test_falha_da_migracao_nao_impede_o_projeto_de_abrir"),
+
+    # ── Etapa 3: código sem chamador ──
+    ("botão da análise seminal some da tela",
+     "main.py",
+     "            font=ctk.CTkFont(weight=\"bold\"), command=self._trigger_seminal_insights",
+     "            font=ctk.CTkFont(weight=\"bold\"), command=lambda: None",
+     "tests/test_analise_seminal_ligada.py::test_o_botao_esta_na_tela_e_aponta_para_o_gatilho"),
+
+    ("resposta seminal deixa de chegar ao painel",
+     "main.py",
+     "        self.after(0, self._show_seminal_insights, texto)",
+     "        pass",
+     "tests/test_analise_seminal_ligada.py::test_o_botao_leva_a_resposta_do_modelo_ate_o_painel"),
+
+    # O trecho tem de ser ÚNICO no arquivo: os dois ramos do tratador são idênticos linha a
+    # linha, e a primeira versão deste caso casava com zero ocorrências (a mutação nem era
+    # aplicada). Ancorar no comentário que só existe no ramo do AIClientError resolve.
+    ("erro sem chave volta a fechar sobre a variável do except",
+     "main.py",
+     "            # usuário sem chave não recebia aviso nenhum.\n"
+     "            self.after(0, self._set_idle, t(\"seminal.erro\"))\n"
+     "            self.after(0, lambda erro=e: messagebox.showerror(t(\"ai.error_title\"), str(erro)))",
+     "            # usuário sem chave não recebia aviso nenhum.\n"
+     "            self.after(0, self._set_idle, t(\"seminal.erro\"))\n"
+     "            self.after(0, lambda: messagebox.showerror(t(\"ai.error_title\"), str(e)))",
+     "tests/test_analise_seminal_ligada.py::test_sem_chave_de_ia_recusa_sem_traceback"),
+
+    ("análise e biblioteca voltam a contar referências de jeitos diferentes",
+     "main.py",
+     "            top_refs = self._top_referencias()\n            if not top_refs:",
+     "            top_refs = self._top_referencias(5)\n            if not top_refs:",
+     "tests/test_analise_seminal_ligada.py::test_analise_e_biblioteca_partem_da_mesma_lista"),
+
+    ("botões de animação e pôster somem da aba de exportação",
+     "main.py",
+     "            font=ctk.CTkFont(weight=\"bold\"), command=self._export_map_animation",
+     "            font=ctk.CTkFont(weight=\"bold\"), command=lambda: None",
+     "tests/test_exportacao_animacao_ligada.py::test_os_dois_botoes_estao_na_tela"),
+
+    ("exportar sem mapa volta a abrir o diálogo de arquivo",
+     "main.py",
+     "        if not self._mapa_pronto():\n            return\n        caminho = filedialog.asksaveasfilename(\n"
+     "            defaultextension=\".gif\",",
+     "        if False:\n            return\n        caminho = filedialog.asksaveasfilename(\n"
+     "            defaultextension=\".gif\",",
+     "tests/test_exportacao_animacao_ligada.py::test_sem_mapa_avisa_e_nao_abre_dialogo"),
+
+    ("sem ffmpeg o app deixa de gravar o GIF alternativo",
+     "main.py",
+     "                    alternativa = destino.with_suffix(\".gif\")\n"
+     "                    export_gif(imagens, str(alternativa))",
+     "                    alternativa = destino.with_suffix(\".gif\")",
+     "tests/test_exportacao_animacao_ligada.py::test_sem_ffmpeg_grava_gif_no_lugar_do_mp4"),
+
+    ("corpus sem ano volta a gerar arquivo vazio em silêncio",
+     "main.py",
+     "            if not quadros:",
+     "            if False:",
+     "tests/test_exportacao_animacao_ligada.py::test_corpus_sem_ano_explica_em_vez_de_gerar_arquivo_vazio"),
 ]
 
 

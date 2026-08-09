@@ -43,8 +43,6 @@ CITACOES = "Freire 1968 -> Santos 1995 -> Dias 2011"
 REFERENCIAS = "Freire, P. (1968) Pedagogia do Oprimido; Ostrom, E. (1990) Governing the Commons"
 
 ANALISES = {
-    "generate_insights": lambda a: a.generate_insights(
-        [("waste picking", 31), ("informality", 22)], {"docs": 200}),
     "generate_sankey_insights": lambda a: a.generate_sankey_insights(FLUXO),
     "generate_thematic_insights": lambda a: a.generate_thematic_insights(QUADRANTES),
     "generate_historiograph_insights": lambda a: a.generate_historiograph_insights(CITACOES),

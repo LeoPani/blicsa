@@ -36,7 +36,7 @@ def _t(chave: str, padrao: str) -> str:
     """Texto do catálogo, com o português como último recurso.
 
     `t()` devolve a **própria chave** quando ela não existe em catálogo nenhum, e uma chave
-    crua (`ai.sec_frentes`) virando título de seção no relatório do usuário é pior do que o
+    crua (`ai.sec_fluxo`) virando título de seção no relatório do usuário é pior do que o
     português que esta correção veio tirar. Daí a checagem explícita.
     """
     try:
@@ -253,47 +253,6 @@ class AIAnalyst:
             # Erro no MEIO do stream também levanta; o chamador decide o que
             # fazer com o parcial já recebido.
             raise AIClientError(f"Falha no streaming de IA: {e}") from e
-
-    def generate_insights(
-        self,
-        top_keywords: list[tuple[str, int]],
-        summary_stats: dict,
-        cluster_report: list[dict] | None = None,
-        year_distribution: dict | None = None,
-    ) -> str:
-        cluster_txt = ""
-        if cluster_report:
-            cluster_txt = f"\n\n{_t('ai.rot_clusters', 'Comunidades (clusters) detectados')}:\n"
-            for c in cluster_report[:10]:
-                cluster_txt += (
-                    f"  Cluster {c['cluster_id']} "
-                    f"({c['size']} nós): "
-                    f"{', '.join(c['top_nodes'][:5])}\n"
-                )
-
-        year_txt = ""
-        if year_distribution:
-            top_years = sorted(
-                year_distribution.items(), key=lambda x: x[1], reverse=True
-            )[:5]
-            year_txt = (f"\n\n{_t('ai.rot_anos', 'Anos com mais publicações')}: {top_years}")
-
-        prompt = (
-            f"Analise os dados bibliométricos abaixo:\n\n"
-            f"{_t('ai.rot_estatisticas', 'Estatísticas gerais')}: {summary_stats}\n"
-            f"{_t('ai.rot_keywords', 'Top 20 palavras-chave')}: {top_keywords}"
-            f"{cluster_txt}{year_txt}\n\n"
-            "Produza a análise em Markdown com as seções:\n"
-            + _secoes(("ai.sec_frentes", "Frentes de Pesquisa Emergentes"),
-                      ("ai.sec_lacunas", "Lacunas Científicas Identificadas"),
-                      ("ai.sec_recomendacoes", "Recomendações para Pesquisa Futura"))
-            +
-            f"\n{ESTILO_ANALISE}"
-        )
-        return self._chat(
-            system="Você é especialista em cientometria, análise bibliométrica e mapeamento científico.",
-            user=prompt,
-        )
 
     def label_clusters(
         self,

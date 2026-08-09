@@ -32,7 +32,16 @@ USOS_LEGITIMOS = {
 
 #: Botões que DISPARAM a IA continuam amarelos — são a porta de entrada, e o amarelo ali
 #: reforça a mesma associação. Declarado no inventário como a única exceção.
-BOTOES_IA = ("✨ Blink", "Análise IA do Corpus", "_trigger_ai", "_trigger_import_ai_assistant")
+BOTOES_IA = ("✨ Blink", "Análise IA do Corpus", "_trigger_ai", "_trigger_import_ai_assistant",
+             "_trigger_seminal_insights")
+
+#: Linhas ao redor do uso de amarelo que contam como "a mesma chamada".
+#:
+#: A exceção era conferida **na linha do `fg_color`**, e um `CTkButton(...)` quebrado em
+#: quatro linhas põe o `command` noutra — o botão da análise seminal foi reprovado por isso,
+#: sendo um disparador de IA legítimo. O contrário também valia: um widget de DADO pintado de
+#: amarelo escaparia se tivesse a palavra "Blink" três linhas acima.
+JANELA_DA_CHAMADA = 4
 
 
 # ── Conformidade: o amarelo não escapa do inventário ──────────────────────────────
@@ -45,11 +54,14 @@ def test_amarelo_nao_e_usado_fora_do_inventario():
         if nome in USOS_LEGITIMOS or nome.startswith(("tests/", "dist/", "build/")):
             continue
         texto = (RAIZ / nome).read_text(encoding="utf-8", errors="replace")
-        for i, linha in enumerate(texto.splitlines(), 1):
+        linhas = texto.splitlines()
+        for i, linha in enumerate(linhas, 1):
             codigo = linha.split("#", 1)[0]
             if not re.search(r"\bYELLOW\b|#F5BE00", codigo, re.I):
                 continue
-            if any(b in linha for b in BOTOES_IA):
+            # A chamada inteira, não só a linha do `fg_color` — ver `JANELA_DA_CHAMADA`.
+            vizinhanca = "\n".join(linhas[max(0, i - 1 - JANELA_DA_CHAMADA):i + JANELA_DA_CHAMADA])
+            if any(b in vizinhanca for b in BOTOES_IA):
                 continue                      # botão que dispara IA: exceção declarada
             if re.search(r"^\s*from .* import|^\s*import ", codigo):
                 continue                      # import não é uso

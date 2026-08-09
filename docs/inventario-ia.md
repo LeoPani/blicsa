@@ -41,9 +41,9 @@ O texto do conteúdo gerado **não** fica sobre o amarelo: só o selo fica.
 | # | onde | função que gera | renderiza em | marcação |
 |---|---|---|---|---|
 | 1 | Respostas do Blink no chat | `AIAnalyst.chat_history_stream` | `_add_blink_message` | faixa + selo |
-| 2 | Insights bibliométricos do corpus | `generate_insights` | — **sem chamador** | (ver abaixo) |
+| 2 | Análise do corpus | `_trigger_corpus_ai_insights` (streaming) | `_add_blink_message` | faixa + selo |
 | 3 | Rótulos de cluster | `label_clusters` | Treeview de clusters | selo textual `[IA]` na célula |
-| 4 | Análise de obras seminais | `generate_seminal_insights` | `_show_seminal_insights` — **sem chamador** | prefixo `[IA]` |
+| 4 | Análise de obras seminais | `generate_seminal_insights` | `_show_seminal_insights`, pelo botão `_trigger_seminal_insights` | prefixo `[IA]` |
 | 5 | Análise temática (quadrantes) | `generate_thematic_insights` | `_show_insights` | faixa + selo |
 | 6 | Análise do Sankey | `generate_sankey_insights` | `_show_insights` | faixa + selo |
 | 7 | Historiografia | `generate_historiograph_insights` | `_show_insights` | faixa + selo |
@@ -60,10 +60,18 @@ Foi encontrado ao preparar a captura `ia_marcacao_insights`: não havia o que fo
 `tests/test_ai_marking.py::test_todo_renderizador_de_ia_do_main_esta_marcado` agora varre os
 workers de IA e falha se algum entregar o resultado a um renderizador não declarado aqui.
 
-**Pontos 2 e 4 não estão ligados a nenhuma tela.** `generate_insights` e
-`generate_seminal_insights` existem em `ai/client.py` e nenhum botão os dispara. O
-renderizador do ponto 4 já marca, para que a marcação não seja o que falta no dia em que ele
-for ligado; o ponto 2 não tem renderizador para marcar.
+### Os dois pontos sem chamador foram resolvidos em 09/08/2026
+
+A tabela declarava dois pontos que **nenhum botão disparava**. Código de IA testado e
+inalcançável em repositório público é pergunta de revisor, e o levantamento está em
+`docs/CODIGO-SEM-CHAMADOR.md`:
+
+- **Obras seminais** (ponto 4) foi **ligada**: a aba, o destino e o renderizador com
+  marcação já existiam — faltava o fio. O botão que dispara é amarelo, como os outros
+  disparadores de IA, e está declarado em `BOTOES_IA`.
+- **`generate_insights`** foi **removida**: era superada por `_trigger_corpus_ai_insights`
+  (ponto 2), que faz o mesmo trabalho, responde em streaming e **tem** botão. Duas rotas para
+  a mesma análise, uma delas morta, é o que se queria evitar.
 
 ## Rótulos de cluster: IA vs. humano
 

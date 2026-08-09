@@ -29,7 +29,6 @@ IDIOMAS = ("pt_BR", "en", "fr")
 #: idiomas" — só é verdade se esta lista estiver completa, e é
 #: `test_a_lista_cobre_todas_as_analises_do_client` que a mantém assim.
 ANALISES = {
-    "generate_insights": lambda a: a.generate_insights([("resíduos", 12)], {"docs": 40}),
     "generate_sankey_insights": lambda a: a.generate_sankey_insights("fluxo A -> B"),
     "generate_thematic_insights": lambda a: a.generate_thematic_insights("quadrante 1"),
     "generate_historiograph_insights": lambda a: a.generate_historiograph_insights("A cita B"),
@@ -205,7 +204,6 @@ def test_estilo_das_analises_nao_carrega_idioma():
 #: Título de seção de cada análise, por chave de catálogo. Título de seção é **conteúdo**:
 #: o modelo o copia para a resposta, e em português ele encabeçava relatórios em francês.
 SECOES = {
-    "generate_insights": ("ai.sec_frentes", "ai.sec_lacunas", "ai.sec_recomendacoes"),
     "generate_sankey_insights": ("ai.sec_fluxo", "ai.sec_atores"),
     "generate_thematic_insights": ("ai.sec_quadrantes", "ai.sec_motores", "ai.sec_emergentes"),
     "generate_historiograph_insights": ("ai.sec_evolucao", "ai.sec_marcos"),

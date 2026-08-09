@@ -1754,7 +1754,9 @@ class BlicsaApp(ctk.CTk):
             fg_color=CARD2_BG, border_color=ACCENT, border_width=1
         )
         self._seminal_box.grid(row=0, column=0, padx=8, pady=8, sticky="nsew")
-        self._seminal_box.insert("1.0", "A análise de autores e obras seminais aparecerá aqui após gerar o mapa.")
+        # Não promete mais "após gerar o mapa": a análise agora tem botão próprio, e o texto
+        # de espera anunciava uma entrega que nada disparava.
+        self._seminal_box.insert("1.0", t("seminal.espera"))
         self._seminal_box.configure(state="disabled")
 
         seminal_tab.grid_rowconfigure(0, weight=1)
@@ -1763,6 +1765,14 @@ class BlicsaApp(ctk.CTk):
 
         sem_btn_frame = ctk.CTkFrame(seminal_tab, fg_color="transparent")
         sem_btn_frame.grid(row=1, column=0, padx=8, pady=(0, 8), sticky="ew")
+
+        # Amarelo porque o resultado é gerado por IA — a convenção de `docs/inventario-ia.md`
+        # vale para o botão que dispara, não só para o texto que volta.
+        ctk.CTkButton(
+            sem_btn_frame, text=t("seminal.analisar"), height=32,
+            fg_color=YELLOW, hover_color=YELLOW_HOV, text_color=INK,
+            font=ctk.CTkFont(weight="bold"), command=self._trigger_seminal_insights
+        ).pack(fill="x", pady=(0, 6))
 
         ctk.CTkButton(
             sem_btn_frame, text="📂 Criar Pasta da Biblioteca", height=32,
@@ -2092,6 +2102,22 @@ class BlicsaApp(ctk.CTk):
             )
             cb.pack(padx=20, pady=15, anchor="w")
             
+        # ── Artefatos visuais do mapa ──
+        # `core/map_animation.py` era 543 linhas testadas e sem chamador nenhum. Estes dois
+        # botões são o fio que faltava; levantamento em `docs/CODIGO-SEM-CHAMADOR.md`.
+        visuais = ctk.CTkFrame(list_f, fg_color="transparent")
+        visuais.pack(fill="x", pady=(14, 0))
+        ctk.CTkButton(
+            visuais, text=t("anim.exportar"), height=36, corner_radius=0,
+            fg_color=BLUE, hover_color=BLUE_HOV,
+            font=ctk.CTkFont(weight="bold"), command=self._export_map_animation
+        ).pack(fill="x", pady=(0, 6))
+        ctk.CTkButton(
+            visuais, text=t("anim.poster"), height=36, corner_radius=0,
+            fg_color=INK, hover_color=INK_HOV,
+            font=ctk.CTkFont(weight="bold"), command=self._export_map_poster
+        ).pack(fill="x")
+
         def run_export():
             import os, time
             os.makedirs("reports", exist_ok=True)
@@ -4510,20 +4536,88 @@ class BlicsaApp(ctk.CTk):
         insert_markdown(self._seminal_box, f"{marcar_texto_export('')} {text}".strip())
         self._seminal_box.configure(state="disabled")
 
+    #: Colunas onde as referências citadas podem estar, por origem do export.
+    COLUNAS_REFERENCIAS = ("CR", "References", "Cited References", "references")
+
+    def _coluna_de_referencias(self) -> str | None:
+        return next((c for c in self.COLUNAS_REFERENCIAS
+                     if self._dataframe is not None and c in self._dataframe.columns), None)
+
+    def _top_referencias(self, n: int = 20) -> list[tuple[str, int]]:
+        """As `n` referências mais citadas do corpus, com a contagem.
+
+        Ponto único: a biblioteca de PDFs e a análise seminal partem da MESMA lista. Contar de
+        dois jeitos faria o relatório falar de obras que a pasta não baixou.
+        """
+        import re
+        from collections import Counter
+
+        coluna = self._coluna_de_referencias()
+        if not coluna:
+            return []
+        contagem: Counter = Counter()
+        for valor in self._dataframe[coluna].dropna():
+            for ref in re.split(r"[;\n]", str(valor)):
+                if ref.strip():
+                    contagem[ref.strip()] += 1
+        return contagem.most_common(n)
+
+    def _trigger_seminal_insights(self):
+        """Análise de autores e obras seminais — o botão que faltava.
+
+        A aba, o destino (`_seminal_box`) e o renderizador com marcação de IA
+        (`_show_seminal_insights`) já existiam; `generate_seminal_insights` também, testada
+        nos três idiomas. Faltava só o fio entre eles — e o texto de espera da aba dizia
+        *"aparecerá aqui após gerar o mapa"*, ou seja, o app prometia e não entregava.
+        Levantamento em `docs/CODIGO-SEM-CHAMADOR.md`.
+        """
+        if self._dataframe is None or self._dataframe.empty:
+            messagebox.showwarning(t("seminal.sem_dados_titulo"), t("seminal.sem_dados"))
+            return
+        if not self._coluna_de_referencias():
+            messagebox.showerror(t("seminal.sem_refs_titulo"), t("seminal.sem_refs"))
+            return
+        top = self._top_referencias()
+        if not top:
+            messagebox.showinfo(t("seminal.sem_refs_titulo"), t("seminal.sem_refs"))
+            return
+
+        self._set_busy(t("seminal.analisando"))
+        threading.Thread(target=self._seminal_insights_worker, args=(top,),
+                         daemon=True).start()
+
+    def _seminal_insights_worker(self, top_refs: list[tuple[str, int]]):
+        try:
+            analyst = self._get_ai_analyst()
+            resumo = "\n".join(f"{ref} (citada {n}x)" for ref, n in top_refs)
+            texto = analyst.generate_seminal_insights(resumo)
+        except AIClientError as e:
+            # Falta de chave é o estado do usuário novo: recusa clara, nunca traceback.
+            #
+            # `erro=e` como argumento padrão, não captura livre: o Python apaga o nome do
+            # `except` ao sair do bloco, e esta lambda só roda depois, na fila do `after`.
+            # Fechar sobre `e` levantava `NameError` **dentro do tratador de erro** — o
+            # usuário sem chave não recebia aviso nenhum.
+            self.after(0, self._set_idle, t("seminal.erro"))
+            self.after(0, lambda erro=e: messagebox.showerror(t("ai.error_title"), str(erro)))
+            return
+        except Exception as e:
+            self.after(0, self._set_idle, t("seminal.erro"))
+            self.after(0, lambda erro=e: messagebox.showerror(t("ai.error_title"), str(erro)))
+            return
+        self.after(0, self._show_seminal_insights, texto)
+        self.after(0, self._set_idle, t("seminal.pronto"))
+
     def _create_seminal_library(self):
         if self._dataframe is None:
             messagebox.showwarning("Sem dados", "Carregue um arquivo primeiro.")
             return
-            
-        ref_col = None
-        for col in ("CR", "References", "Cited References", "references"):
-            if col in self._dataframe.columns:
-                ref_col = col
-                break
+
+        ref_col = self._coluna_de_referencias()
         if not ref_col:
             messagebox.showerror("Erro", "Nenhuma coluna de referências encontrada no dataset.")
             return
-            
+
         folder_path = filedialog.askdirectory(title="Selecione onde criar a pasta da biblioteca")
         if not folder_path:
             return
@@ -4536,17 +4630,10 @@ class BlicsaApp(ctk.CTk):
         full_path = Path(folder_path) / folder_name.strip()
         try:
             full_path.mkdir(parents=True, exist_ok=True)
-            
-            from collections import Counter
-            import re
-            
-            counter = Counter()
-            for val in self._dataframe[ref_col].dropna():
-                refs = [r.strip() for r in re.split(r"[;\n]", str(val)) if r.strip()]
-                for r in refs:
-                    counter[r] += 1
-                    
-            top_refs = counter.most_common(20)
+
+            # Mesma contagem da análise seminal, de propósito: a pasta baixada e o relatório
+            # têm de falar das MESMAS obras.
+            top_refs = self._top_referencias()
             if not top_refs:
                 messagebox.showinfo("Sem referências", "Nenhuma referência encontrada para gerar arquivos.")
                 return
@@ -4888,6 +4975,97 @@ class BlicsaApp(ctk.CTk):
         if path := filedialog.asksaveasfilename(
                 defaultextension=".pdf", filetypes=[("PDF", "*.pdf")]):
             export_figure_image(self._map_canvas.figure, path, dpi=300)
+
+    def _mapa_pronto(self) -> bool:
+        """Grafo e posições disponíveis. Sem os dois não há o que animar nem cartografar."""
+        if getattr(self, "_graph", None) is None or not getattr(self, "_positions", None):
+            messagebox.showwarning(t("anim.sem_mapa_titulo"), t("anim.sem_mapa"))
+            return False
+        return True
+
+    def _export_map_animation(self):
+        """Exporta a evolução temporal do mapa como GIF, sequência de PNG ou MP4.
+
+        O formato sai da **extensão escolhida no diálogo**, e não de um seletor separado:
+        quem digita `.mp4` já disse o que quer. Sem `ffmpeg` o MP4 degrada com aviso, em vez
+        de falhar — `export_mp4` devolve `(False, motivo)` por projeto.
+        """
+        if not self._mapa_pronto():
+            return
+        caminho = filedialog.asksaveasfilename(
+            defaultextension=".gif",
+            filetypes=[("GIF", "*.gif"), ("MP4", "*.mp4"), ("PNG (sequência)", "*.png")])
+        if not caminho:
+            return
+        self._set_busy(t("anim.gerando"))
+        threading.Thread(target=self._map_animation_worker, args=(caminho,),
+                         daemon=True).start()
+
+    def _map_animation_worker(self, caminho: str):
+        from core.map_animation import (export_gif, export_mp4, export_png_sequence,
+                                        render_frame, timeline_frames)
+
+        try:
+            quadros = timeline_frames(self._graph, self._dataframe)
+            if not quadros:
+                self.after(0, self._set_idle, t("anim.sem_anos"))
+                self.after(0, lambda: messagebox.showinfo(t("anim.sem_anos_titulo"),
+                                                          t("anim.sem_anos")))
+                return
+            imagens = [render_frame(q, self._positions) for q in quadros]
+
+            destino = Path(caminho)
+            if destino.suffix.lower() == ".mp4":
+                ok, motivo = export_mp4(imagens, str(destino))
+                if not ok:
+                    # Sem ffmpeg o GIF continua saindo: melhor entregar algo com aviso do
+                    # que recusar o pedido inteiro por causa de um binário ausente.
+                    alternativa = destino.with_suffix(".gif")
+                    export_gif(imagens, str(alternativa))
+                    self.after(0, lambda m=motivo, a=alternativa: messagebox.showwarning(
+                        t("anim.sem_ffmpeg_titulo"), f"{m}\n\n{t('anim.gif_no_lugar')}: {a}"))
+                    destino = alternativa
+            elif destino.suffix.lower() == ".png":
+                export_png_sequence(imagens, str(destino.parent), destino.stem)
+            else:
+                export_gif(imagens, str(destino))
+
+            log.info(f"[Export] animação ({len(imagens)} quadros) → {destino}\n")
+            self.after(0, self._set_idle, t("anim.pronto"))
+        except Exception as e:
+            self.after(0, self._set_idle, t("anim.erro"))
+            self.after(0, lambda erro=e: messagebox.showerror(t("anim.erro"), str(erro)))
+
+    def _export_map_poster(self):
+        """Pôster neoplasticista: treemap com a ÁREA de cada plano proporcional ao peso do
+        cluster. Não é enfeite — é leitura imediata de tamanho relativo."""
+        if not self._mapa_pronto():
+            return
+        caminho = filedialog.asksaveasfilename(
+            defaultextension=".png", filetypes=[("PNG", "*.png")])
+        if not caminho:
+            return
+        try:
+            from collections import Counter
+
+            from core.map_animation import render_poster
+
+            pesos: Counter = Counter()
+            termos: dict[int, list[str]] = {}
+            for no, dados in self._graph.nodes(data=True):
+                grupo = int(dados.get("group", 0) or 0)
+                pesos[grupo] += float(dados.get("occurrence", 1) or 1)
+                termos.setdefault(grupo, []).append(str(dados.get("label", no)))
+            for grupo in termos:
+                termos[grupo] = termos[grupo][:6]
+
+            imagem = render_poster(dict(pesos), cluster_terms=termos,
+                                   cluster_labels=getattr(self, "_cluster_labels", None) or {})
+            imagem.save(caminho)
+            log.info(f"[Export] pôster ({len(pesos)} clusters) → {caminho}\n")
+            self._set_idle(t("anim.pronto"))
+        except Exception as e:
+            messagebox.showerror(t("anim.erro"), str(e))
 
     def _export_excel(self):
         if not (gen := self._require_gen()):
