@@ -392,6 +392,48 @@ def load_blicsa_project(path: str) -> dict:
     return result
 
 
+#: Falha ao abrir/salvar → chave de catálogo. **Nunca** a mensagem da biblioteca.
+#:
+#: O que o usuário via até 09/08/2026, com a interface em francês, ao abrir um CSV renomeado
+#: para `.blicsa`: *"File is not a zip file"*. Em inglês fixo, vindo do `zipfile`, sem dizer o
+#: que fazer. Pior ainda no arquivo sem manifesto: *"There is no item named 'manifest.json' in
+#: the archive"* — nomeando um arquivo interno do formato, que o usuário não sabe que existe.
+#:
+#: A ordem importa: `BadZipFile` é subclasse de `Exception` mas não de `OSError`, e
+#: `FileNotFoundError`/`PermissionError` são de `OSError` — checar do específico para o geral.
+_DIAGNOSTICOS: tuple[tuple[type[BaseException], str], ...] = (
+    (zipfile.BadZipFile, "projeto.erro_nao_e_blicsa"),
+    (json.JSONDecodeError, "projeto.erro_corrompido"),
+    # O ZIP abre, o manifesto lê, e o corpus lá dentro é que está danificado. `BadGzipFile`
+    # é subclasse de `OSError` e caía no diagnóstico genérico — precisa vir antes dele.
+    (gzip.BadGzipFile, "projeto.erro_corrompido"),
+    (KeyError, "projeto.erro_incompleto"),
+    (FileNotFoundError, "projeto.erro_sumiu"),
+    (PermissionError, "projeto.erro_permissao"),
+    (IsADirectoryError, "projeto.erro_e_pasta"),
+    (MemoryError, "projeto.erro_memoria"),
+)
+
+#: `errno` sem classe própria em Python. Disco cheio é `OSError` genérico.
+_DIAGNOSTICOS_ERRNO = {28: "projeto.erro_disco_cheio",   # ENOSPC
+                       30: "projeto.erro_somente_leitura"}  # EROFS
+
+
+def diagnosticar_projeto(erro: BaseException) -> str:
+    """Chave de catálogo que explica a falha ao usuário, sem jargão de biblioteca.
+
+    Devolve **chave**, não texto: quem exibe é a UI, que sabe o idioma ativo. Uma função de
+    domínio que já devolvesse a frase pronta teria de importar o i18n e escolher o idioma
+    sozinha — e `core/` não decide apresentação.
+    """
+    if isinstance(erro, OSError) and getattr(erro, "errno", None) in _DIAGNOSTICOS_ERRNO:
+        return _DIAGNOSTICOS_ERRNO[erro.errno]
+    for tipo, chave in _DIAGNOSTICOS:
+        if isinstance(erro, tipo):
+            return chave
+    return "projeto.erro_desconhecido"
+
+
 #: Nós cujo `citations_mean` vale exatamente zero. Só eles são ambíguos.
 def _nos_com_citacao_zero(G) -> set:
     return {n for n, d in G.nodes(data=True) if d.get("citations_mean") == 0}

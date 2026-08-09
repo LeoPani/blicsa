@@ -174,3 +174,43 @@ class SearchProvider:
         cancel_event = None
     ) -> Iterator[Dict[str, Any]]:
         raise NotImplementedError
+
+
+#: Falha de busca → chave de catálogo. **Nunca** a mensagem da biblioteca.
+#:
+#: O que o usuário via ao buscar sem internet, com a interface em francês:
+#:
+#:     Ocorreu um erro ao buscar:
+#:     <urlopen error [Errno 8] nodename nor servname provided, or not known>
+#:
+#: Português fixo por fora, `Errno` do sistema por dentro, e nada dizendo "verifique sua
+#: conexão". Verificado na Auditoria 1, Etapa 4 — o cenário levava 1,1 s, não travava; o que
+#: travou antes foi a sonda, que abriu um `messagebox` de verdade e ficou esperando clique.
+_DIAGNOSTICOS_BUSCA = {
+    429: "busca.erro_limite",
+    403: "busca.erro_bloqueado",
+    401: "busca.erro_bloqueado",
+}
+
+
+def diagnosticar_busca(erro: BaseException) -> str:
+    """Chave de catálogo que explica a falha de busca ao usuário.
+
+    Devolve **chave**, não texto: quem exibe é a UI, que sabe o idioma ativo.
+    """
+    import socket
+    import urllib.error
+
+    if isinstance(erro, urllib.error.HTTPError):
+        if erro.code in _DIAGNOSTICOS_BUSCA:
+            return _DIAGNOSTICOS_BUSCA[erro.code]
+        if 500 <= erro.code < 600:
+            return "busca.erro_provedor"
+        return "busca.erro_provedor"
+    # `URLError` cobre DNS, recusa de conexão e certificado; `socket.timeout` é subclasse de
+    # `OSError` e não de `URLError`, então precisa de entrada própria.
+    if isinstance(erro, (urllib.error.URLError, socket.gaierror, socket.timeout, TimeoutError)):
+        return "busca.erro_sem_conexao"
+    if isinstance(erro, ConnectionError):
+        return "busca.erro_sem_conexao"
+    return "busca.erro_desconhecido"

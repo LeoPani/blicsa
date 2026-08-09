@@ -206,8 +206,8 @@ class BlicsaApp(ctk.CTk):
             has_corpus = self._dataframe is not None and not getattr(self._dataframe, "empty", True)
             self._switch_tab("corpus" if has_corpus else "import")
         except Exception as e:
-            self._set_idle("Erro ao carregar projeto")
-            messagebox.showerror("Erro ao carregar", str(e))
+            self._set_idle(t("projeto.erro_titulo"))
+            self._erro_de_projeto(e, t("projeto.erro_titulo"))
 
     def _create_project_flow(self):
         dialog = ctk.CTkInputDialog(text="Digite o nome do novo projeto (Pesquisa):", title="Novo Projeto")
@@ -2361,9 +2361,8 @@ class BlicsaApp(ctk.CTk):
             # algum item da navegação. Ver `test_switch_tab_so_usa_abas_que_existem`.
             self.after(0, lambda: self._switch_tab("analises"))
         except Exception as exc:
-            log.info(f"[ERRO] {exc}\n")
-            self.after(0, self._set_idle, "Erro ao carregar")
-            self.after(0, lambda e=exc: messagebox.showerror("Erro ao carregar", str(e)))
+            self.after(0, self._set_idle, t("projeto.erro_titulo"))
+            self.after(0, lambda e=exc: self._erro_de_projeto(e, t("projeto.erro_titulo")))
 
     def _cancel_search(self):
         if hasattr(self, '_search_cancel_event') and self._search_cancel_event:
@@ -3238,7 +3237,8 @@ class BlicsaApp(ctk.CTk):
                 self.after(0, _empty_feed)
                 self.after(0, self._set_idle, "Busca vazia ou cancelada")
                 if not cancel_event.is_set():
-                    self.after(0, lambda: messagebox.showinfo("Busca concluída", "Nenhum registro encontrado para essa busca."))
+                    self.after(0, lambda: messagebox.showinfo(
+                        t("busca.sem_resultado_titulo"), t("busca.sem_resultado")))
                 self.after(0, self._search_cancel_btn.pack_forget)
                 return
                 
@@ -3425,7 +3425,13 @@ class BlicsaApp(ctk.CTk):
         except Exception as e:
             log.info(f"[Search Error] {e}")
             self.after(0, self._set_idle, "Erro na busca")
-            self.after(0, lambda e_msg=str(e): messagebox.showerror("Erro na busca", f"Ocorreu um erro ao buscar:\n{e_msg}"))
+            # Diagnóstico traduzido na tela; `Errno` e nome de exceção vão para o log.
+            # Antes o usuário francês lia português por fora e `urlopen error [Errno 8]`
+            # por dentro, sem nada dizendo "verifique sua conexão".
+            from core.sources.base import diagnosticar_busca
+            chave = diagnosticar_busca(e)
+            log.info(f"[ERRO] busca: {type(e).__name__}: {e}  → {chave}\n")
+            self.after(0, lambda c=chave: messagebox.showerror(t("busca.erro_titulo"), t(c)))
 
     def _pick_thesaurus(self):
         path = filedialog.askopenfilename(
@@ -5214,8 +5220,8 @@ class BlicsaApp(ctk.CTk):
                 self._projects_view.refresh()
                 
         except Exception as e:
-            self._set_idle("Erro ao salvar projeto")
-            messagebox.showerror("Erro ao salvar", str(e))
+            self._set_idle(t("projeto.erro_titulo_salvar"))
+            self._erro_de_projeto(e, t("projeto.erro_titulo_salvar"))
 
     def _load_project_gui(self):
         path = filedialog.askopenfilename(
@@ -5235,8 +5241,24 @@ class BlicsaApp(ctk.CTk):
                 self.after(0, lambda: self._switch_tab("analises"))
             messagebox.showinfo("Sucesso", "Projeto carregado com sucesso!")
         except Exception as e:
-            self._set_idle("Erro ao carregar projeto")
-            messagebox.showerror("Erro ao carregar", str(e))
+            self._set_idle(t("projeto.erro_titulo"))
+            self._erro_de_projeto(e, t("projeto.erro_titulo"))
+
+    def _erro_de_projeto(self, erro: BaseException, titulo: str):
+        """Traduz a falha e mostra ao usuário; o detalhe técnico vai para o log.
+
+        O que aparecia antes era `str(e)` cru: *"File is not a zip file"* em inglês fixo, ou
+        *"There is no item named \'manifest.json\' in the archive"* — nomeando um arquivo
+        interno do formato. O usuário sabia que falhou e não sabia o que fazer.
+
+        O detalhe **não some**: vai para o log, que é onde um mantenedor procura. O que sai da
+        tela é o jargão de biblioteca, não a informação.
+        """
+        from core.project import diagnosticar_projeto
+
+        chave = diagnosticar_projeto(erro)
+        log.info(f"[ERRO] {type(erro).__name__}: {erro}  → {chave}\n")
+        messagebox.showerror(titulo, t(chave))
 
     def _restore_project_data(self, project_data: dict):
         """Restaura config + corpus + layout/grafo a partir de um projeto carregado."""

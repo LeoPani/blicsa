@@ -558,6 +558,67 @@ CASOS = [
      "            if not quadros:",
      "            if False:",
      "tests/test_exportacao_animacao_ligada.py::test_corpus_sem_ano_explica_em_vez_de_gerar_arquivo_vazio"),
+
+    # ── Etapa 4: markdown, mensagens de erro, estados de busca ──
+    ("asterisco de multiplicação volta a sumir do texto",
+     "core/markdown_parser.py",
+     r'    r"|\*(?=\S)(?:[^*]*?\S)?\*"           # *itálico*, sem espaço colado ao asterisco',
+     r'    r"|\*.*?\*"                            # *itálico*',
+     "tests/test_markdown_parser.py::test_asterisco_de_multiplicacao_nao_some_do_texto"),
+
+    ("bloco cercado volta a vazar a crase para o texto",
+     "core/markdown_parser.py",
+     "        if line.lstrip().startswith(CERCA):",
+     "        if False:",
+     "tests/test_markdown_parser.py::test_bloco_cercado_sai_inteiro_e_sem_a_cerca"),
+
+    ("negrito+itálico volta a deixar asterisco solto",
+     "core/markdown_parser.py",
+     "            if part.startswith(\"***\") and part.endswith(\"***\"):",
+     "            if False:",
+     "tests/test_markdown_parser.py::test_negrito_e_italico_juntos"),
+
+    ("fonte em tupla volta a derrubar a configuração das tags",
+     "core/markdown_parser.py",
+     '    if not hasattr(base_font, "cget"):',
+     "    if isinstance(base_font, str):",
+     "tests/test_markdown_parser.py::test_configure_aceita_caixa_com_fonte_em_string"),
+
+    ("erro de projeto volta a mostrar a mensagem da biblioteca",
+     "main.py",
+     "        messagebox.showerror(titulo, t(chave))",
+     "        messagebox.showerror(titulo, str(erro))",
+     "tests/test_mensagens_de_erro_projeto.py::test_a_mensagem_sai_traduzida_e_sem_jargao"),
+
+    ("detalhe técnico do projeto deixa de ir para o log",
+     "main.py",
+     '        log.info(f"[ERRO] {type(erro).__name__}: {erro}  → {chave}\\n")',
+     "        pass",
+     "tests/test_mensagens_de_erro_projeto.py::test_o_detalhe_tecnico_vai_para_o_log_e_nao_some"),
+
+    ("dataset corrompido volta ao diagnóstico genérico",
+     "core/project.py",
+     '    (gzip.BadGzipFile, "projeto.erro_corrompido"),',
+     "    ",
+     "tests/test_mensagens_de_erro_projeto.py::test_cada_falha_tem_diagnostico_proprio"),
+
+    ("rede caída volta a mostrar o Errno na tela",
+     "main.py",
+     '            self.after(0, lambda c=chave: messagebox.showerror(t("busca.erro_titulo"), t(c)))',
+     '            self.after(0, lambda e_msg=str(e): messagebox.showerror("Erro na busca", e_msg))',
+     "tests/test_busca_estados_de_erro.py::test_rede_caida_explica_em_vez_de_mostrar_errno"),
+
+    ("limite de taxa passa a ser diagnosticado como falta de conexão",
+     "core/sources/base.py",
+     "    if isinstance(erro, urllib.error.HTTPError):",
+     "    if False:",
+     "tests/test_busca_estados_de_erro.py::test_cada_falha_de_busca_tem_diagnostico_proprio"),
+
+    ("busca sem resultados volta ao português fixo",
+     "main.py",
+     '                        t("busca.sem_resultado_titulo"), t("busca.sem_resultado")))',
+     '                        "Busca concluída", "Nenhum registro encontrado para essa busca."))',
+     "tests/test_busca_estados_de_erro.py::test_busca_sem_resultados_avisa_e_orienta"),
 ]
 
 
