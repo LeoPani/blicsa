@@ -1,7 +1,18 @@
 # Auditoria 2 · Fase 4 — PONTO DE PARADA: reescrita do histórico
 
-**Data:** 2026-08-09 · **Nada foi executado.** Este documento existe para a decisão do
-Leonardo.
+**Data:** 2026-08-09 · **Nada foi executado.**
+
+> # DECISÃO: NÃO REESCREVER
+>
+> **Tomada por Leonardo Paniago em 2026-08-09.** O histórico dos 133 commits fica como está.
+>
+> **Motivo determinante:** os relatórios de auditoria — que serão referenciados na submissão
+> ao JOSS — **citam commits por hash**. Uma reescrita transformaria a documentação do
+> processo num conjunto de ponteiros para commits inexistentes. Somado a isso: não há
+> assinatura nenhuma para remover (§1), e o custo da operação não é zero (§2).
+>
+> **Consequência:** a Fase 5 (execução da reescrita) fica **cancelada**. Nenhum `filter-repo`,
+> nenhum force-push. A sequência para o DOI segue direto para a Fase 6.
 
 > ## A pergunta mudou
 >
@@ -71,15 +82,8 @@ git filter-repo --replace-message /tmp/blicsa-replace.txt
 
 ### Backup
 
-**Não existe backup íntegro fora do diretório de trabalho.** Verificado: não há clone espelho
-nem bundle em `~/`. Se a reescrita for autorizada, o primeiro passo passa a ser:
-
-```bash
-git bundle create ~/blicsa-backup-$(date +%Y%m%d).bundle --all
-git clone --mirror . ~/blicsa-espelho-$(date +%Y%m%d).git
-```
-
-Sem isso, a operação não deve começar.
+Quando este levantamento foi escrito, **não existia** backup íntegro fora do diretório de
+trabalho. Passou a existir antes de qualquer operação sobre a release — ver §3.1.
 
 ---
 
@@ -100,23 +104,62 @@ processo — que serão referenciados na submissão ao JOSS — num conjunto de 
 
 ---
 
-## 3. A combinação com o Zenodo (item 22)
+## 3. A release ainda precisa ser recriada — por outro motivo
 
-O prompt observa, com razão, que a release precisaria ser recriada de qualquer forma para o
-Zenodo capturar o depósito, e que por isso as duas operações se combinam sem custo adicional.
+**Correção de premissa.** O prompt original ligava a recriação da release à reescrita do
+histórico, tratando as duas como operações que "se combinam sem custo adicional". Com a
+reescrita cancelada, poderia parecer que a release também deixa de precisar ser refeita.
 
-**Isso continua verdadeiro, mas o custo adicional deixou de ser zero:** recriar a release é
-barato; reescrever 133 hashes e invalidar as referências dos relatórios não é. As duas
-operações se combinam bem quando a reescrita é necessária. Ela não é.
+**Não deixa.** O motivo é independente e continua valendo:
 
-**A ordem crítica permanece a mesma**, com ou sem reescrita:
+> O Zenodo só captura releases **publicadas depois** de a integração estar ativa. Uma release
+> que já existia quando o webhook foi ligado não dispara depósito nenhum.
+
+O que isso implica é bem menor do que uma reescrita:
+
+| | reescrita de histórico | recriar a release |
+|---|---|---|
+| commits | 133 hashes novos | **intactos** |
+| tag `v2.0.0` | precisa ser recriada | **intacta** |
+| force-push | obrigatório | **nenhum push de histórico** |
+| clones de terceiros | quebrados | **não afetados** |
+| hashes citados nos relatórios | apontam para o vazio | **continuam válidos** |
+| o que se faz | `filter-repo` + force-push | apagar e republicar a release no GitHub |
+
+A tag continua apontando para o mesmo commit; só o objeto *release* do GitHub — o texto, os
+binários e os checksums — é apagado e recriado, agora com o webhook do Zenodo escutando.
+
+### Ordem crítica, revisada
 
 ```
-limpeza de código → [reescrita de histórico] → force-push → ativar Zenodo → recriar release v2.0.0 → DOI
+limpeza de código ✔ → ativar integração do Zenodo → apagar e republicar a release v2.0.0 → DOI
 ```
 
-Reescrever histórico **depois** do DOI invalidaria o DOI. Se a reescrita for descartada, a
-sequência vira: limpeza → ativar Zenodo → recriar release → DOI.
+A regra que a motivou permanece: **nada que altere o histórico depois do DOI**, porque isso
+invalidaria o DOI. Com a reescrita cancelada, nada altera o histórico em momento nenhum.
+
+## 3.1 Backup
+
+Feito antes de qualquer operação sobre a release, conforme pedido:
+
+```bash
+git bundle create ../blicsa-backup-$(date +%Y%m%d).bundle --all
+```
+
+| | |
+|---|---|
+| caminho | `/Users/leopani/blicsa-backup-20260809.bundle` |
+| tamanho | 26.336.505 bytes (25 MB) |
+| refs | 17 |
+| `git bundle verify` | **"The bundle records a complete history"** |
+| HEAD no bundle | `5d8cf9c` |
+
+Fora do diretório de trabalho, como exige a regra da Fase 4. Restauração, se um dia for
+necessária:
+
+```bash
+git clone /Users/leopani/blicsa-backup-20260809.bundle blicsa-restaurado
+```
 
 ---
 
@@ -141,12 +184,16 @@ num só, que é um objetivo legítimo e **diferente** do que a Fase 4 previa), e
 
 ---
 
-## 5. Aguardando autorização (item 23)
+## 5. Registro da decisão (item 23)
 
-**Nada será executado sem decisão explícita.** As três respostas possíveis:
-
-| resposta | o que acontece em seguida |
+| | |
 |---|---|
-| **"não reescrever"** | Fase 5 é pulada; segue para a Fase 6 (Zenodo, JOSS, `CITATION.cff`, README) |
-| **"reescrever mesmo assim"** | backup primeiro, depois `filter-repo`, verificação independente, atualização dos hashes nos relatórios, e o comando de push apresentado para autorização à parte |
-| **"reescrever para unificar os e-mails de autor"** | mesmo caminho, com `--mailmap` em vez de `--replace-message` |
+| **decisão** | não reescrever o histórico |
+| **quem** | Leonardo Paniago |
+| **quando** | 2026-08-09 |
+| **motivo determinante** | os relatórios de auditoria citam hashes que deixariam de existir |
+| **motivos concorrentes** | zero assinaturas a remover (§1); custo não-nulo da operação (§2) |
+| **Fase 5** | cancelada — nenhum `filter-repo`, nenhum force-push |
+| **backup** | feito mesmo assim, antes de tocar na release (§3.1) |
+
+O que **não** foi cancelado: a recriação da release `v2.0.0`, por motivo independente (§3).

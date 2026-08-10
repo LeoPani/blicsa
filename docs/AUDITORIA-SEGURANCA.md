@@ -7,7 +7,7 @@
 > inseguro nem `shell=True` em lugar nenhum; TLS nunca é desabilitado; a chave de IA não
 > aparece em erro, log ou stdout; a extensão pede três permissões e só fala com `127.0.0.1`.
 >
-> **Sete achados corrigidos**, sendo o mais grave a **injeção de fórmula no CSV exportado** —
+> **Oito achados corrigidos**, sendo o mais grave a **injeção de fórmula no CSV exportado** —
 > e o mais instrutivo, o fato de que a primeira correção dele **não corrigia nada**.
 
 ---
@@ -114,30 +114,45 @@ Não há `<all_urls>`, `tabs`, `webRequest` nem `cookies`. Nada a remover.
 | Qualquer extensão de navegador pode **tentar** falar com o bridge (o CORS ecoa qualquer `chrome-extension://`) | sem o token não passa do 401, e restringir a um ID de extensão impediria builds de desenvolvimento e a versão Firefox. Registrado aqui em vez de silenciosamente aceito. |
 | O token fica no arquivo de configuração do usuário | quem lê esse arquivo já está dentro da conta do usuário e tem acesso ao corpus inteiro; o token não é a fronteira nesse cenário |
 | Sem CSRF token no bridge | os endpoints exigem `Authorization`, que um formulário HTML não consegue enviar entre origens |
-| `pip-audit` não executado (item 1) | ver §4 |
 
 ---
 
-## 4. Item 1 — dependências: **não executado**
+## 4. Item 1 — dependências: **executado, zero vulnerabilidades**
 
-`pip-audit` e `safety` não estão instalados, e o Python deste sistema é **gerenciado
-externamente** (PEP 668): instalá-los exigiria `--break-system-packages`, alterando o ambiente
-do usuário para produzir um número.
-
-Não foi contornado com uma verificação improvisada. Uma varredura de CVE feita à mão, com base
-de dados desatualizada, daria uma tabela com cara de auditoria e valor nenhum.
-
-**Como executar**, em ambiente isolado, antes da submissão:
+Rodado em ambiente isolado, sem tocar no Python do sistema (gerenciado externamente, PEP 668):
 
 ```bash
-python3 -m venv /tmp/audit-venv
-/tmp/audit-venv/bin/pip install pip-audit
-/tmp/audit-venv/bin/pip-audit -r requirements.txt -r requirements-dev.txt
+python3 -m venv /tmp/blicsa-audit-venv
+/tmp/blicsa-audit-venv/bin/pip install --upgrade pip pip-audit
+/tmp/blicsa-audit-venv/bin/pip-audit -r <arquivo> --progress-spinner off
 ```
 
-Fica como **pendência declarada** desta auditoria, não como item aprovado.
+| arquivo de requisitos | resultado |
+|---|---|
+| `requirements.txt` | **No known vulnerabilities found** |
+| `requirements-core.txt` | **No known vulnerabilities found** |
+| `requirements-dev.txt` | **No known vulnerabilities found** |
+| `requirements-ai.txt` | **No known vulnerabilities found** |
+| `requirements-pdf.txt` | **No known vulnerabilities found** |
 
----
+| | |
+|---|---|
+| ferramenta | `pip-audit 2.10.1` |
+| consultado em | 2026-08-10 00:48 UTC |
+| pacotes declarados | 47 linhas de requisito nos cinco arquivos |
+| fonte | PyPI Advisory Database (padrão do `pip-audit`) |
+
+**Nenhum pacote precisou ser atualizado**, e portanto nada a documentar como "não pôde ser
+atualizado". As versões estão fixadas com `==` desde `da90251`, o que torna este resultado
+reproduzível: quem rodar o mesmo comando na mesma data obtém o mesmo veredito.
+
+### Ressalva sobre a validade no tempo
+
+Uma auditoria de dependência **vence**. Este resultado vale para a base de avisos consultada
+na data acima; um CVE publicado amanhã não aparece aqui. O comando está registrado para ser
+reexecutado antes da submissão e a cada release.
+
+Não há `pip-audit` no CI hoje — fica como recomendação, não como pendência desta auditoria.
 
 ## 5. Testes de segurança
 
@@ -160,4 +175,4 @@ Cada correção tem caso de reinjeção em `scripts/reinject_ia_ux.py`.
 - `python3 -m pytest tests/ -q` → **928 passed, 1 xfailed**. ✅
 - `python3 scripts/reinject_ia_ux.py` → **99/99 defeitos detectados**. ✅
 - `SECURITY.md` na raiz, com política de reporte, escopo e prazos. ✅
-- `pip-audit` → **pendência declarada** (§4). ⚠️
+- `pip-audit -r` nos cinco arquivos de requisitos → **zero vulnerabilidades** (§4). ✅
