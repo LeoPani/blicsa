@@ -1592,7 +1592,7 @@ class BlicsaApp(ctk.CTk):
             import os, time, re
             os.makedirs("reports", exist_ok=True)
             
-            # Save a bundled Sigma.js map to the gallery
+            # Guarda na galeria uma cópia autocontida do mapa Sigma.
             from core.sigma_exporter import export_sigma_json
             import tempfile
             
@@ -2196,7 +2196,7 @@ class BlicsaApp(ctk.CTk):
         if ext == ".nbib":
             return "pubmed"
             
-        # Read the start of the file to inspect header/tags
+        # Lê o começo do arquivo para inspecionar cabeçalho e etiquetas.
         try:
             with open(p, "r", encoding="utf-8", errors="ignore") as f:
                 head = f.read(4096)
@@ -3626,7 +3626,7 @@ class BlicsaApp(ctk.CTk):
                 for term, count in self._candidate_counts.items()
                 if count >= min_occ
             ]
-            # Enrich with doc_freq
+            # Acrescenta a frequência documental (doc_freq).
             from core.matrix_builders import _extract_term_lists
             try:
                 term_lists = _extract_term_lists(
@@ -4244,7 +4244,7 @@ class BlicsaApp(ctk.CTk):
             
             # Use after(0) to update UI
             def _start_streaming():
-                # Switch to Blink Research (home) tab automatically
+                # Leva o usuário para a aba do Blink automaticamente.
                 self._switch_tab("home")
                 self._add_blink_message("user", prompt_msg)
                 

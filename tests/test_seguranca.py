@@ -144,13 +144,33 @@ def test_json_raso_continua_passando(bridge):
     assert profundidade_json(registro) < PROFUNDIDADE_MAXIMA_JSON / 4
 
 
-def test_limite_de_taxa_dispara(bridge):
+def test_limite_de_taxa_dispara():
+    """Na unidade, não pela rede.
+
+    A versão por HTTP disparava 70 requisições e afirmava que uma delas voltava 429. Passava
+    isolada e falhava na suíte completa com `TimeoutError`: o servidor é compartilhado entre
+    os arquivos de teste e 70 conexões em rajada, algumas fechadas pela própria recusa,
+    dependem do estado do socket. O que se quer provar é a **regra**, e ela é local.
+    """
     from core.bridge import MAX_PEDIDOS_NA_JANELA, ExtensionBridgeHandler
 
-    respostas = [_pedido(bridge, "/api/add", corpo=b'{"url":"x"}')[0]
-                 for _ in range(MAX_PEDIDOS_NA_JANELA + 10)]
-    assert 429 in respostas, "o limitador de taxa nunca disparou"
-    assert respostas[0] != 429, "disparou já no primeiro pedido — a janela está errada"
+    ExtensionBridgeHandler._pedidos_recentes.clear()
+    aceitos = [ExtensionBridgeHandler._dentro_do_limite_de_taxa()
+               for _ in range(MAX_PEDIDOS_NA_JANELA + 10)]
+
+    assert all(aceitos[:MAX_PEDIDOS_NA_JANELA]), "recusou dentro da cota"
+    assert not any(aceitos[MAX_PEDIDOS_NA_JANELA:]), "não recusou depois da cota"
+
+
+def test_limite_de_taxa_responde_429_pela_rede(bridge):
+    """E a regra chega ao cliente como 429 — uma requisição só, sem rajada."""
+    from core.bridge import MAX_PEDIDOS_NA_JANELA, ExtensionBridgeHandler
+
+    ExtensionBridgeHandler._pedidos_recentes.clear()
+    for _ in range(MAX_PEDIDOS_NA_JANELA):
+        ExtensionBridgeHandler._dentro_do_limite_de_taxa()
+
+    assert _pedido(bridge, "/api/add", corpo=b'{"url":"x"}')[0] == 429
 
 
 def test_cors_nao_libera_origem_arbitraria(bridge):
@@ -307,7 +327,10 @@ def test_tls_nunca_e_desabilitado():
     padrao = r"_create_unverified|verify\s*=\s*False|CERT_NONE"
     saida = subprocess.run(["git", "grep", "-nE", padrao, "--", "*.py"],
                            cwd=RAIZ, capture_output=True, text=True).stdout
-    assert not saida.strip(), f"verificação de TLS desabilitada:\n{saida}"
+    # Exclui `tests/`: este arquivo contém o próprio padrão que procura, e passou a casar
+    # consigo mesmo assim que foi rastreado — verde isolado, vermelho na suíte completa.
+    achados = [l for l in saida.splitlines() if not l.startswith("tests/")]
+    assert not achados, "verificação de TLS desabilitada:\n" + "\n".join(achados)
 
 
 # ── Conteúdo renderizado ─────────────────────────────────────────────────────────

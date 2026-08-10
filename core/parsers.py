@@ -444,7 +444,7 @@ class BibliometricParser:
         records = []
         current = {}
         
-        # Tags are normally 2 characters, followed by a space, a dash, and a space (e.g., 'TI  - ')
+        # A etiqueta do RIS tem 2 caracteres, espaço, hífen, espaço — 'TI  - '.
         pattern = re.compile(r"^([A-Z0-9]{2})\s*-\s*(.*)$")
         
         for line in text.splitlines():
