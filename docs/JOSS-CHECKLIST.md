@@ -54,7 +54,7 @@ Legenda: **✅ atendido** · **⏳ pendente** · **➖ não aplicável**
 | 21 | Arquivo `paper.md` com o artigo | ⏳ | **não escrito.** É o entregável central da submissão e depende de decisão de autoria |
 | 22 | `paper.bib` com as referências | ⏳ | as referências já estão em [`metodos.md`](metodos.md) e podem ser convertidas |
 | 23 | Release versionada com tag | ✅ | [`v2.0.0`](https://github.com/LeoPani/blicsa/releases/tag/v2.0.0) — três binários + `SHA256SUMS.txt`, run `30960516974` |
-| 24 | DOI de arquivamento (Zenodo/figshare) | ⏳ | **a v2.0.0 foi publicada antes de a integração do Zenodo existir, então não gerou DOI.** O Zenodo só captura releases publicadas depois de a integração estar ativa — a release precisa ser apagada e republicada, **sem tocar na tag nem no histórico**. Passo a passo pronto em [`ZENODO-PASSO-A-PASSO.md`](ZENODO-PASSO-A-PASSO.md) |
+| 24 | DOI de arquivamento (Zenodo/figshare) | ✅ | **DOI de conceito: [`10.5281/zenodo.21866410`](https://doi.org/10.5281/zenodo.21866410)** — resolve sempre para a versão mais recente, e é o que está no badge do README e como identificador principal no `CITATION.cff`. O snapshot da v2.0.0 é [`10.5281/zenodo.21866411`](https://doi.org/10.5281/zenodo.21866411), registrado como segundo identificador. A release precisou ser republicada porque o Zenodo só captura releases publicadas **depois** de a integração estar ativa; tag e histórico ficaram intactos — ver [`ZENODO-PASSO-A-PASSO.md`](ZENODO-PASSO-A-PASSO.md) |
 | 25 | ORCID do autor de correspondência | ⏳ | precisa ser informado por Leonardo |
 | 26 | Autoria substancial declarada | ⏳ | decisão de Leonardo |
 

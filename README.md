@@ -11,8 +11,7 @@ Maps scientific literature into interactive networks to reveal research fronts, 
 [![CI](https://github.com/LeoPani/blicsa/actions/workflows/ci.yml/badge.svg)](https://github.com/LeoPani/blicsa/actions/workflows/ci.yml)
 ![Coverage](https://img.shields.io/badge/coverage-69%25-yellow)
 ![Version](https://img.shields.io/badge/version-2.0.0-blue)
-<!-- [![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.XXXXXXX.svg)](https://doi.org/10.5281/zenodo.XXXXXXX) -->
-<!-- ↑ Descomentar quando o Zenodo emitir o DOI — ver docs/ZENODO-PASSO-A-PASSO.md -->
+[![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.21866410.svg)](https://doi.org/10.5281/zenodo.21866410)
 
 ![Blicsa browsing search results](docs/evidence/v1_busca_navegacao.png)
 

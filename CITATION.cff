@@ -21,12 +21,16 @@ date-released: "2026-08-04"
 license: MIT
 url: "https://github.com/LeoPani/blicsa"
 repository-code: "https://github.com/LeoPani/blicsa"
-# identifiers:
-#   - type: doi
-#     value: "10.5281/zenodo.XXXXXXX"
-#     description: "Arquivamento permanente da v2.0.0 no Zenodo"
-# ↑ Preencher depois que o Zenodo emitir o DOI (ver docs/ZENODO-PASSO-A-PASSO.md).
-#   O DOI só existe após a release ser republicada com a integração já ativa.
+identifiers:
+  # DOI de conceito: resolve sempre para a versão mais recente. É o que envelhece bem e
+  # o que aparece no badge do README.
+  - type: doi
+    value: "10.5281/zenodo.21866410"
+    description: "DOI de conceito — todas as versões do Blicsa no Zenodo"
+  # DOI da versão: congelado na v2.0.0. Para quem precisa citar exatamente este snapshot.
+  - type: doi
+    value: "10.5281/zenodo.21866411"
+    description: "Snapshot permanente da v2.0.0 no Zenodo"
 keywords:
   - bibliometrics
   - scientometrics
