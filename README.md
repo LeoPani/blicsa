@@ -11,6 +11,8 @@ Maps scientific literature into interactive networks to reveal research fronts, 
 [![CI](https://github.com/LeoPani/blicsa/actions/workflows/ci.yml/badge.svg)](https://github.com/LeoPani/blicsa/actions/workflows/ci.yml)
 ![Coverage](https://img.shields.io/badge/coverage-69%25-yellow)
 ![Version](https://img.shields.io/badge/version-2.0.0-blue)
+<!-- [![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.XXXXXXX.svg)](https://doi.org/10.5281/zenodo.XXXXXXX) -->
+<!-- ↑ Descomentar quando o Zenodo emitir o DOI — ver docs/ZENODO-PASSO-A-PASSO.md -->
 
 ![Blicsa browsing search results](docs/evidence/v1_busca_navegacao.png)
 
@@ -185,6 +187,16 @@ Use the **Cite this repository** button on GitHub, which reads `CITATION.cff`, o
 
 > Paniago, L. (2026). *Blicsa* (version 2.0.0) [Computer software].
 > https://github.com/LeoPani/blicsa
+
+Once the archival DOI is issued, cite the DOI instead — it is the stable identifier and
+resolves to a fixed snapshot, while the repository URL follows the moving branch.
+
+## Security
+
+Found a vulnerability? Please **do not open a public issue** — see [`SECURITY.md`](SECURITY.md)
+for the reporting policy, scope and response times. That file also documents what Blicsa does
+with your data: the corpus stays on your machine, and the AI key goes to the operating system
+keychain, never to the repository or the project file.
 
 ## License
 

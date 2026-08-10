@@ -1,7 +1,7 @@
 # Checklist de submissão ao JOSS
 
 Estado de cada requisito da [checklist de revisão do JOSS](https://joss.readthedocs.io/en/latest/review_checklist.html),
-com a evidência. Atualizado em **2026-08-04**, sobre o commit publicado em `origin/main`.
+com a evidência. Atualizado em **2026-08-09**, depois das Auditorias 1 e 2.
 
 Legenda: **✅ atendido** · **⏳ pendente** · **➖ não aplicável**
 
@@ -18,11 +18,12 @@ Legenda: **✅ atendido** · **⏳ pendente** · **➖ não aplicável**
 | 4 | Dependências declaradas | ✅ | `requirements-core.txt` (app), `requirements.txt` (com extras), `requirements-dev.txt` (testes) |
 | 5 | Exemplo funcional de uso | ✅ | [`docs/uso.md`](uso.md) + `docs/sample_dataset.csv` (200 registros reais do OpenAlex) |
 | 6 | Documentação da API / funcionalidade | ✅ | [`docs/index.md`](index.md), [`uso.md`](uso.md), [`mapas.md`](mapas.md) |
-| 7 | Testes automatizados | ✅ | 473 testes, `python -m pytest tests/ -q` |
+| 7 | Testes automatizados | ✅ | **929 testes**, `python3 -m pytest tests/ -q`. Inclui matriz de **reinjeção de defeitos** (`scripts/reinject_ia_ux.py`, 101 casos): cada bug corrigido é reintroduzido e a suíte tem de ficar vermelha |
 | 8 | Integração contínua | ✅ | GitHub Actions, matriz 3.11/3.12 — [workflow](https://github.com/LeoPani/blicsa/actions/workflows/ci.yml) |
 | 9 | Diretrizes de contribuição | ✅ | `CONTRIBUTING.md` |
 | 10 | Código de conduta | ✅ | `CODE_OF_CONDUCT.md` (ver item 2b) |
 | 11 | Canal para reportar problemas | ✅ | GitHub Issues, descrito no `CONTRIBUTING.md` e no [FAQ](faq.md) |
+| 11b | Política de segurança | ✅ | `SECURITY.md` na raiz — escopo, prazos de resposta e o que o programa faz com os dados do usuário. Criado na Auditoria 2 |
 
 ## Documentação
 
@@ -38,19 +39,22 @@ Legenda: **✅ atendido** · **⏳ pendente** · **➖ não aplicável**
 
 | # | requisito | estado | evidência |
 |---|---|---|---|
-| 17 | Cobertura de testes registrada | ✅ | **69%** em `core/` (4232 comandos, 1307 não cobertos), medido pelo CI no run `30884139087`, igual em 3.11 e 3.12 |
+| 17 | Cobertura de testes registrada | ✅ | **69%** em `core/` (4232 comandos, 1307 não cobertos), medido pelo CI no run `30884139087`. **Número de 04/08**; a suíte passou de 473 para 929 testes desde então, e a próxima execução do CI atualiza o valor |
+| 17b | Auditoria de dependências | ✅ | `pip-audit 2.10.1` sobre os cinco arquivos de requisitos (47 pacotes): **zero vulnerabilidades conhecidas**, em 2026-08-10. Comando e ressalva de validade em [`AUDITORIA-SEGURANCA.md`](AUDITORIA-SEGURANCA.md) §4 |
+| 17c | Auditoria de segurança | ✅ | [`AUDITORIA-SEGURANCA.md`](AUDITORIA-SEGURANCA.md) — 8 achados corrigidos, 28 testes de segurança, nenhum achado crítico |
 | 18 | Build verde | ✅ | run `30884139087`, `3.11: success`, `3.12: success` |
-| 19 | Reprodutibilidade dos resultados | ✅ | clustering com semente fixa (`seed=42`); verificado com 5 execuções sobre o mesmo grafo → 1 partição |
+| 19 | Reprodutibilidade dos resultados | ✅ | clusterização **e posições do mapa** com semente fixa. Verificado em **subprocessos com `PYTHONHASHSEED` distinto** — só assim se detecta ordem de iteração de `set`. A Auditoria 1 encontrou que as posições **não** eram reprodutíveis (o ForceAtlas2 sorteava com o `random` global, sem semente) e corrigiu; ver [`AUDITORIA-MAPAS.md`](AUDITORIA-MAPAS.md) §2.1 |
+| 19b | Verificação funcional documentada | ✅ | [`AUDITORIA-MAPAS.md`](AUDITORIA-MAPAS.md) (11 corpus adversariais × 3 modos, desempenho medido), [`AUDITORIA-FLUXO.md`](AUDITORIA-FLUXO.md) (percurso do usuário novo cronometrado), [`AUDITORIA-ARQUITETURA.md`](AUDITORIA-ARQUITETURA.md) (métricas e dívida catalogada) |
 
 ## Requisitos formais da submissão
 
 | # | requisito | estado | observação |
 |---|---|---|---|
-| 20 | `CITATION.cff` válido | ✅ | versão `2.0.0`, autor `Paniago, Leonardo`, licença MIT, palavras-chave. Teste automatizado impede divergir de `main.py::__version__`. **Falta o ORCID**, que só Leonardo pode informar |
+| 20 | `CITATION.cff` válido | ✅ | versão `2.0.0`, autor `Paniago, Leonardo`, contato, licença MIT, palavras-chave. Teste automatizado impede divergir de `main.py::__version__`. **Falta o ORCID** — marcador comentado no arquivo, só Leonardo pode informar (item 25) |
 | 21 | Arquivo `paper.md` com o artigo | ⏳ | **não escrito.** É o entregável central da submissão e depende de decisão de autoria |
 | 22 | `paper.bib` com as referências | ⏳ | as referências já estão em [`metodos.md`](metodos.md) e podem ser convertidas |
 | 23 | Release versionada com tag | ✅ | [`v2.0.0`](https://github.com/LeoPani/blicsa/releases/tag/v2.0.0) — três binários + `SHA256SUMS.txt`, run `30960516974` |
-| 24 | DOI de arquivamento (Zenodo/figshare) | ⏳ | **a v2.0.0 foi publicada antes de a integração do Zenodo existir, então não gerou DOI.** Ativar a integração e republicar a release (ou publicar uma `v2.0.1`) — ver `RELATORIO-V2.md` §7 |
+| 24 | DOI de arquivamento (Zenodo/figshare) | ⏳ | **a v2.0.0 foi publicada antes de a integração do Zenodo existir, então não gerou DOI.** O Zenodo só captura releases publicadas depois de a integração estar ativa — a release precisa ser apagada e republicada, **sem tocar na tag nem no histórico**. Passo a passo pronto em [`ZENODO-PASSO-A-PASSO.md`](ZENODO-PASSO-A-PASSO.md) |
 | 25 | ORCID do autor de correspondência | ⏳ | precisa ser informado por Leonardo |
 | 26 | Autoria substancial declarada | ⏳ | decisão de Leonardo |
 

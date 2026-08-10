@@ -9,11 +9,24 @@ abstract: >-
 authors:
   - family-names: "Paniago"
     given-names: "Leonardo"
+    # orcid: "https://orcid.org/0000-0000-0000-0000"
+    # ↑ Descomentar e preencher antes da submissão ao JOSS. O ORCID do autor de
+    #   correspondência é requisito formal, e só Leonardo pode informá-lo.
+contact:
+  - family-names: "Paniago"
+    given-names: "Leonardo"
+    email: "blicsa.app@gmail.com"
 version: "2.0.0"
 date-released: "2026-08-04"
 license: MIT
 url: "https://github.com/LeoPani/blicsa"
 repository-code: "https://github.com/LeoPani/blicsa"
+# identifiers:
+#   - type: doi
+#     value: "10.5281/zenodo.XXXXXXX"
+#     description: "Arquivamento permanente da v2.0.0 no Zenodo"
+# ↑ Preencher depois que o Zenodo emitir o DOI (ver docs/ZENODO-PASSO-A-PASSO.md).
+#   O DOI só existe após a release ser republicada com a integração já ativa.
 keywords:
   - bibliometrics
   - scientometrics
