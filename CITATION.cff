@@ -9,9 +9,7 @@ abstract: >-
 authors:
   - family-names: "Paniago"
     given-names: "Leonardo"
-    # orcid: "https://orcid.org/0000-0000-0000-0000"
-    # ↑ Descomentar e preencher antes da submissão ao JOSS. O ORCID do autor de
-    #   correspondência é requisito formal, e só Leonardo pode informá-lo.
+    orcid: "https://orcid.org/0009-0006-1663-3349"
 contact:
   - family-names: "Paniago"
     given-names: "Leonardo"
