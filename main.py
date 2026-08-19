@@ -167,7 +167,15 @@ class BlicsaApp(ctk.CTk):
         self._api_key_var = ctk.StringVar(value=get_api_key())
         # persiste no keyring com debounce (a cada edição no campo dos Ajustes)
         self._api_key_save_job = None
+        #: Ligado enquanto `_sincronizar_chave_da_sessao` escreve na variável. O debounce
+        #: existe para persistir o que o USUÁRIO digita; sem esta trava ele também
+        #: re-persistia o que o app acabou de LER, e na remoção isso era destrutivo: com
+        #: `GROQ_API_KEY` no ambiente, apagar a chave repunha a do ambiente dentro do
+        #: keyring 900 ms depois — remover passava a gravar.
+        self._sincronizando_chave = False
         def _schedule_key_save(*_):
+            if self._sincronizando_chave:
+                return
             if self._api_key_save_job:
                 self.after_cancel(self._api_key_save_job)
             def _do():
@@ -419,13 +427,47 @@ class BlicsaApp(ctk.CTk):
             pass
 
     def _on_app_close(self):
-        """Fecha o app parando o servidor da extensão antes de destruir a janela."""
+        """Fechar pela janela é destruir a janela. A limpeza mora em `destroy`."""
+        self.destroy()
+
+    def destroy(self):
+        """Desmonta a janela E o que ela deixou de pé FORA dela.
+
+        Três coisas sobrevivem a um `destroy` de Tk, porque nenhuma é widget: o servidor da
+        extensão, o servidor de estáticos e o handler de log pendurado no logger raiz. No
+        app real o processo morre em seguida e ninguém nota. Numa suíte que abre e fecha
+        dezenas de janelas no mesmo processo, as sobras se acumulam e o dano aparece longe
+        de quem o causou:
+
+        - sockets segurados faziam `tests/test_seguranca.py` levar `TimeoutError`
+          intermitente, com a falha mudando de lugar a cada execução;
+        - handlers empilhados no logger raiz, cada um escrevendo num Textbox já destruído,
+          levaram `tests/test_search_browse.py` de 0,9 s para mais de setenta segundos.
+
+        A limpeza fica aqui, e não em `_on_app_close`, porque `destroy()` é o que todo mundo
+        chama — inclusive os testes, que nunca passam pelo protocolo da janela.
+        """
         try:
             if getattr(self, "_bridge_server", None):
                 self._bridge_server.stop()
+                self._bridge_server = None
         except Exception:
             pass
-        self.destroy()
+        try:
+            if getattr(self, "_http_server", None):
+                self._http_server.shutdown()
+                self._http_server.server_close()
+                self._http_server = None
+        except Exception:
+            pass
+        try:
+            handler = getattr(self, "_gui_log_handler", None)
+            if handler is not None:
+                logging.getLogger().removeHandler(handler)
+                self._gui_log_handler = None
+        except Exception:
+            pass
+        super().destroy()
 
     def _attach_log_handler(self):
         """Item 6: o log box é alimentado por logging.Handler — sys.stdout e
@@ -788,7 +830,7 @@ class BlicsaApp(ctk.CTk):
         # A chave NUNCA é exibida inteira aqui: capturas de tela dos Ajustes viram
         # documentação, e uma chave legível numa imagem é uma chave comprometida.
         from ai.onboarding import URL_CONSOLE_GROQ, mascarar
-        from core.settings import get_api_key, set_api_key
+        from core.settings import get_api_key
 
         tk.Label(content, text=t("settings.ai_section"), font=("Arial", 12, "bold"),
                  bg="#F6F4EE", fg="#141414").pack(pady=(16, 2))
@@ -803,15 +845,11 @@ class BlicsaApp(ctk.CTk):
             botao_remover.config(state="normal" if atual else "disabled")
 
         def _remover_chave():
-            set_api_key("")
+            # A remoção em si mora no método: ela precisa zerar a chave DA SESSÃO, e não só
+            # do keyring, e isso tem que valer venha o gatilho de onde vier. O que fica aqui
+            # é o que é do diálogo — o rótulo do estado.
+            self._remover_chave_da_ia()
             _atualizar_estado_ia()
-            # Volta o Blink ao onboarding: sem isso o chat ficaria aberto sem chave e
-            # falharia na primeira pergunta.
-            if hasattr(self, "_mostrar_onboarding_ia"):
-                try:
-                    self._mostrar_onboarding_ia()
-                except Exception:
-                    pass
 
         linha_ia = tk.Frame(content, bg="#F6F4EE")
         linha_ia.pack(pady=(6, 0))
@@ -1109,6 +1147,49 @@ class BlicsaApp(ctk.CTk):
         from ai.onboarding import tem_chave
         return tem_chave()
 
+    def _sincronizar_chave_da_sessao(self):
+        """Traz a chave persistida para a variável que as chamadas de IA leem.
+
+        Os sete pontos de IA do app — Blink, insights do mapa, Sankey, mapa temático,
+        historiografia, feed de busca e obras seminais — montam o `AIAnalyst` com
+        `self._api_key_var.get()`. Essa variável só era preenchida uma vez, no `__init__`.
+        Quem salvava a chave pelo onboarding gravava no keyring e a variável continuava
+        vazia até o próximo reinício: o painel dizia "Conectado. Modelo: …", o chat abria
+        com a saudação, e a primeira pergunta morria em "API Key não configurada nos
+        Ajustes". O usuário fazia tudo certo e o app dizia que ele não tinha feito.
+
+        A fonte da verdade é `get_api_key()`, não o texto que foi colado: ela respeita a
+        precedência env → keyring → JSON. Isso muda o resultado na remoção — com
+        `GROQ_API_KEY` no ambiente, apagar do keyring não deixa a sessão sem chave, e a
+        variável precisa refletir o que de fato vai ser usado em vez de fingir que zerou.
+        """
+        from core.settings import get_api_key
+
+        self._sincronizando_chave = True
+        try:
+            self._api_key_var.set(get_api_key())
+        finally:
+            self._sincronizando_chave = False
+
+    def _definir_estado_do_chat(self, bloqueado: bool):
+        """Liga e desliga a entrada do Blink conforme o onboarding esteja ou não na tela.
+
+        O painel de onboarding substitui o HISTÓRICO, não a tela inteira: a caixa de texto,
+        o botão de enviar e os três botões de sugestão continuam montados logo abaixo dele.
+        Dava para perguntar com o onboarding aberto e receber o painel vermelho de erro —
+        que é precisamente o que o onboarding existe para o usuário não ver.
+        """
+        estado = "disabled" if bloqueado else "normal"
+        for widget in (getattr(self, "_research_chat_input_main", None),
+                       getattr(self, "_blink_send_btn", None),
+                       *getattr(self, "_blink_sug_btns", ())):
+            # `winfo_exists`, e não só `is not None`: `_refresh_language` chama
+            # `_build_layout`, que remonta a aba inteira. Durante a remontagem estes
+            # atributos ainda apontam para os widgets da montagem ANTERIOR, já destruídos, e
+            # `configure` neles levanta TclError — trocar de idioma sem chave derrubava o app.
+            if widget is not None and widget.winfo_exists():
+                widget.configure(state=estado)
+
     def _mostrar_onboarding_ia(self):
         """Troca o histórico do chat pelo painel de onboarding."""
         from ui.ai_onboarding_panel import AIOnboardingPanel
@@ -1119,14 +1200,39 @@ class BlicsaApp(ctk.CTk):
         self._blink_onboarding = AIOnboardingPanel(
             self._blink_chat_container, on_saved=self._ocultar_onboarding_ia)
         self._blink_onboarding.pack(fill="both", expand=True, pady=(0, 20))
+        # Durante a montagem da aba isto é um no-op: os widgets do chat ainda não existem
+        # (ou são os da montagem anterior, já destruídos). `_build_tab_home` refaz a chamada
+        # depois de criá-los.
+        self._definir_estado_do_chat(bloqueado=True)
 
     def _ocultar_onboarding_ia(self):
         """Chave salva: some o onboarding, volta o chat com a saudação."""
+        # ANTES de devolver o chat: a saudação convida a perguntar, e a pergunta lê a chave.
+        self._sincronizar_chave_da_sessao()
         if getattr(self, "_blink_onboarding", None) is not None:
             self._blink_onboarding.destroy()
             self._blink_onboarding = None
         self._research_chat_history_main.pack(fill="both", expand=True, pady=(0, 20))
+        self._definir_estado_do_chat(bloqueado=False)
         self._add_blink_message("assistant", t("blink.saudacao"), gerado_por_ia=False)
+
+    def _remover_chave_da_ia(self):
+        """Apaga a chave e faz a sessão parar de usá-la NA HORA.
+
+        Apagava só do keyring: `self._api_key_var` seguia com a chave em memória e as
+        chamadas de IA continuavam funcionando com uma chave que o usuário acabara de
+        remover, até ele fechar o app. O espelho exato do defeito do onboarding — lá a
+        chave nova não valia, aqui a chave velha não parava de valer.
+        """
+        from core.settings import set_api_key
+
+        set_api_key("")
+        self._sincronizar_chave_da_sessao()
+        if hasattr(self, "_mostrar_onboarding_ia"):
+            try:
+                self._mostrar_onboarding_ia()
+            except Exception:
+                pass
 
     def _build_tab_home(self) -> ctk.CTkFrame:
         from ui.design_tokens import WHITE_CARD, MUTED, INK, RED, RED_HOV, PAPER, BLUE, ACCENT, ACCENT_HOV
@@ -1204,6 +1310,11 @@ class BlicsaApp(ctk.CTk):
         self._research_chat_input_main.pack(side="left", fill="x", expand=True, padx=(0, 10))
         
         def send_main_chat(e=None):
+            # Trava de correção, não de aparência. `_definir_estado_do_chat` desabilita os
+            # widgets, mas o atalho <Return> e os botões de sugestão chegam aqui por outros
+            # caminhos, e um widget desabilitado ainda responde a `invoke()`.
+            if getattr(self, "_blink_onboarding", None) is not None:
+                return
             msg = self._research_chat_input_main.get().strip()
             if not msg: return
             self._research_chat_input_main.delete(0, "end")
@@ -1306,8 +1417,13 @@ class BlicsaApp(ctk.CTk):
             threading.Thread(target=worker, daemon=True).start()
             
         self._research_chat_input_main.bind("<Return>", send_main_chat)
-        ctk.CTkButton(input_f, text=t("blink.enviar"), font=ctk.CTkFont(size=14, weight="bold"), fg_color=RED, text_color="white", hover_color=RED_HOV, corner_radius=0, border_width=2, border_color=INK, height=44, width=100, command=send_main_chat).pack(side="right")
-        
+        #: O envio do Blink é um closure (precisa de `chat_container`, `insert_markdown` e
+        #: dos widgets locais). Guardado aqui para o teste poder percorrer o caminho do
+        #: usuário — apertar Enviar — em vez de reimplementar o worker por fora.
+        self._blink_enviar = send_main_chat
+        self._blink_send_btn = ctk.CTkButton(input_f, text=t("blink.enviar"), font=ctk.CTkFont(size=14, weight="bold"), fg_color=RED, text_color="white", hover_color=RED_HOV, corner_radius=0, border_width=2, border_color=INK, height=44, width=100, command=send_main_chat)
+        self._blink_send_btn.pack(side="right")
+
         # Suggestions
         sug_f = ctk.CTkFrame(chat_container, fg_color="transparent")
         sug_f.pack(fill="x")
@@ -1324,10 +1440,16 @@ class BlicsaApp(ctk.CTk):
         _sf = _tkfont.Font(family=ctk.CTkFont(size=12).cget("family"), size=12)
         _sug_w = max(_sf.measure(s) for s in sugs) + 24
         sug_f.grid_columnconfigure((0, 1), weight=0)
+        self._blink_sug_btns = []
         for i, s_txt in enumerate(sugs):
             btn = ctk.CTkButton(sug_f, text=s_txt, width=_sug_w, font=ctk.CTkFont(size=12), fg_color=PAPER, text_color=INK, hover_color="#e0e0e0", corner_radius=0, border_width=1, border_color=INK, command=lambda txt=s_txt: self._research_chat_input_main.insert(0, txt) or send_main_chat())
             btn.grid(row=i // 2, column=i % 2, padx=(0, 10), pady=(0, 8), sticky="w")
-            
+            self._blink_sug_btns.append(btn)
+
+        # Só agora os widgets do chat existem. A chamada dentro de `_mostrar_onboarding_ia`
+        # aconteceu antes deles, quando ainda não havia o que desabilitar.
+        self._definir_estado_do_chat(bloqueado=self._blink_onboarding is not None)
+
         return frame
 
     def _build_tab_projects(self) -> ctk.CTkFrame:

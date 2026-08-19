@@ -215,13 +215,15 @@ def test_com_chave_o_app_nao_mostra_onboarding():
         assert tem_chave() is True
 
 
-def test_remover_chave_volta_ao_estado_de_onboarding(tmp_path, monkeypatch):
-    """Persistência real de ida e volta, sem keyring (caminho de fallback em JSON)."""
+def test_remover_chave_volta_ao_estado_de_onboarding(monkeypatch):
+    """Persistência real de ida e volta, sem keyring (caminho de fallback em JSON).
+
+    O caminho e o keyring já vêm isolados pela fixture `configuracao_isolada` do conftest
+    da raiz. Aqui só se derruba o keyring, que é o que este teste quer exercitar.
+    """
     import core.settings as cs
 
     monkeypatch.setattr(cs, "_keyring", lambda: None)
-    monkeypatch.setattr(cs, "SETTINGS_PATH", tmp_path / "settings.json", raising=False)
-    monkeypatch.setattr(cs, "_settings_cache", None, raising=False)
 
     cs.set_api_key(CHAVE_FALSA)
     assert cs.get_api_key() == CHAVE_FALSA
@@ -231,18 +233,17 @@ def test_remover_chave_volta_ao_estado_de_onboarding(tmp_path, monkeypatch):
     assert len(cs.get_api_key()) == 0, "remover a chave não a apagou"
 
 
-def test_persistencia_entre_reinicios(tmp_path, monkeypatch):
-    """Simula reabrir o app: releitura das configurações do disco, sem cache em memória."""
-    import importlib
+def test_persistencia_entre_reinicios(monkeypatch):
+    """Simula reabrir o app: releitura das configurações do disco.
 
+    Sem keyring de propósito — é o caminho de fallback em JSON que precisa sobreviver ao
+    reinício. `get_settings()` já lê o arquivo a cada chamada, então reler É o reinício.
+    """
     import core.settings as cs
+
     monkeypatch.setattr(cs, "_keyring", lambda: None)
-    monkeypatch.setattr(cs, "SETTINGS_PATH", tmp_path / "settings.json", raising=False)
-    monkeypatch.setattr(cs, "_settings_cache", None, raising=False)
     cs.set_api_key(CHAVE_FALSA)
 
-    # "Reinício": zera o cache e lê de novo do arquivo.
-    monkeypatch.setattr(cs, "_settings_cache", None, raising=False)
     lida = cs.get_api_key()
     assert mascarar(lida) == mascarar(CHAVE_FALSA), (
         "a chave não sobreviveu ao reinício (comparação mascarada de propósito: "
