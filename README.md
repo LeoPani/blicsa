@@ -75,7 +75,7 @@ Maps scientific literature into interactive networks to reveal research fronts, 
 - **Word cloud** from keywords or abstracts
 
 ### AI Integration
-- **Groq API** (llama-3.3-70b-versatile) for:
+- **Groq API** (openai/gpt-oss-120b) for:
   - Structured bibliometric insights (research fronts, gaps, recommendations)
   - Automatic semantic cluster labeling
 - **Node info panel** — click any node to see: centrality metrics, co-occurring terms, related papers with citation counts

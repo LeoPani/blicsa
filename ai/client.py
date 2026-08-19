@@ -135,7 +135,10 @@ class AIAnalyst:
                  model: str | None = None, contexto_pesquisa: str = ""):
         self.api_key = api_key or os.environ.get("AI_API_KEY", os.environ.get("GROQ_API_KEY"))
         self.base_url = base_url or os.environ.get("AI_BASE_URL", "https://api.groq.com/openai/v1")
-        self.model = model or os.environ.get("AI_MODEL", "llama-3.3-70b-versatile")
+        #: `llama-3.3-70b-versatile` era o padrão e foi descontinuado pelo Groq: a API passou
+        #: a responder `404 model_not_found`, e o Blink quebrava com a chave CERTA — o erro
+        #: não fala em modelo, então parecia problema de chave.
+        self.model = model or os.environ.get("AI_MODEL", "openai/gpt-oss-120b")
 
         #: Contexto de pesquisa do projeto. Fica no ANALISTA, não em cada método, porque a
         #: alternativa era um parâmetro novo em `generate_insights`, `generate_sankey_...`,
@@ -219,7 +222,14 @@ class AIAnalyst:
             "temperature": temperature,
             "stream": True
         }
-        
+        # Modelo de raciocínio manda o rascunho junto da resposta: o `gpt-oss` num campo
+        # `reasoning` à parte, outros (qwen) num `<think>…</think>` dentro do próprio
+        # `content` — que iria direto para a bolha do chat. `hidden` deixa só a resposta.
+        # Só vai para o Groq: é parâmetro dele, e provedor que não conhece devolve 400.
+        if "api.groq.com" in self.base_url:
+            payload["reasoning_format"] = "hidden"
+
+
         url = self.base_url.rstrip("/") + "/chat/completions"
         headers = {
             "Content-Type": "application/json",
@@ -243,7 +253,11 @@ class AIAnalyst:
                             chunk = json.loads(data_str)
                             if "choices" in chunk and len(chunk["choices"]) > 0:
                                 delta = chunk["choices"][0].get("delta", {})
-                                if "content" in delta:
+                                # `.get` com teste de verdade, e não `"content" in delta`:
+                                # modelo de raciocínio manda pedaços com `content: null`
+                                # enquanto pensa, e `yield None` estoura na concatenação
+                                # do chat.
+                                if delta.get("content"):
                                     yield delta["content"]
                         except json.JSONDecodeError:
                             continue

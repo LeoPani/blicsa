@@ -177,7 +177,7 @@ class BlicsaApp(ctk.CTk):
         self._api_key_var.trace_add("write", _schedule_key_save)
         self._ai_provider_var = ctk.StringVar(value=os.environ.get("AI_PROVIDER", "groq"))
         self._ai_base_url_var = ctk.StringVar(value=os.environ.get("AI_BASE_URL", "https://api.groq.com/openai/v1"))
-        self._ai_model_var = ctk.StringVar(value=os.environ.get("AI_MODEL", "llama-3.3-70b-versatile"))
+        self._ai_model_var = ctk.StringVar(value=os.environ.get("AI_MODEL", "openai/gpt-oss-120b"))
         self._show_ai_modal = False
         self._prune_isolated_var = ctk.BooleanVar(value=True)
         self._prune_largest_var = ctk.BooleanVar(value=False)
@@ -5354,7 +5354,7 @@ class BlicsaApp(ctk.CTk):
 
     def _on_ai_provider_change(self, provider):
         presets = {
-            "groq": ("https://api.groq.com/openai/v1", "llama-3.3-70b-versatile"),
+            "groq": ("https://api.groq.com/openai/v1", "openai/gpt-oss-120b"),
             "openai": ("https://api.openai.com/v1", "gpt-4o"),
             "openrouter": ("https://openrouter.ai/api/v1", "meta-llama/llama-3-70b-instruct"),
             "ollama": ("http://localhost:11434/v1", "llama3"),

@@ -26,7 +26,11 @@ from dataclasses import dataclass
 URL_CONSOLE_GROQ = "https://console.groq.com/keys"
 
 BASE_URL_PADRAO = "https://api.groq.com/openai/v1"
-MODELO_TESTE = "llama-3.3-70b-versatile"
+#: Precisa acompanhar o padrão do `ai/client.py`: testar um modelo e usar outro faz a tela
+#: de configuração aprovar a chave e o Blink falhar depois — ou o contrário, que foi o que
+#: aconteceu quando o Groq descontinuou o `llama-3.3-70b-versatile` (404 `model_not_found`
+#: numa chave perfeitamente válida).
+MODELO_TESTE = "openai/gpt-oss-120b"
 
 #: Prefixo das chaves do Groq. Usado só para orientar o usuário, nunca para validar de
 #: verdade — quem valida é o provedor.
