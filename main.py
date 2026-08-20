@@ -600,6 +600,7 @@ class BlicsaApp(ctk.CTk):
             "review":  self._build_tab_review(),
             "corpus":  self._build_tab_corpus(),
             "stats":   self._build_tab_stats(),
+            "credenciais": self._build_tab_credenciais(),
             "analises": self._build_tab_analises(),
             "hist":     self._build_tab_hist(),
             "galeria":  self._build_tab_gallery(),
@@ -637,6 +638,7 @@ class BlicsaApp(ctk.CTk):
             # meio traduzida em en/fr.
             ("home",     "sparkle", "Blink"),
             ("projects", "house",   t("projects.title")),
+            ("credenciais", "stack", t("nav.credenciais")),
             ("import",   "magnet",  t("nav.collect")),
             ("corpus",   "stack",   "Corpus"),
             ("stats",    "chart",   t("nav.stats")),
@@ -807,64 +809,20 @@ class BlicsaApp(ctk.CTk):
         except:
             pass
 
-        # Chave OpenAlex — OPCIONAL, vazia por padrão. O app funciona sem ela; a chave só
-        # importa para quem esbarra no limite gratuito diário. Nada de contador de uso aqui:
-        # o usuário só ouve falar do limite se de fato bater nele (mensagem do 429).
-        from core.settings import get_settings, update_settings
-        tk.Label(content, text=t("settings.openalex_key"), font=("Arial", 12, "bold"),
-                 bg="#F6F4EE", fg="#141414").pack(pady=(16, 2))
-        chave_var = tk.StringVar(value=str(get_settings().get("openalex_api_key") or ""))
-        entrada = tk.Entry(content, textvariable=chave_var, width=42, relief="flat",
-                           highlightthickness=2, highlightbackground="#141414",
-                           bg="#FFFFFF", fg="#141414")
-        entrada.pack(pady=2)
-        tk.Label(content, text=t("settings.openalex_key_hint"), font=("Arial", 9),
-                 bg="#F6F4EE", fg="#555555", wraplength=340, justify="left").pack(pady=(2, 4))
-
-        def _salvar_chave(*_):
-            update_settings(openalex_api_key=chave_var.get().strip())
-
-        chave_var.trace_add("write", _salvar_chave)
-
-        # ── IA: estado da chave + remoção + link para o tutorial ──────────────
-        # A chave NUNCA é exibida inteira aqui: capturas de tela dos Ajustes viram
-        # documentação, e uma chave legível numa imagem é uma chave comprometida.
-        from ai.onboarding import URL_CONSOLE_GROQ, mascarar
-        from core.settings import get_api_key
-
+        # As credenciais saíram daqui. Ficavam em três lugares — este diálogo, o painel do
+        # Blink e a barra de parâmetros do mapa —, cada um com um comportamento: só o do
+        # Blink testava a conexão, só este mascarava a chave, e o da barra, que era o que
+        # de fato alimentava as chamadas, não fazia nem um nem outro. A aba de Credenciais
+        # é a fonte única; um quarto lugar seria repetir o problema.
         tk.Label(content, text=t("settings.ai_section"), font=("Arial", 12, "bold"),
                  bg="#F6F4EE", fg="#141414").pack(pady=(16, 2))
-
-        estado_ia = tk.Label(content, font=("Arial", 10), bg="#F6F4EE", fg="#8A877F")
-        estado_ia.pack()
-
-        def _atualizar_estado_ia():
-            atual = (get_api_key() or "").strip()
-            estado_ia.config(text=t("ai.key_saved", chave=mascarar(atual)) if atual
-                             else t("ai.key_none"))
-            botao_remover.config(state="normal" if atual else "disabled")
-
-        def _remover_chave():
-            # A remoção em si mora no método: ela precisa zerar a chave DA SESSÃO, e não só
-            # do keyring, e isso tem que valer venha o gatilho de onde vier. O que fica aqui
-            # é o que é do diálogo — o rótulo do estado.
-            self._remover_chave_da_ia()
-            _atualizar_estado_ia()
-
-        linha_ia = tk.Frame(content, bg="#F6F4EE")
-        linha_ia.pack(pady=(6, 0))
-        botao_remover = tk.Button(linha_ia, text=t("ai.key_remove"), command=_remover_chave,
-                                  bg="#F6F4EE", fg="#141414", relief="flat",
-                                  highlightbackground="#141414", bd=2)
-        botao_remover.pack(side="left", padx=4)
-        tk.Button(linha_ia, text=t("ai.step1_button"),
-                  command=lambda: __import__("webbrowser").open(URL_CONSOLE_GROQ),
+        tk.Button(content, text=t("cred.titulo"),
+                  command=lambda: (dlg.destroy(), self._switch_tab("credenciais")),
                   bg="#F6F4EE", fg="#141414", relief="flat",
-                  highlightbackground="#141414", bd=2).pack(side="left", padx=4)
-        _atualizar_estado_ia()
+                  highlightbackground="#141414", bd=2).pack(pady=(2, 4))
 
         close = tk.Button(content, text=t("settings.ok"),
-                          command=lambda: (_salvar_chave(), dlg.destroy()),
+                          command=dlg.destroy,
                           bg="#DF3117", fg="white", relief="flat",
                           highlightbackground="#141414", bd=2)
         close.pack(side="bottom", pady=20)
@@ -1147,6 +1105,34 @@ class BlicsaApp(ctk.CTk):
         from ai.onboarding import tem_chave
         return tem_chave()
 
+    def _build_tab_credenciais(self) -> ctk.CTkFrame:
+        """A aba de Credenciais, fonte única das chaves."""
+        from ui.credentials_tab import CredentialsTab
+
+        frame = self._tab()
+        self._credenciais_view = CredentialsTab(
+            frame, on_change=self._ao_mudar_credencial)
+        self._credenciais_view.pack(fill="both", expand=True)
+        return frame
+
+    def _ao_mudar_credencial(self):
+        """Uma credencial foi salva ou removida: a sessão inteira acompanha NA HORA.
+
+        Mesma exigência da Fase 1, agora para as três: `_api_key_var` alimenta os sete
+        pontos de IA, e o Blink precisa trocar entre o convite e o chat conforme a chave
+        exista ou não. Sem isto, a aba gravaria no cofre e o resto do app continuaria com o
+        estado antigo até o próximo reinício — que foi exatamente o defeito do onboarding.
+        """
+        self._sincronizar_chave_da_sessao()
+        try:
+            if self._ia_configurada():
+                if getattr(self, "_blink_onboarding", None) is not None:
+                    self._ocultar_onboarding_ia()
+            else:
+                self._mostrar_onboarding_ia()
+        except Exception:
+            pass
+
     def _sincronizar_chave_da_sessao(self):
         """Traz a chave persistida para a variável que as chamadas de IA leem.
 
@@ -1198,7 +1184,8 @@ class BlicsaApp(ctk.CTk):
             return
         self._research_chat_history_main.pack_forget()
         self._blink_onboarding = AIOnboardingPanel(
-            self._blink_chat_container, on_saved=self._ocultar_onboarding_ia)
+            self._blink_chat_container, on_saved=self._ocultar_onboarding_ia,
+            on_ir_para_credenciais=lambda: self._switch_tab("credenciais"))
         self._blink_onboarding.pack(fill="both", expand=True, pady=(0, 20))
         # Durante a montagem da aba isto é um no-op: os widgets do chat ainda não existem
         # (ou são os da montagem anterior, já destruídos). `_build_tab_home` refaz a chamada
@@ -2105,8 +2092,16 @@ class BlicsaApp(ctk.CTk):
         ctk.CTkLabel(sc, text="URL Base da API:", font=ctk.CTkFont(size=11, weight="bold")).pack(anchor="w", padx=10, pady=(4, 2))
         ctk.CTkEntry(sc, textvariable=self._ai_base_url_var, placeholder_text="https://...", height=28, border_color=ACCENT).pack(fill="x", padx=10, pady=(0, 6))
         
-        ctk.CTkLabel(sc, text="Chave API:", font=ctk.CTkFont(size=11, weight="bold")).pack(anchor="w", padx=10, pady=(4, 2))
-        ctk.CTkEntry(sc, textvariable=self._api_key_var, show="*", placeholder_text="Chave API", height=28, border_color=ACCENT).pack(fill="x", padx=10, pady=(0, 6))
+        # O campo "Chave API" saiu daqui. Era o que de fato alimentava as sete chamadas de
+        # IA e o único dos três lugares sem teste de conexão e sem link de criação: colar
+        # uma chave errada aqui derrubava tudo com mensagem técnica. A aba de Credenciais é
+        # a fonte única; provedor, URL base e modelo continuam sendo ajustes do mapa.
+        ctk.CTkButton(sc, text=t("cred.titulo"), height=28, corner_radius=0,
+                      fg_color="transparent", text_color=INK, border_width=1,
+                      border_color=INK, hover_color="#e0e0e0",
+                      font=ctk.CTkFont(size=11),
+                      command=lambda: self._switch_tab("credenciais")).pack(
+            fill="x", padx=10, pady=(4, 6))
         
         ctk.CTkLabel(sc, text="Modelo da IA:", font=ctk.CTkFont(size=11, weight="bold")).pack(anchor="w", padx=10, pady=(4, 2))
         ctk.CTkEntry(sc, textvariable=self._ai_model_var, placeholder_text="Modelo", height=28, border_color=ACCENT).pack(fill="x", padx=10, pady=(0, 6))

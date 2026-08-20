@@ -19,8 +19,8 @@ def openalex_api_key() -> str:
     sem chave dá algo como 100 páginas por dia.
     """
     try:
-        from core.settings import get_settings
-        return str(get_settings().get("openalex_api_key") or "").strip()
+        from core.settings import get_credencial
+        return get_credencial("openalex").strip()
     except Exception:
         return ""
 

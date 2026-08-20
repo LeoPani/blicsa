@@ -54,7 +54,7 @@ def sem_thread(monkeypatch):
     `RuntimeError: main thread is not in main loop`.
     """
     import main as blicsa
-    import ui.ai_onboarding_panel as painel_mod
+    import ui.credentials_tab as aba_mod
 
     class ThreadSincrona:
         def __init__(self, target=None, args=(), kwargs=None, daemon=None):
@@ -65,7 +65,7 @@ def sem_thread(monkeypatch):
             self._alvo(*self._args, **self._kwargs)
 
     monkeypatch.setattr(blicsa.threading, "Thread", ThreadSincrona)
-    monkeypatch.setattr(painel_mod.threading, "Thread", ThreadSincrona)
+    monkeypatch.setattr(aba_mod.threading, "Thread", ThreadSincrona)
     return ThreadSincrona
 
 
@@ -134,30 +134,40 @@ def _painel(app):
 
 
 def _salvar_pelo_painel(app, chave, monkeypatch, status="ok"):
-    """Percorre o passo 3: digitar no campo e apertar "Testar e salvar".
+    """Percorre o caminho real de configurar a chave: a aba de Credenciais.
 
-    O diagnóstico de rede é dublado — ele já tem 23 testes próprios e bater no Groq de
-    verdade tornaria a suíte dependente de rede. O que NÃO é dublado é nada depois disso:
-    gravação, sincronização da sessão, troca de tela.
+    Era o passo 3 do painel do Blink. O painel virou atalho e a gravação mudou de lugar,
+    mas a exigência destes testes não mudou: o que se mede aqui é a chave passando a valer
+    NA SESSÃO, não em qual widget ela foi digitada.
+
+    O diagnóstico de rede é dublado — ele tem testes próprios, e bater no Groq de verdade
+    tornaria a suíte dependente de rede. O que NÃO é dublado é nada depois disso: gravação,
+    sincronização da sessão, troca de tela.
     """
-    import ui.ai_onboarding_panel as painel_mod
-    from ai.onboarding import ResultadoTeste
+    import dataclasses
+
+    from core.credenciais import ResultadoTeste
 
     resultado = (ResultadoTeste("ok", "ai.key_ok", modelo="openai/gpt-oss-120b")
                  if status == "ok" else ResultadoTeste(status, f"ai.key_{status}"))
-    monkeypatch.setattr(painel_mod, "testar_chave", lambda *a, **kw: resultado)
 
-    painel = _painel(app)
-    painel._campo_chave.delete(0, "end")
-    painel._campo_chave.insert(0, chave)
-    painel._testar_e_salvar()
+    app._switch_tab("credenciais")
+    app.update()
+    bloco = app._credenciais_view.blocos["ai"]
+    # `Credencial` é frozen (é registro, não estado): troca-se o slot inteiro.
+    bloco.credencial = dataclasses.replace(bloco.credencial,
+                                           testar=lambda *a, **kw: resultado)
+    bloco._campo.delete(0, "end")
+    bloco._campo.insert(0, chave)
+    bloco._testar_e_salvar()
+    app.update()
+
+    app._switch_tab("home")
+    app.update()
     if status == "ok":
-        # O painel só sai da tela 700 ms depois de gravar (`after(700, on_saved)`).
         _bombear(app, lambda: app._blink_onboarding is None)
     else:
-        # Chave recusada não fecha o painel: esperar o limite inteiro seria 5 s de suíte
-        # gastos para confirmar que nada aconteceu. 1 s passa folgado dos 700 ms.
-        _bombear_por(app, 1.0)
+        _bombear_por(app, 0.3)
 
 
 def _textos_do_historico(app) -> str:
@@ -336,14 +346,18 @@ def test_apos_remover_nenhuma_tela_de_ia_alcanca_o_provedor(
         "saiu requisição usando uma chave que o usuário tinha removido")
 
 
-def test_o_botao_dos_ajustes_dispara_o_metodo_de_remocao(app):
+def test_o_botao_de_remover_esta_na_aba_de_credenciais(app):
     """Guarda contra o método existir e o botão continuar ligado no antigo — que é
-    exatamente como o defeito espelho nasceu."""
-    app._show_settings()
+    exatamente como o defeito espelho nasceu.
+
+    O botão saiu dos Ajustes junto com o resto das credenciais: a aba é a fonte única.
+    """
+    from core.i18n import t
+
+    app._switch_tab("credenciais")
     app.update()
 
-    from core.i18n import t
-    rotulo = t("ai.key_remove")
+    rotulo = t("cred.remover")
     encontrados = []
 
     def varre(widget):
@@ -355,10 +369,10 @@ def test_o_botao_dos_ajustes_dispara_o_metodo_de_remocao(app):
                 pass
             varre(filho)
 
-    for janela in app.winfo_children():
-        varre(janela)
+    varre(app._credenciais_view)
 
-    assert encontrados, f"nenhum botão '{rotulo}' na tela de Ajustes"
+    assert len(encontrados) == len(app._credenciais_view.blocos), (
+        f"esperado um botão '{rotulo}' por credencial, achei {len(encontrados)}")
 
 
 def test_remover_com_chave_no_ambiente_reflete_o_ambiente(app, monkeypatch, sem_thread):

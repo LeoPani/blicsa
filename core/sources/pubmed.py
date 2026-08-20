@@ -44,11 +44,42 @@ PUBMED_EFETCH_BATCH = 200
 PUBMED_MAX_FETCHABLE = 9_999
 
 
+def pubmed_api_key() -> str:
+    """Chave do NCBI, se o usuário tiver configurado uma na aba de Credenciais.
+
+    Opcional: sem ela o NCBI permite 3 requisições por segundo por IP; com ela, 10. Não
+    muda o que é acessível, muda a velocidade — e o app já respeita o teto com
+    `rate_limit_delay`.
+    """
+    try:
+        from core.settings import get_credencial
+        return get_credencial("pubmed").strip()
+    except Exception:
+        return ""
+
+
 class PubMedProvider(SearchProvider):
     DISPLAY_NAME = "PubMed"
     #: Teto da paginação do ESearch (`retstart + retmax` <= 10.000 no NCBI). Vale só para a
     #: navegação: a importação usa `usehistory=y` + EFetch e alcança o conjunto inteiro.
     BROWSE_MAX_RESULTS = 10_000
+
+    def __init__(self, *a, api_key: str | None = None, **kw):
+        super().__init__(*a, **kw)
+        # `None` = ler das Credenciais a cada instância; string vazia = sem chave (o padrão).
+        self.api_key = pubmed_api_key() if api_key is None else str(api_key or "")
+
+    def fetch_url(self, url: str, *a, **kw) -> str:
+        """Anexa a chave do NCBI, quando houver, a QUALQUER requisição deste provider.
+
+        Um ponto só, como no OpenAlex: o PubMed monta URL em seis lugares (`count`,
+        `browse`, `search`, `_pmids_sem_historico`, esearch e efetch), e repetir o parâmetro
+        em cada um é como as duas chamadas soltas do `main.py` acabaram sem chave nenhuma.
+        """
+        if self.api_key and "api_key=" not in url:
+            sep = "&" if "?" in url else "?"
+            url = f"{url}{sep}api_key={urllib.parse.quote(self.api_key)}"
+        return super().fetch_url(url, *a, **kw)
 
     def count(self, query: str, filters: Optional[Dict[str, Any]] = None, cancel_event=None) -> int:
         """Total de resultados (esearchresult.count) com retmax=0 — request barata."""

@@ -23,6 +23,17 @@ APP_NAME = "blicsa"
 KEYRING_SERVICE = "blicsa"
 KEYRING_USERNAME = "ai_api_key"
 
+#: Credenciais que o app guarda, por id → (username no keyring, envs que têm precedência).
+#:
+#: A chave da IA já morava no keyring; a do OpenAlex morava em TEXTO PLANO no settings.json
+#: (`openalex_api_key`) e a do PubMed não existia. Um registro único evita que a próxima
+#: credencial invente um terceiro lugar — que foi como a dispersão começou.
+CREDENCIAIS = {
+    "ai":       (KEYRING_USERNAME,     ("AI_API_KEY", "GROQ_API_KEY")),
+    "openalex": ("openalex_api_key",   ("OPENALEX_API_KEY",)),
+    "pubmed":   ("pubmed_api_key",     ("NCBI_API_KEY", "PUBMED_API_KEY")),
+}
+
 # Caminho do arquivo LEGADO (diretório do código) — só para migração.
 LEGACY_PATH = Path(__file__).resolve().parent.parent / ".blicsa_settings.json"
 
@@ -92,67 +103,106 @@ def _keyring():
         return None
 
 
-def get_api_key() -> str:
-    """Precedência: env (dev) → keyring → settings.json (fallback sem keyring)."""
-    env = os.environ.get("AI_API_KEY") or os.environ.get("GROQ_API_KEY")
-    if env:
-        return env
-    migrate_api_key_from_json()  # idempotente e barato quando não há nada a migrar
+def get_credencial(nome: str) -> str:
+    """Uma credencial qualquer do registro. Precedência: env (dev) → keyring → JSON.
+
+    O fallback em JSON existe para máquina sem keyring utilizável (headless, CI). Não é o
+    lugar preferido: guarda em texto plano, e por isso `set_credencial` apaga a cópia do
+    JSON assim que o keyring aceita a gravação.
+    """
+    usuario, envs = CREDENCIAIS[nome]
+    for env in envs:
+        v = os.environ.get(env)
+        if v:
+            return v
+    migrate_credenciais_do_json()  # idempotente e barato quando não há nada a migrar
     kr = _keyring()
     if kr is not None:
         try:
-            v = kr.get_password(KEYRING_SERVICE, KEYRING_USERNAME)
+            v = kr.get_password(KEYRING_SERVICE, usuario)
             if v:
                 return v
         except Exception as e:
-            logger.warning(f"[Settings] keyring indisponível na leitura: {e}")
-    return str(get_settings().get("api_key") or "")
+            logger.warning(f"[Settings] keyring indisponível na leitura de {nome}: {e}")
+    return str(get_settings().get(_CHAVE_JSON[nome]) or "")
 
 
-def set_api_key(value: str):
-    """Grava no keyring; sem keyring, cai para o settings.json. Nunca loga a chave."""
+def set_credencial(nome: str, value: str):
+    """Grava no keyring; sem keyring, cai para o settings.json. Nunca loga o valor."""
+    usuario, _ = CREDENCIAIS[nome]
+    chave_json = _CHAVE_JSON[nome]
     value = (value or "").strip()
     kr = _keyring()
     if kr is not None:
         try:
             if value:
-                kr.set_password(KEYRING_SERVICE, KEYRING_USERNAME, value)
+                kr.set_password(KEYRING_SERVICE, usuario, value)
             else:
                 try:
-                    kr.delete_password(KEYRING_SERVICE, KEYRING_USERNAME)
+                    kr.delete_password(KEYRING_SERVICE, usuario)
                 except Exception:
                     pass
             # garante que não sobra cópia em texto plano no JSON
             s = get_settings()
-            if "api_key" in s:
-                s.pop("api_key")
+            if chave_json in s:
+                s.pop(chave_json)
                 save_settings(s)
             return
         except Exception as e:
-            logger.warning(f"[Settings] keyring indisponível na escrita: {e}")
+            logger.warning(f"[Settings] keyring indisponível na escrita de {nome}: {e}")
     s = get_settings()
     if value:
-        s["api_key"] = value
+        s[chave_json] = value
     else:
-        s.pop("api_key", None)
+        s.pop(chave_json, None)
     save_settings(s)
 
 
-def migrate_api_key_from_json() -> bool:
-    """Chave no JSON (texto plano) → keyring, APAGANDO do JSON. True se migrou."""
+#: Nome da chave no settings.json, por credencial. Difere do username do keyring por
+#: acidente histórico: a da IA era gravada como `api_key` e a do OpenAlex como
+#: `openalex_api_key`. Migrar o nome quebraria a leitura de quem já tem o arquivo.
+_CHAVE_JSON = {"ai": "api_key", "openalex": "openalex_api_key", "pubmed": "pubmed_api_key"}
+
+
+def get_api_key() -> str:
+    """A chave da IA. Atalho preservado: é lido em sete pontos do app."""
+    return get_credencial("ai")
+
+
+def set_api_key(value: str):
+    return set_credencial("ai", value)
+
+
+def migrate_credenciais_do_json() -> bool:
+    """Credenciais em texto plano no JSON → keyring, APAGANDO do JSON. True se migrou alguma.
+
+    A do OpenAlex nasceu no settings.json e ficou lá: quem já usa o app tem a chave legível
+    em `~/Library/Application Support/blicsa/settings.json`. Esta migração a tira de lá na
+    primeira leitura, sem o usuário precisar recolá-la.
+    """
     kr = _keyring()
     if kr is None:
         return False
     s = get_settings()
-    key = s.get("api_key")
-    if not key:
-        return False
-    try:
-        kr.set_password(KEYRING_SERVICE, KEYRING_USERNAME, key)
-        s.pop("api_key")
+    migrou = False
+    for nome, (usuario, _) in CREDENCIAIS.items():
+        chave_json = _CHAVE_JSON[nome]
+        valor = s.get(chave_json)
+        if not valor:
+            continue
+        try:
+            kr.set_password(KEYRING_SERVICE, usuario, valor)
+            s.pop(chave_json)
+            migrou = True
+            logger.info(f"[Settings] credencial '{nome}' migrada do settings.json "
+                        f"para o keyring")
+        except Exception as e:
+            logger.warning(f"[Settings] migração de '{nome}' para o keyring falhou: {e}")
+    if migrou:
         save_settings(s)
-        logger.info("[Settings] API key migrada do settings.json para o keyring")
-        return True
-    except Exception as e:
-        logger.warning(f"[Settings] migração da chave para o keyring falhou: {e}")
-        return False
+    return migrou
+
+
+def migrate_api_key_from_json() -> bool:
+    """Nome antigo, preservado: migra todas as credenciais, não só a da IA."""
+    return migrate_credenciais_do_json()
