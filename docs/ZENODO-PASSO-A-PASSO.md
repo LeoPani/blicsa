@@ -140,21 +140,33 @@ O JOSS aceita os dois, mas o de conceito é o que envelhece bem.
 
 ## Passo 5 — Registrar o DOI no repositório
 
-Três lugares, todos já preparados com o marcador `XXXXXXX`:
+O Zenodo emite **dois** DOIs por depósito, e ambos foram gravados:
 
-**1. `README.md`** — descomente as duas linhas do badge e troque o número:
+| DOI | valor | para que serve |
+|---|---|---|
+| conceito | `10.5281/zenodo.21866410` | resolve sempre para a versão mais recente; é o do badge |
+| versão | `10.5281/zenodo.21866411` | congelado na v2.0.0, para quem precisa citar este snapshot |
+
+Três lugares, agora preenchidos:
+
+**1. `README.md`** — badge com o DOI de **conceito**, que é o que envelhece bem:
 
 ```markdown
-[![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.XXXXXXX.svg)](https://doi.org/10.5281/zenodo.XXXXXXX)
+[![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.21866410.svg)](https://doi.org/10.5281/zenodo.21866410)
 ```
 
-**2. `CITATION.cff`** — descomente o bloco `identifiers` e preencha:
+**2. `CITATION.cff`** — bloco `identifiers` com os **dois**. Registrar só o da versão faria
+a citação apontar para um snapshot que envelhece; registrar só o de conceito tiraria de quem
+precisa a âncora exata da v2.0.0:
 
 ```yaml
 identifiers:
   - type: doi
-    value: "10.5281/zenodo.XXXXXXX"
-    description: "Arquivamento permanente da v2.0.0 no Zenodo"
+    value: "10.5281/zenodo.21866410"
+    description: "DOI de conceito — todas as versões do Blicsa no Zenodo"
+  - type: doi
+    value: "10.5281/zenodo.21866411"
+    description: "Snapshot permanente da v2.0.0 no Zenodo"
 ```
 
 **3. `docs/JOSS-CHECKLIST.md`** — item 24 passa de ⏳ para ✅ com o DOI.
@@ -176,13 +188,14 @@ git push
 
 ## O que fica pendente depois disto
 
-O DOI resolve o item 24 da checklist do JOSS. Continuam faltando, e **só você pode resolver**:
+O DOI resolve o item 24 da checklist do JOSS. Os itens 21, 22 e 25 também já foram
+resolvidos: `paper.md` e `paper.bib` existem em [`paper/`](../paper/) e o ORCID está no
+[`CITATION.cff`](../CITATION.cff) — ver a [checklist do JOSS](JOSS-CHECKLIST.md).
+
+Continua faltando, e **só você pode resolver**:
 
 | item | o que falta |
 |---|---|
-| 21 | `paper.md` — o artigo em si, entregável central da submissão |
-| 22 | `paper.bib` — as referências já existem em `docs/metodos.md` e podem ser convertidas |
-| 25 | **ORCID** — o marcador está comentado no `CITATION.cff`; preencher antes de submeter |
 | 26 | Declaração de autoria substancial |
 
 ---

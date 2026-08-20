@@ -18,7 +18,7 @@ Legenda: **✅ atendido** · **⏳ pendente** · **➖ não aplicável**
 | 4 | Dependências declaradas | ✅ | `requirements-core.txt` (app), `requirements.txt` (com extras), `requirements-dev.txt` (testes) |
 | 5 | Exemplo funcional de uso | ✅ | [`docs/uso.md`](uso.md) + `docs/sample_dataset.csv` (200 registros reais do OpenAlex) |
 | 6 | Documentação da API / funcionalidade | ✅ | [`docs/index.md`](index.md), [`uso.md`](uso.md), [`mapas.md`](mapas.md) |
-| 7 | Testes automatizados | ✅ | **929 testes**, `python3 -m pytest tests/ -q`. Inclui matriz de **reinjeção de defeitos** (`scripts/reinject_ia_ux.py`, 101 casos): cada bug corrigido é reintroduzido e a suíte tem de ficar vermelha |
+| 7 | Testes automatizados | ✅ | **1.054 testes**, `python3 -m pytest tests/ -q`, mais **27 testes `live`** que batem nas APIs reais e ficam fora da execução padrão (`pytest -m live`). Inclui matriz de **reinjeção de defeitos** (`scripts/reinject_ia_ux.py`, 101 casos): cada bug corrigido é reintroduzido e a suíte tem de ficar vermelha. Última execução: **90 dos 101 detectados**, não 101 — a ressalva está em [`RELATORIO-AUDITORIA-2.md`](RELATORIO-AUDITORIA-2.md#8-aceite) |
 | 8 | Integração contínua | ✅ | GitHub Actions, matriz 3.11/3.12 — [workflow](https://github.com/LeoPani/blicsa/actions/workflows/ci.yml) |
 | 9 | Diretrizes de contribuição | ✅ | `CONTRIBUTING.md` |
 | 10 | Código de conduta | ✅ | `CODE_OF_CONDUCT.md` (ver item 2b) |
@@ -39,7 +39,7 @@ Legenda: **✅ atendido** · **⏳ pendente** · **➖ não aplicável**
 
 | # | requisito | estado | evidência |
 |---|---|---|---|
-| 17 | Cobertura de testes registrada | ✅ | **69%** em `core/` (4232 comandos, 1307 não cobertos), medido pelo CI no run `30884139087`. **Número de 04/08**; a suíte passou de 473 para 929 testes desde então, e a próxima execução do CI atualiza o valor |
+| 17 | Cobertura de testes registrada | ✅ | **69%** em `core/` (4232 comandos, 1307 não cobertos), medido pelo CI no run `30884139087`. **Número de 04/08**; a suíte passou de 473 para 1.054 testes desde então, e a próxima execução do CI atualiza o valor |
 | 17b | Auditoria de dependências | ✅ | `pip-audit 2.10.1` sobre os cinco arquivos de requisitos (47 pacotes): **zero vulnerabilidades conhecidas**, em 2026-08-10. Comando e ressalva de validade em [`AUDITORIA-SEGURANCA.md`](AUDITORIA-SEGURANCA.md) §4 |
 | 17c | Auditoria de segurança | ✅ | [`AUDITORIA-SEGURANCA.md`](AUDITORIA-SEGURANCA.md) — 8 achados corrigidos, 28 testes de segurança, nenhum achado crítico |
 | 18 | Build verde | ✅ | run `30884139087`, `3.11: success`, `3.12: success` |
@@ -50,12 +50,12 @@ Legenda: **✅ atendido** · **⏳ pendente** · **➖ não aplicável**
 
 | # | requisito | estado | observação |
 |---|---|---|---|
-| 20 | `CITATION.cff` válido | ✅ | versão `2.0.0`, autor `Paniago, Leonardo`, contato, licença MIT, palavras-chave. Teste automatizado impede divergir de `main.py::__version__`. **Falta o ORCID** — marcador comentado no arquivo, só Leonardo pode informar (item 25) |
-| 21 | Arquivo `paper.md` com o artigo | ⏳ | **não escrito.** É o entregável central da submissão e depende de decisão de autoria |
-| 22 | `paper.bib` com as referências | ⏳ | as referências já estão em [`metodos.md`](metodos.md) e podem ser convertidas |
+| 20 | `CITATION.cff` válido | ✅ | versão `2.0.0`, autor `Paniago, Leonardo Luiz Costa`, ORCID `0009-0006-1663-3349`, contato, licença MIT, palavras-chave. Teste automatizado impede divergir de `main.py::__version__` |
+| 21 | Arquivo `paper.md` com o artigo | ✅ | [`paper/paper.md`](../paper/paper.md) — Summary, Statement of Need, Key Features e References, com o cabeçalho YAML que o JOSS exige |
+| 22 | `paper.bib` com as referências | ✅ | [`paper/paper.bib`](../paper/paper.bib), em BibTeX, derivado de [`metodos.md`](metodos.md) |
 | 23 | Release versionada com tag | ✅ | [`v2.0.0`](https://github.com/LeoPani/blicsa/releases/tag/v2.0.0) — três binários + `SHA256SUMS.txt`, run `30960516974` |
 | 24 | DOI de arquivamento (Zenodo/figshare) | ✅ | **DOI de conceito: [`10.5281/zenodo.21866410`](https://doi.org/10.5281/zenodo.21866410)** — resolve sempre para a versão mais recente, e é o que está no badge do README e como identificador principal no `CITATION.cff`. O snapshot da v2.0.0 é [`10.5281/zenodo.21866411`](https://doi.org/10.5281/zenodo.21866411), registrado como segundo identificador. A release precisou ser republicada porque o Zenodo só captura releases publicadas **depois** de a integração estar ativa; tag e histórico ficaram intactos — ver [`ZENODO-PASSO-A-PASSO.md`](ZENODO-PASSO-A-PASSO.md) |
-| 25 | ORCID do autor de correspondência | ⏳ | precisa ser informado por Leonardo |
+| 25 | ORCID do autor de correspondência | ✅ | `0009-0006-1663-3349`, registrado no [`CITATION.cff`](../CITATION.cff) |
 | 26 | Autoria substancial declarada | ⏳ | decisão de Leonardo |
 
 ---

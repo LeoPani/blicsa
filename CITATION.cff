@@ -8,11 +8,11 @@ abstract: >-
   and bibliometric statistics. Local-first: the corpus never leaves the user's machine.
 authors:
   - family-names: "Paniago"
-    given-names: "Leonardo"
+    given-names: "Leonardo Luiz Costa"
     orcid: "https://orcid.org/0009-0006-1663-3349"
 contact:
   - family-names: "Paniago"
-    given-names: "Leonardo"
+    given-names: "Leonardo Luiz Costa"
     email: "blicsa.app@gmail.com"
 version: "2.0.0"
 date-released: "2026-08-04"

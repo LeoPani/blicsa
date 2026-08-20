@@ -127,7 +127,7 @@ E a operação é muito menor do que uma reescrita:
 |---|---|
 | `CITATION.cff` | contato acrescentado; marcadores comentados para **ORCID** e para o bloco `identifiers` do DOI |
 | `README.md` | badge de DOI comentado, pronto para descomentar; seção **Security** apontando para `SECURITY.md` |
-| `docs/JOSS-CHECKLIST.md` | evidência atualizada: 929 testes, `pip-audit`, `SECURITY.md`, auditorias 1 e 2, reprodutibilidade agora incluindo as posições do mapa |
+| `docs/JOSS-CHECKLIST.md` | evidência atualizada: 1.054 testes, `pip-audit`, `SECURITY.md`, auditorias 1 e 2, reprodutibilidade agora incluindo as posições do mapa |
 | `docs/ZENODO-PASSO-A-PASSO.md` | **novo** — cinco passos para o Leonardo executar, com a ordem crítica, o resgate dos binários antes de apagar a release, e uma tabela de "se algo der errado" |
 
 ### Ordem crítica, revisada
@@ -145,18 +145,62 @@ cancelada, nada altera o histórico em momento nenhum.
 
 | # | pendência | de quem depende |
 |---|---|---|
-| 1 | Ativar o Zenodo e republicar a release | **Leonardo** — interface web, conta dele |
-| 2 | **ORCID** no `CITATION.cff` | **Leonardo** — só ele tem |
-| 3 | `paper.md` — o artigo | **Leonardo** — entregável central, decisão de autoria |
-| 4 | `paper.bib` | derivável de `docs/metodos.md`, mas segue o artigo |
-| 5 | Declaração de autoria substancial | **Leonardo** |
-| 6 | Reexecutar `pip-audit` antes de submeter | qualquer um — auditoria de dependência vence |
-| 7 | Atualizar a cobertura (69% é de 04/08, com 473 testes; hoje são 929) | próxima execução do CI |
+| 1 | Declaração de autoria substancial | **Leonardo** |
+| 2 | Reexecutar `pip-audit` antes de submeter | qualquer um — auditoria de dependência vence |
+| 3 | Atualizar a cobertura (69% é de 04/08, com 473 testes) | próxima execução do CI |
+
+Resolvidos desde a auditoria:
+
+| pendência | quando |
+|---|---|
+| Ativar o Zenodo e republicar a release | 09/08/2026 — dois DOIs gravados, conceito `10.5281/zenodo.21866410` e versão `10.5281/zenodo.21866411` |
+| **ORCID** no `CITATION.cff` | `0009-0006-1663-3349` |
+| `paper.md` e `paper.bib` | itens 21 e 22 da checklist do JOSS |
 
 ## 8. Aceite
 
-- `python3 -m pytest tests/ -q` → **929 passed, 1 xfailed**. ✅
-- `python3 scripts/reinject_ia_ux.py` → **101/101 defeitos detectados**. ✅
+- `python3 -m pytest tests/ -q` → **1.054 passed, 1 xfailed**, mais 27 testes `live` excluídos por padrão (`pytest -m live`). ✅
+- `python3 scripts/reinject_ia_ux.py` → **90 dos 101 defeitos detectados**. ⚠️
+
+A matriz **não está em 100%**, e as 11 falhas têm duas causas que não devem ser somadas numa
+só — o número agregado esconderia justamente a diferença que importa.
+
+**Dez são setup quebrado, não teste furado.** Esses casos patcham trechos de
+`ai/onboarding.py` que a aba de Credenciais moveu para `core/credenciais.py`. O harness não
+encontra o trecho, imprime `[SETUP RUIM]` e conta como falha. O comportamento continua
+coberto pelos testes que rodam contra o módulo novo; o que se perdeu foi a **prova
+automatizada** de que aqueles testes ficam vermelhos quando o defeito volta. Reapontar os
+dez casos devolve à matriz o que ela diz medir.
+
+**A décima primeira é um furo real.** Reinjetar "limitador de taxa do bridge deixa de valer"
+mantém `tests/test_seguranca.py::test_limite_de_taxa_responde_429_pela_rede` **verde**. Esse
+teste não protege o que o nome dele promete, e o defeito é anterior a esta rodada.
+
+Uma ressalva sobre o próprio harness, que afeta como o número deve ser lido:
+`TimeoutExpired` é contado como `vermelho=True`. Um teste que **trava** entra na conta como
+"defeito detectado", o que infla a taxa. Nenhum caso travou nesta execução, mas a taxa
+publicada é um teto, não um piso.
+
+### Reinjeções ad hoc desta rodada
+
+Número **separado**, nunca somado à matriz: são coisas diferentes. A matriz é regressão
+permanente, versionada e reexecutável; as ad hoc são verificação pontual do trabalho de uma
+sessão, feitas à mão sobre o código que acabou de mudar.
+
+**29 tentadas, 28 ficaram vermelhas.**
+
+A que não ficou é o resultado mais útil das 29. Ao remover o `update_idletasks()` de
+`_rolar_conversa_para_o_fim`, nenhum teste caiu — o que provou que aquela linha **não
+sustentava a correção**, ao contrário do que o comentário ao lado dela afirmava. A resposta
+foi corrigir o comentário, não mantê-lo: a linha ficou como defensiva e a alegação de que
+ela era essencial saiu. É o caso que demonstra que a reinjeção **discrimina** — ela não
+confirma o que já se acredita, ela contradiz.
+
+Outras três reinjeções ficaram verdes na primeira tentativa por defeito do **teste**, não do
+código, e foram corrigidas até ficarem vermelhas pelo motivo certo: um teste que passava
+pela trava do onboarding em vez da invalidação da chave; outro que passava por proteção
+redundante; e um terceiro que chamava `update_idletasks` antes de medir e observava um
+estado que se auto-curava.
 - `python3 scripts/check_evidence_privacy.py` → **80 imagens · 80 OK**. ✅
 - `pip-audit -r` × 5 arquivos → **zero vulnerabilidades**. ✅
 - `ls docs/AUDITORIA-SEGURANCA.md docs/LIMPEZA-COMENTARIOS.md SECURITY.md` → presentes. ✅
