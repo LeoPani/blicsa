@@ -1095,7 +1095,7 @@ class BlicsaApp(ctk.CTk):
                     tb.configure(height=lines[0] * 22 + 20)
             except:
                 tb.configure(height=(tb.get("1.0", "end").count('\n') + 1) * 22 + 20)
-            self._research_chat_history_main._parent_canvas.yview_moveto(1.0)
+            self._rolar_conversa_para_o_fim()
             
         tb.after(50, update_height)
         return tb, update_height, row
@@ -1157,6 +1157,52 @@ class BlicsaApp(ctk.CTk):
         finally:
             self._sincronizando_chave = False
 
+    def _rolar_conversa_para_o_fim(self):
+        """Recalcula a região de rolagem ANTES de rolar, e só então vai ao fim.
+
+        `yview_moveto(1.0)` era chamado logo depois de redimensionar a bolha, antes de o
+        canvas recomputar o `scrollregion` a partir do novo tamanho do conteúdo. O efeito
+        era rolar até o fim de uma região OBSOLETA: medido, 770px de região para 308px de
+        conversa, e 2.324px para 938px. O usuário via os 60% vazios da região e as mensagens
+        ficavam acima da vista — o "espaço vazio no fim da conversa".
+
+        O `update_idletasks` antes do `bbox` é defensivo, não essencial: removê-lo não
+        derruba os testes desta correção. Fica porque garante que a passada de geometria
+        terminou antes de medir, e medir cedo demais é o erro que criou o defeito.
+        """
+        historico = getattr(self, "_research_chat_history_main", None)
+        if historico is None or not historico.winfo_exists():
+            return
+        canvas = historico._parent_canvas
+        try:
+            historico.update_idletasks()
+            caixa = canvas.bbox("all")
+            if caixa:
+                canvas.configure(scrollregion=caixa)
+            canvas.yview_moveto(1.0)
+        except Exception:
+            pass
+
+    def _empacotar_historico(self):
+        """Empacota o histórico ocupando o que sobra ACIMA do rodapé.
+
+        Existe como método porque `_ocultar_onboarding_ia` precisa refazer exatamente este
+        empacotamento: repetir os argumentos nos dois lugares foi como o layout divergiu
+        entre "app recém-aberto" e "app depois de configurar a chave".
+        """
+        self._research_chat_history_main.pack(side="top", fill="both", expand=True,
+                                              pady=(0, 10))
+
+    def _ocultar_sugestoes(self):
+        """As sugestões somem na primeira mensagem e não voltam nesta conversa.
+
+        São um convite para quem não sabe o que perguntar. Depois da primeira pergunta o
+        usuário já sabe, e três botões no rodapé passam a disputar altura com a conversa.
+        """
+        frame = getattr(self, "_blink_sug_frame", None)
+        if frame is not None and frame.winfo_exists() and frame.winfo_manager():
+            frame.pack_forget()
+
     def _definir_estado_do_chat(self, bloqueado: bool):
         """Liga e desliga a entrada do Blink conforme o onboarding esteja ou não na tela.
 
@@ -1199,7 +1245,7 @@ class BlicsaApp(ctk.CTk):
         if getattr(self, "_blink_onboarding", None) is not None:
             self._blink_onboarding.destroy()
             self._blink_onboarding = None
-        self._research_chat_history_main.pack(fill="both", expand=True, pady=(0, 20))
+        self._empacotar_historico()
         self._definir_estado_do_chat(bloqueado=False)
         self._add_blink_message("assistant", t("blink.saudacao"), gerado_por_ia=False)
 
@@ -1272,10 +1318,13 @@ class BlicsaApp(ctk.CTk):
         self._research_context_bar = ResearchContextBar(
             chat_container, valor=getattr(self, "_research_context", ""),
             on_change=self._on_research_context_change)
-        self._research_context_bar.pack(fill="x", pady=(0, 16))
+        # `padx=6` iguala o recuo interno que o CTkScrollableFrame do histórico aplica
+        # sozinho. Medido: sem isto o histórico começa em x=266 e o resto em x=260, e a
+        # quebra de alinhamento aparece na borda esquerda de toda a coluna.
+        self._research_context_bar.pack(fill="x", padx=6, pady=(0, 16))
 
         self._research_chat_history_main = ctk.CTkScrollableFrame(chat_container, fg_color="transparent")
-        self._research_chat_history_main.pack(fill="both", expand=True, pady=(0, 20))
+        self._empacotar_historico()
         from core.markdown_parser import configure_markdown_tags, insert_markdown
         
         self._research_messages = [{"role": "system", "content": self._blink_system_prompt()}]
@@ -1291,7 +1340,12 @@ class BlicsaApp(ctk.CTk):
             self._add_blink_message("assistant", t("blink.saudacao"), gerado_por_ia=False)
 
         input_f = ctk.CTkFrame(chat_container, fg_color="transparent")
-        input_f.pack(fill="x", pady=(0, 20))
+        # `side="bottom"`, e não a ordem de empacotamento: `_ocultar_onboarding_ia` re-empacota
+        # o histórico, e o `pack` o joga para o FIM da fila — ou seja, para baixo da entrada.
+        # O efeito era visível e confuso: montado do zero o campo ficava embaixo, e depois de
+        # configurar a chave ele aparecia ACIMA da conversa. Preso ao rodapé, a ordem em que
+        # cada um é (re)empacotado deixa de importar.
+        input_f.pack(side="bottom", fill="x", padx=6, pady=(10, 0))
 
         self._research_chat_input_main = ctk.CTkEntry(input_f, placeholder_text=t("blink.placeholder"), placeholder_text_color=MUTED, font=ctk.CTkFont(size=14), fg_color=WHITE_CARD, text_color=INK, height=44, corner_radius=0, border_width=2, border_color=INK)
         self._research_chat_input_main.pack(side="left", fill="x", expand=True, padx=(0, 10))
@@ -1305,7 +1359,8 @@ class BlicsaApp(ctk.CTk):
             msg = self._research_chat_input_main.get().strip()
             if not msg: return
             self._research_chat_input_main.delete(0, "end")
-            
+            self._ocultar_sugestoes()
+
             self._add_blink_message("user", msg)
             
             corpus_txt = ""
@@ -1358,7 +1413,7 @@ class BlicsaApp(ctk.CTk):
                     indicator.configure(fg_color=WHITE_CARD if current == INK else INK, border_width=2 if current == INK else 0, border_color=INK)
                     indicator.after(400, pulse_indicator)
             pulse_indicator()
-            self._research_chat_history_main._parent_canvas.yview_moveto(1.0)
+            self._rolar_conversa_para_o_fim()
             
             import threading
             def worker():
@@ -1411,9 +1466,11 @@ class BlicsaApp(ctk.CTk):
         self._blink_send_btn = ctk.CTkButton(input_f, text=t("blink.enviar"), font=ctk.CTkFont(size=14, weight="bold"), fg_color=RED, text_color="white", hover_color=RED_HOV, corner_radius=0, border_width=2, border_color=INK, height=44, width=100, command=send_main_chat)
         self._blink_send_btn.pack(side="right")
 
-        # Suggestions
+        # Suggestions — acima da entrada, no rodapé. São um convite para começar: depois da
+        # primeira mensagem viram três botões ocupando altura que a conversa precisa.
         sug_f = ctk.CTkFrame(chat_container, fg_color="transparent")
-        sug_f.pack(fill="x")
+        sug_f.pack(side="bottom", fill="x", padx=6)
+        self._blink_sug_frame = sug_f
         
         sugs = [
             t("blink.sugestao_1"),
@@ -4388,7 +4445,7 @@ class BlicsaApp(ctk.CTk):
                         indicator.configure(fg_color=WHITE_CARD if current == INK else INK, border_width=2 if current == INK else 0, border_color=INK)
                         indicator.after(400, pulse_indicator)
                 pulse_indicator()
-                self._research_chat_history_main._parent_canvas.yview_moveto(1.0)
+                self._rolar_conversa_para_o_fim()
                 
                 import threading
                 def _stream_worker():
@@ -4500,7 +4557,7 @@ class BlicsaApp(ctk.CTk):
                         indicator.configure(fg_color=WHITE_CARD if current == INK else INK, border_width=2 if current == INK else 0, border_color=INK)
                         indicator.after(400, pulse_indicator)
                 pulse_indicator()
-                self._research_chat_history_main._parent_canvas.yview_moveto(1.0)
+                self._rolar_conversa_para_o_fim()
                 
                 import threading
                 def _stream_worker():
@@ -4593,7 +4650,7 @@ class BlicsaApp(ctk.CTk):
                         indicator.configure(fg_color=WHITE_CARD if current == INK else INK, border_width=2 if current == INK else 0, border_color=INK)
                         indicator.after(400, pulse_indicator)
                 pulse_indicator()
-                self._research_chat_history_main._parent_canvas.yview_moveto(1.0)
+                self._rolar_conversa_para_o_fim()
                 
                 import threading
                 def _stream_worker():

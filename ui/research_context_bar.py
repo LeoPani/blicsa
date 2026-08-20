@@ -55,11 +55,25 @@ class ResearchContextBar(ctk.CTkFrame):
     def _monta(self):
         cabecalho = ctk.CTkFrame(self, fg_color="transparent")
         cabecalho.pack(fill="x", pady=(0, 4))
+        self._cabecalho = cabecalho
 
         self.rotulo = ctk.CTkLabel(cabecalho, text=t("ai.contexto_titulo"),
                                    font=ctk.CTkFont(size=13, weight="bold"),
                                    text_color=INK, anchor="w")
         self.rotulo.pack(side="left")
+
+        # Recolher/expandir. O contexto é escrito UMA vez e depois só relido: mantê-lo
+        # aberto custa ~120px de altura em toda conversa, e a altura é o que falta no chat.
+        self.alternar = ctk.CTkButton(
+            cabecalho, text="▾", width=26, height=22, corner_radius=0,
+            fg_color="transparent", text_color=INK, hover_color="#e0e0e0",
+            font=ctk.CTkFont(size=12), command=self.alternar_recolhido)
+        self.alternar.pack(side="left", padx=(6, 0))
+
+        # Resumo de uma linha, visível só quando recolhido: recolher para esconder o que
+        # está indo junto em toda resposta seria trocar espaço por opacidade.
+        self.resumo = ctk.CTkLabel(cabecalho, text="", font=ctk.CTkFont(size=11),
+                                   text_color=MUTED, anchor="w")
 
         # Indicador de "o contexto está indo junto em toda resposta". Azul, nunca amarelo.
         self.indicador = ctk.CTkLabel(cabecalho, text=t("ai.contexto_ativo"),
@@ -84,6 +98,43 @@ class ResearchContextBar(ctk.CTkFrame):
                                   justify="left", anchor="w", wraplength=680)
         self.ajuda.pack(anchor="w", fill="x", pady=(4, 0))
 
+        #: Estado inicial: aberto quando não há contexto (é quando ele precisa ser escrito),
+        #: recolhido quando já há (é quando ele só precisa ser conferido).
+        self._recolhido = False
+
+    # ── recolher ──────────────────────────────────────────────────────────
+    def alternar_recolhido(self):
+        self.definir_recolhido(not self._recolhido)
+
+    def definir_recolhido(self, recolhido: bool):
+        """Recolhe para uma linha, ou reabre o campo inteiro."""
+        self._recolhido = bool(recolhido)
+        if self._recolhido:
+            self.campo.pack_forget()
+            self.ajuda.pack_forget()
+            self.contador.pack_forget()
+            self.resumo.pack(side="left", fill="x", expand=True, padx=(10, 0))
+            self.alternar.configure(text="▸")
+        else:
+            self.resumo.pack_forget()
+            self.campo.pack(fill="x")
+            self.ajuda.pack(anchor="w", fill="x", pady=(4, 0))
+            self.contador.pack(side="right")
+            self.alternar.configure(text="▾")
+        self._atualizar_resumo()
+
+    def esta_recolhido(self) -> bool:
+        return self._recolhido
+
+    def _atualizar_resumo(self):
+        """Uma linha com o começo do contexto — ou o convite, quando ainda não há nenhum."""
+        texto = self.valor()
+        if texto:
+            uma_linha = " ".join(texto.split())
+            self.resumo.configure(text=uma_linha[:90] + ("…" if len(uma_linha) > 90 else ""))
+        else:
+            self.resumo.configure(text=t("ai.contexto_vazio_resumo"))
+
     # ── valor ─────────────────────────────────────────────────────────────
     def valor(self) -> str:
         """O contexto REAL — string vazia enquanto o exemplo estiver na tela.
@@ -106,6 +157,10 @@ class ResearchContextBar(ctk.CTkFrame):
         else:
             self._mostrar_exemplo()
         self._atualizar_indicador()
+        # Projeto que já tem contexto abre recolhido: ele foi escrito uma vez e a partir daí
+        # só precisa ser conferido. Sem contexto, abre aberto — é quando há o que escrever.
+        if hasattr(self, "_recolhido"):
+            self.definir_recolhido(bool(texto))
 
     # ── exemplo (placeholder) ─────────────────────────────────────────────
     def _mostrar_exemplo(self):
@@ -128,6 +183,7 @@ class ResearchContextBar(ctk.CTkFrame):
     # ── reações ───────────────────────────────────────────────────────────
     def _ao_editar(self, _e=None):
         self._atualizar_indicador()
+        self._atualizar_resumo()
         if self.on_change:
             self.on_change(self.valor())
 

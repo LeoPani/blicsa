@@ -390,5 +390,6 @@
   "pubmed.key_rate_limit": "Limite d'utilisation du NCBI atteinte. La clé est valide ; patientez un instant.",
   "pubmed.key_error": "Le NCBI a répondu par une erreur inattendue. Réessayez dans un instant.",
   "blink.ir_credenciais": "Configurer la clé d'IA",
-  "blink.sem_chave": "Blink a besoin d'une clé d'IA pour répondre. Elle reste uniquement sur votre machine, et l'offre gratuite de Groq couvre l'usage normal."
+  "blink.sem_chave": "Blink a besoin d'une clé d'IA pour répondre. Elle reste uniquement sur votre machine, et l'offre gratuite de Groq couvre l'usage normal.",
+  "ai.contexto_vazio_resumo": "Aucun contexte défini — cliquez pour en écrire un"
 }

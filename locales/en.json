@@ -389,5 +389,6 @@
   "pubmed.key_rate_limit": "NCBI usage limit reached. The key is valid; wait a moment.",
   "pubmed.key_error": "NCBI responded with an unexpected error. Try again shortly.",
   "blink.ir_credenciais": "Set up the AI key",
-  "blink.sem_chave": "Blink needs an AI key to answer. It stays on your machine only, and Groq's free tier covers normal usage."
+  "blink.sem_chave": "Blink needs an AI key to answer. It stays on your machine only, and Groq's free tier covers normal usage.",
+  "ai.contexto_vazio_resumo": "No context set — click to write one"
 }
