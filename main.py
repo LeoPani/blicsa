@@ -4776,13 +4776,133 @@ class BlicsaApp(ctk.CTk):
         except Exception as exc:
             messagebox.showerror("Erro ao criar biblioteca", str(exc))
 
-    def _create_seminal_library_worker(self, full_path, top_refs):
-        import urllib.request
-        import urllib.parse
-        import json
+    #: Fração dos termos da consulta que precisa aparecer no título encontrado para o
+    #: resultado ser aceito. Calibrado contra a API real: com um piso de 2 termos absolutos,
+    #: a referência do VOSviewer casava com "Bibliometric mapping of computer and
+    #: information ethics" e a do Ostrom com "Social learning promotes institutions for
+    #: governing the commons" — os dois iriam para o arquivo como se fossem o artigo citado.
+    #: A 0,7, os pares errados ficam em torno de 40% e os certos em 100%.
+    _CONFERE_MINIMO = 0.7
+
+    def _enriquecer_referencia(self, provider, ref: str) -> tuple[dict, str]:
+        """Metadados de UMA referência no OpenAlex. Devolve `(dados, motivo_da_falha)`.
+
+        Vai pelo `OpenAlexProvider` em vez de montar URL com `urllib` cru, e isso não é
+        arrumação: as duas chamadas soltas que existiam aqui não passavam pelo `fetch_url`
+        do provider, então **nunca receberiam a chave da API**, ficavam de fora do retry com
+        backoff e mandavam o contato num `User-Agent` com o endereço escrito à mão em vez do
+        `MAILTO` de `core/sources/base.py`.
+
+        A busca textual ainda montava `?q=…&limit=1`. `limit` não existe no OpenAlex — a API
+        responde `400 Bad Request` ("The 'limit' parameter is not valid. Did you mean
+        'per-page'?"). Como tudo estava dentro de um `except Exception: pass`, o
+        enriquecimento por texto nunca funcionou e nunca reclamou.
+
+        O motivo da falha volta como texto em vez de virar log: quem pediu a biblioteca
+        precisa saber que ela veio incompleta, e por quê.
+        """
         import re
-        
+
+        from core.sources.base import AuthError, PaginationLimitError, RateLimitError
+
+        dados = {"title": None, "abstract": None, "url": None}
+
+        # ── Caminho confiável: DOI ────────────────────────────────────────────────
+        doi_match = re.search(r'(10\.\d{4,9}/[^\s,;]+)', ref)
+        if doi_match:
+            doi = doi_match.group(1).strip(".,;()")
+            dados["url"] = f"https://doi.org/{doi}"
+            registro = provider.get_by_doi(doi)      # AuthError/RateLimitError SOBEM
+            if registro and registro.get("title"):
+                # Resolveu pelo identificador exato: é O artigo, não um palpite. A busca
+                # textual não entra aqui nem para completar — ela traz outro trabalho, e
+                # colar o resumo de outro trabalho sob este título seria pior que não ter
+                # resumo. Também pouparia 10 créditos para não melhorar nada.
+                dados["title"] = registro["title"]
+                dados["abstract"] = registro.get("abstract") or None
+                if registro.get("is_oa") and registro.get("oa_url"):
+                    dados["url"] = registro["oa_url"]
+                return dados, "" if dados["abstract"] else "resumo não disponível no OpenAlex"
+
+        # ── Caminho de palpite: busca textual ─────────────────────────────────────
+        # A referência precisa ser LIMPA antes de virar consulta. `browse` monta
+        # `filter=default.search:<query>`, e no OpenAlex a vírgula é separador de AND: uma
+        # referência crua ("Van Eck NJ, Waltman L, 2010, Software survey: ...") vira meia
+        # dúzia de filtros inválidos e a API responde 400. Medido contra a API real.
+        consulta = re.sub(r'\[.*?\]', ' ', ref)                 # marcadores tipo "[12]"
+        # Corta no ano e fica com o que vem DEPOIS. O formato "Autores, ANO, Título" é o
+        # mesmo que a montagem do nome do arquivo, logo acima, já assume. Não é cosmético:
+        # medido contra a API real, os nomes dos autores dentro da consulta afundam a
+        # relevância — a referência do VOSviewer, que contém o título literal, devolvia
+        # "Bibliometric mapping of computer and information ethics" com os autores juntos e
+        # o artigo certo sem eles.
+        m_ano = re.search(r'\b(19|20)\d{2}\b', consulta)
+        if m_ano:
+            consulta = consulta[m_ano.end():]
+        consulta = re.sub(r'[,:;|&()"]', ' ', consulta)          # sintaxe do filter=
+        consulta = re.sub(r'\s+', ' ', consulta).strip()
+        if not consulta:
+            return dados, "referência sem texto pesquisável"
+
+        try:
+            registros, _ = provider.browse(consulta, per_page=1)
+        except (AuthError, RateLimitError):
+            raise
+        except PaginationLimitError:
+            # `page=1 × per_page=1` não excede teto nenhum: se veio isto, foi um 400 de
+            # sintaxe que o `browse` classifica como paginação. Chamar de "limite de
+            # paginação" aqui mentiria para o usuário.
+            return dados, "a referência não pôde ser convertida em consulta válida"
+        except Exception as e:
+            return dados, f"busca textual falhou ({type(e).__name__}: {e})"
+
+        if not registros:
+            return dados, "nenhum resultado no OpenAlex"
+
+        w = registros[0]
+        titulo = w.get("title") or ""
+        if not titulo:
+            return dados, "resultado sem título"
+
+        # Conferência. Buscar pela citação inteira devolve QUALQUER coisa — a API sempre tem
+        # um primeiro resultado. Quando o achado é mesmo o trabalho citado, o título dele
+        # está escrito dentro da referência; quando não é, quase nenhum termo bate. Sem essa
+        # trava, o arquivo do artigo seminal receberia título e resumo de OUTRO artigo, e o
+        # usuário levaria o dado errado adiante sem ter como desconfiar.
+        # A comparação é CONSULTA -> título, não título -> referência. A direção importa:
+        # referências são truncadas o tempo todo ("...network of interactions" no lugar de
+        # "...network of interactions between basic and technological research"), e medindo
+        # ao contrário o Callon de 1991 batia 46% contra o artigo CERTO e seria descartado.
+        termos_q = [p.lower() for p in re.findall(r'[A-Za-zÀ-ÿ]{4,}', consulta)]
+        termos_tit = {p.lower() for p in re.findall(r'[A-Za-zÀ-ÿ]{4,}', titulo)}
+        # Piso de 2, não de 3: "Pedagogia do oprimido" tem dois termos significativos e é
+        # um título inteiro e legítimo. A 0,7, com dois termos os dois precisam bater.
+        if len(termos_q) < 2:
+            return dados, "referência curta demais para conferir o resultado"
+        casados = sum(1 for p in termos_q if p in termos_tit)
+        if casados / len(termos_q) < self._CONFERE_MINIMO:
+            return dados, "resultado não confere com a referência"
+
+        dados["title"] = titulo
+        dados["abstract"] = w.get("abstract") or None
+        if w.get("is_oa") and w.get("oa_url"):
+            dados["url"] = w["oa_url"]
+        else:
+            dados["url"] = w.get("doi") or None
+        return dados, "" if dados["abstract"] else "resumo não disponível no OpenAlex"
+
+    def _create_seminal_library_worker(self, full_path, top_refs):
+        import re
+
+        from core.sources.base import AuthError, RateLimitError
+        from core.sources.openalex import OpenAlexProvider
+
+        provider = OpenAlexProvider()
         created_count = 0
+        #: Referências que a API não resolveu. Antes sumiam: o `except Exception: pass`
+        #: engolia tudo e o diálogo final dizia "Sucesso" com o mesmo texto de sempre.
+        falhas: list[str] = []
+        interrompido = ""
         for ref, count in top_refs:
             # 1. Determinar o nome base do arquivo
             match = re.search(r'\b(19\d\d|20\d\d)\b', ref)
@@ -4799,74 +4919,21 @@ class BlicsaApp(ctk.CTk):
             if len(filename) > 110:
                 filename = filename[:107] + "..."
             
-            # 2. Buscar metadados e resumo (abstract) via OpenAlex API
-            title = None
-            abstract = None
-            url = None
-            
-            # Tenta encontrar um DOI no formato 10.xxxx/...
-            doi_match = re.search(r'(10\.\d{4,9}/[^\s,;]+)', ref)
-            if doi_match:
-                doi = doi_match.group(1).strip(".,;()")
-                url = f"https://doi.org/{doi}"
-                try:
-                    openalex_url = f"https://api.openalex.org/works/https://doi.org/{doi}"
-                    req = urllib.request.Request(
-                        openalex_url, 
-                        headers={'User-Agent': 'mailto:blicsa.app@gmail.com'}
-                    )
-                    with urllib.request.urlopen(req, timeout=5) as r:
-                        data = json.loads(r.read().decode('utf-8'))
-                        title = data.get("title")
-                        inv_index = data.get("abstract_inverted_index")
-                        if inv_index:
-                            abstract_words = {}
-                            for word, pos_list in inv_index.items():
-                                for pos in pos_list:
-                                    abstract_words[pos] = word
-                            sorted_words = [abstract_words[p] for p in sorted(abstract_words.keys())]
-                            abstract = " ".join(sorted_words)
-                        
-                        oa = data.get("open_access", {})
-                        if oa.get("is_oa") and oa.get("oa_url"):
-                            url = oa.get("oa_url")
-                except Exception:
-                    pass
-            
-            # Se não resolveu por DOI, faz busca textual no OpenAlex
-            if not title or not abstract:
-                try:
-                    clean_ref = re.sub(r'\[.*?\]', '', ref)  # limpa colchetes
-                    query = urllib.parse.quote(clean_ref)
-                    openalex_url = f"https://api.openalex.org/works?q={query}&limit=1"
-                    req = urllib.request.Request(
-                        openalex_url, 
-                        headers={'User-Agent': 'mailto:blicsa.app@gmail.com'}
-                    )
-                    with urllib.request.urlopen(req, timeout=5) as r:
-                        data = json.loads(r.read().decode('utf-8'))
-                        results = data.get("results", [])
-                        if results:
-                            work = results[0]
-                            title = work.get("title")
-                            inv_index = work.get("abstract_inverted_index")
-                            if inv_index:
-                                abstract_words = {}
-                                for word, pos_list in inv_index.items():
-                                    for pos in pos_list:
-                                        abstract_words[pos] = word
-                                sorted_words = [abstract_words[p] for p in sorted(abstract_words.keys())]
-                                abstract = " ".join(sorted_words)
-                            
-                            if not url:
-                                oa = work.get("open_access", {})
-                                if oa.get("is_oa") and oa.get("oa_url"):
-                                    url = oa.get("oa_url")
-                                else:
-                                    url = work.get("doi") or work.get("id")
-                except Exception:
-                    pass
-            
+            # 2. Metadados e resumo via OpenAlex, pelo provider (chave + retry + mailto).
+            if interrompido:
+                break
+            try:
+                dados, motivo = self._enriquecer_referencia(provider, ref)
+            except (AuthError, RateLimitError) as e:
+                # Não é falha DESTA referência: é a credencial ou o teto da API. Insistir
+                # nas outras só repetiria o mesmo erro centenas de vezes.
+                interrompido = t(getattr(e, "i18n_key", ""), **getattr(e, "i18n_args", {})) \
+                    if getattr(e, "i18n_key", "") else str(e)
+                break
+            title, abstract, url = dados["title"], dados["abstract"], dados["url"]
+            if motivo:
+                falhas.append(f"{ref[:70]} — {motivo}")
+
             # 3. Escrever arquivo de descrição em formato .txt
             txt_filename = filename + "_DESCRICAO.txt"
             content_lines = [
@@ -4893,9 +4960,32 @@ class BlicsaApp(ctk.CTk):
         # 4. Finalização na main thread do Tkinter
         def _done():
             self._set_idle()
-            messagebox.showinfo("Sucesso", f"Biblioteca de seminais criada com sucesso!\n\nPasta: {full_path}\nArquivos de descrição gerados: {created_count}")
+            corpo = (f"Pasta: {full_path}\n"
+                     f"Arquivos de descrição gerados: {created_count}")
+
+            # O enriquecimento é metade do que esta função entrega: sem ele os arquivos saem
+            # com "Não identificado pela API OpenAlex" no lugar do título e do resumo.
+            # Anunciar "Sucesso" nesse estado é o que escondeu por tanto tempo que a busca
+            # textual respondia 400 a cada chamada.
+            if interrompido:
+                messagebox.showwarning(
+                    "Biblioteca criada sem os metadados",
+                    f"{corpo}\n\nA consulta ao OpenAlex parou na primeira referência:\n"
+                    f"{interrompido}\n\n"
+                    "Os arquivos foram gravados, mas sem título e resumo.")
+            elif falhas:
+                amostra = "\n".join(f"  · {f}" for f in falhas[:5])
+                resto = f"\n  … e mais {len(falhas) - 5}" if len(falhas) > 5 else ""
+                messagebox.showwarning(
+                    "Biblioteca criada com pendências",
+                    f"{corpo}\n\n{len(falhas)} de {len(top_refs)} referências não foram "
+                    f"encontradas no OpenAlex:\n{amostra}{resto}")
+            else:
+                messagebox.showinfo(
+                    "Sucesso",
+                    f"Biblioteca de seminais criada com sucesso!\n\n{corpo}")
             webbrowser.open(f"file://{full_path}")
-            
+
         self.after(0, _done)
 
     # ── Rankings ────────────────────────────────────────────────────────

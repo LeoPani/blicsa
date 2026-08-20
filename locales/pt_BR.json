@@ -277,7 +277,7 @@
   "search.error_rate_limit": "Limite gratuito diário do OpenAlex atingido. Uma chave gratuita, colada em Ajustes → Chave OpenAlex, aumenta esse limite. O app continua funcionando sem ela — o limite volta a zerar em algumas horas.",
   "browse.error_page_limit": "O {fonte} permite navegar até 10.000 resultados por busca. Esta busca tem mais do que isso, mas as páginas seguintes não podem ser abertas. Refine a busca com os filtros da lateral para chegar ao que procura, ou importe o conjunto completo — a importação não tem esse limite e traz todos os registros para análise.",
   "settings.openalex_key": "Chave OpenAlex (opcional)",
-  "settings.openalex_key_hint": "Deixe em branco para usar o acesso gratuito padrão. Uma chave gratuita (openalex.org) amplia o limite diário de requisições.",
+  "settings.openalex_key_hint": "Uma chave gratuita (openalex.org/settings/api) multiplica por dez a franquia diária: cerca de 1.000 créditos por dia sem chave, cerca de 10.000 com ela. O app funciona sem, mas buscas grandes esbarram no limite.",
   "browse.searching": "Buscando…",
   "facet.loading": "Carregando filtros…",
   "ai.onboarding_title": "Ative a IA do Blicsa",
@@ -357,5 +357,6 @@
   "busca.erro_limite": "A base recusou temporariamente por excesso de pedidos. Espere um minuto e tente de novo.",
   "busca.erro_bloqueado": "A base recusou o acesso. Se você configurou uma chave para esta base nos Ajustes, confira se ela ainda é válida.",
   "busca.erro_provedor": "A base de dados respondeu com um erro próprio. O problema é do lado dela; tente de novo mais tarde.",
-  "busca.erro_desconhecido": "A busca falhou. O detalhe técnico foi registrado no log do programa."
+  "busca.erro_desconhecido": "A busca falhou. O detalhe técnico foi registrado no log do programa.",
+  "search.error_auth": "Chave do {fonte} recusada (HTTP 401). Confira se copiou a chave inteira, sem espaços, e se ela continua ativa. Você também pode apagar o campo e voltar ao acesso gratuito sem chave, que é mais limitado."
 }

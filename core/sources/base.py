@@ -23,6 +23,36 @@ class RateLimitError(IOError):
         self.url = url
 
 
+class AuthError(IOError):
+    """Credencial recusada pela API (HTTP 401).
+
+    Distinta de `RateLimitError` e de falha de rede, porque a ação do usuário é outra: não
+    é esperar nem tentar de novo, é conferir a chave. O OpenAlex responde
+    `{"error":"Invalid or missing API key"}` com 401 a uma chave errada — e o campo dos
+    Ajustes aceita qualquer texto colado, sem validar, então um caractere a menos derrubava
+    a busca com "Failed to fetch ... after retries".
+
+    **Não entra na lista de retry**: repetir uma requisição com credencial errada só gasta
+    tempo do usuário para chegar ao mesmo 401.
+
+    Só o 401. O 403 fica de fora de propósito — no OpenAlex ele vem do Cloudflare, antes de
+    a chave ser olhada, e chamá-lo de "credencial recusada" mandaria o usuário trocar uma
+    chave que está correta. Foi exatamente esse o erro que o onboarding da IA já cometeu uma
+    vez (ver `ai/onboarding.py`).
+    """
+
+    #: Chave i18n da mensagem que a UI deve exibir.
+    i18n_key = "search.error_auth"
+
+    def __init__(self, url: str = "", codigo: int = 401, fonte: str = ""):
+        super().__init__(f"credencial recusada pela API (HTTP {codigo})")
+        self.url = url
+        self.codigo = int(codigo)
+        self.fonte = str(fonte)
+        #: Parâmetros da mensagem: a fonte é o que diz ao usuário QUAL chave conferir.
+        self.i18n_args = {"fonte": self.fonte}
+
+
 class PaginationLimitError(IOError):
     """Fronteira de paginação da API no modo navegação (`page` × `per_page`).
 
@@ -145,6 +175,11 @@ class SearchProvider:
                         self._cache_put(url, data)
                     return data
             except urllib.error.HTTPError as e:
+                # Antes do bloco de retry: credencial errada não melhora com insistência, e
+                # `raise e` no `else` a entregaria como HTTPError cru, indistinguível de
+                # qualquer outra falha para quem trata o erro lá em cima.
+                if e.code == 401:
+                    raise AuthError(url, e.code, self.DISPLAY_NAME) from e
                 if e.code in (429, 500, 502, 503, 504):
                     logger.warning(f"HTTP {e.code} received. Retrying in {backoff}s...")
                     time.sleep(backoff)

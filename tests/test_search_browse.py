@@ -553,16 +553,55 @@ def test_main_py_never_calls_browse_on_the_main_thread():
     Checagem no fonte: os pontos que chamam `browse(`/`fetch_page(` têm de estar dentro de
     uma função que roda em `threading.Thread`, nunca no corpo de um callback de botão.
     """
+    import re
     from pathlib import Path
 
     src = (Path(__file__).resolve().parent.parent / "main.py").read_text(encoding="utf-8")
-    for i, linha in enumerate(src.splitlines(), 1):
+    linhas = src.splitlines()
+
+    def envolvente(idx: int) -> tuple[str, str]:
+        """`def` que contém a linha `idx` (0-based), e o corpo dele.
+
+        A versão anterior olhava uma janela FIXA de 60 linhas acima da chamada e aceitava
+        qualquer `def _` ali dentro. Isso quebrava por motivo errado: um método com
+        docstring longa empurra o `def` para fora da janela e o guard acusa um despacho por
+        thread que existe. Achar o `def` pela indentação não tem esse limite arbitrário.
+        """
+        for j in range(idx, -1, -1):
+            m = re.match(r'^(\s*)def (\w+)', linhas[j])
+            if m:
+                recuo = len(m.group(1))
+                fim = j + 1
+                while fim < len(linhas):
+                    if linhas[fim].strip() and not linhas[fim].startswith(" " * (recuo + 1)):
+                        break
+                    fim += 1
+                return m.group(2), "\n".join(linhas[j:fim])
+        return "", ""
+
+    def despachado(nome: str, corpo: str, profundidade: int = 2) -> bool:
+        """A função roda fora da thread principal — dela mesma ou de quem a chama."""
+        if "threading.Thread" in corpo:
+            return True
+        if re.search(rf'threading\.Thread\([^)]*target\s*=\s*(self\.)?{re.escape(nome)}\b', src):
+            return True
+        if profundidade <= 0:
+            return False
+        # Sobe um nível: quem chama esta função é despachado?
+        for k, linha in enumerate(linhas):
+            if re.search(rf'(self\.)?{re.escape(nome)}\s*\(', linha) and f"def {nome}" not in linha:
+                chamador, corpo_chamador = envolvente(k)
+                if chamador and chamador != nome and despachado(chamador, corpo_chamador,
+                                                                profundidade - 1):
+                    return True
+        return False
+
+    for i, linha in enumerate(linhas, 1):
         if ".browse(" in linha or ".fetch_page(" in linha:
-            # Recorta o bloco da função que contém a chamada e exige que o app a despache
-            # por thread em algum ponto (o worker é sempre iniciado com threading.Thread).
-            janela = "\n".join(src.splitlines()[max(0, i - 60):i])
-            assert "threading.Thread" in janela or "def _" in janela, (
-                f"main.py:{i} chama browse/fetch_page sem despachar para thread: {linha.strip()}")
+            nome, corpo = envolvente(i - 1)
+            assert nome and despachado(nome, corpo), (
+                f"main.py:{i} chama browse/fetch_page sem despachar para thread "
+                f"(função `{nome or '?'}`): {linha.strip()}")
 
 
 def test_facet_request_does_not_send_per_page_which_would_truncate_the_groups():

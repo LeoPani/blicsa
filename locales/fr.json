@@ -278,7 +278,7 @@
   "search.error_rate_limit": "Limite quotidienne gratuite d'OpenAlex atteinte. Une clé gratuite, collée dans Paramètres → Clé OpenAlex, augmente cette limite. L'application fonctionne sans — la limite se réinitialise dans quelques heures.",
   "browse.error_page_limit": "{fonte} permet de parcourir jusqu'à 10 000 résultats par recherche. Cette recherche en compte davantage, mais les pages suivantes ne peuvent pas être ouvertes. Affinez la recherche avec les filtres latéraux pour atteindre ce que vous cherchez, ou importez l'ensemble complet — l'importation n'a pas cette limite et récupère tous les enregistrements pour l'analyse.",
   "settings.openalex_key": "Clé OpenAlex (facultative)",
-  "settings.openalex_key_hint": "Laissez vide pour l'accès gratuit par défaut. Une clé gratuite (openalex.org) augmente la limite quotidienne.",
+  "settings.openalex_key_hint": "Une clé gratuite (openalex.org/settings/api) multiplie par dix votre quota quotidien : environ 1 000 crédits par jour sans clé, environ 10 000 avec. L'application fonctionne sans, mais les recherches volumineuses atteignent la limite.",
   "browse.searching": "Recherche…",
   "facet.loading": "Chargement des filtres…",
   "ai.onboarding_title": "Activez l'IA de Blicsa",
@@ -358,5 +358,6 @@
   "busca.erro_limite": "La base a temporairement refusé en raison d'un trop grand nombre de requêtes. Attendez une minute et réessayez.",
   "busca.erro_bloqueado": "La base a refusé l'accès. Si vous avez configuré une clé pour elle dans les Réglages, vérifiez qu'elle est toujours valide.",
   "busca.erro_provedor": "La base de données a répondu par une erreur de son côté. Le problème vient d'elle ; réessayez plus tard.",
-  "busca.erro_desconhecido": "La recherche a échoué. Le détail technique a été consigné dans le journal du programme."
+  "busca.erro_desconhecido": "La recherche a échoué. Le détail technique a été consigné dans le journal du programme.",
+  "search.error_auth": "Clé {fonte} refusée (HTTP 401). Vérifiez que vous avez copié la clé entière, sans espaces, et qu'elle est toujours active. Vous pouvez aussi vider le champ et revenir à l'accès gratuit sans clé, plus limité."
 }

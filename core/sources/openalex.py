@@ -3,15 +3,20 @@ import urllib.error
 import json
 import logging
 from typing import Iterator, Dict, Any, Optional, Callable
-from core.sources.base import SearchProvider, PaginationLimitError
+from core.sources.base import AuthError, PaginationLimitError, RateLimitError, SearchProvider
 
 logger = logging.getLogger("OpenAlexProvider")
 
 def openalex_api_key() -> str:
     """Chave do OpenAlex, se o usuário tiver configurado uma nos Ajustes.
 
-    Opcional: vazia por padrão, e o app funciona sem ela — o `mailto` sozinho continua
-    válido. A chave só entra em cena para quem esbarra no limite gratuito diário.
+    Opcional, mas não mais um detalhe. O OpenAlex descontinuou o *polite pool* em fevereiro
+    de 2026: o `mailto` continua sendo enviado como identificação de boa prática, e medido
+    lado a lado ele já não muda franquia nenhuma. O que separa os dois patamares hoje é a
+    chave — cerca de 1.000 créditos por dia sem ela, cerca de 10.000 com ela.
+
+    Vazia por padrão, e o app funciona assim. Uma página de busca custa 10 créditos, então
+    sem chave dá algo como 100 páginas por dia.
     """
     try:
         from core.settings import get_settings
@@ -136,6 +141,12 @@ class OpenAlexProvider(SearchProvider):
         url = f"https://api.openalex.org/works/https://doi.org/{raw}?mailto={self.mailto}"
         try:
             data = json.loads(self.fetch_url(url, cancel_event=cancel_event))
+        except (AuthError, RateLimitError):
+            # "DOI não encontrado" e "sua chave foi recusada" são situações diferentes com
+            # ações opostas, e devolver None para as duas apagava a segunda: quem chamasse
+            # via extensão ou pela biblioteca de seminais via "não identificado pela API"
+            # para TODAS as referências, sem nunca saber que o problema era a credencial.
+            raise
         except Exception as e:
             logger.warning(f"[OpenAlex] get_by_doi falhou para '{raw}': {e}")
             return None
