@@ -59,6 +59,9 @@ class Facet:
     values: list[FacetValue] = field(default_factory=list)
     error: str = ""          # faceta que falhou: a lista continua, só sem ela
     error_key: str = ""      # chave i18n quando o erro tem mensagem própria
+    #: Parâmetros da mensagem (ex.: `{fonte}` do 401). Sem isto, uma mensagem
+    #: parametrizada chegaria à sidebar com a chave literal no lugar do valor.
+    error_args: dict = field(default_factory=dict)
 
     @property
     def ok(self) -> bool:
@@ -376,7 +379,8 @@ class BrowseSession:
                     values=[FacetValue(str(b["key"]), str(b.get("label") or b["key"]),
                                        int(b.get("count", 0) or 0)) for b in brutos])
             except Exception as e:
-                return campo, Facet(field=campo, error=str(e), error_key=error_i18n_key(e))
+                return campo, Facet(field=campo, error=str(e), error_key=error_i18n_key(e),
+                                    error_args=error_i18n_args(e))
 
         if paralelo and len(alvos) > 1:
             from concurrent.futures import ThreadPoolExecutor

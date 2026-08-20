@@ -462,6 +462,13 @@ class SearchFeedView(ctk.CTkFrame):
 
         Faceta com erro aparece com a nota de erro em vez de sumir sem explicação; provider
         que não suporta a faceta simplesmente não a envia, e ela não é desenhada.
+
+        Quando o erro tem explicação própria — o 429 do OpenAlex tem —, ela vai UMA VEZ no
+        topo, e não repetida em cada faceta. `Facet.error_key` já era preenchido por
+        `core/browse.py` e a UI o descartava, mostrando "Não foi possível carregar este
+        filtro" seis vezes. O usuário via cinco filtros quebrados sem nenhuma pista de que
+        tinha esbarrado na franquia diária, e muito menos de que uma chave gratuita a
+        multiplica por dez.
         """
         from core.browse import FACET_LABELS, format_count
 
@@ -475,6 +482,16 @@ class SearchFeedView(ctk.CTkFrame):
             ctk.CTkLabel(self.sidebar, text=t("facet.unsupported"), font=ctk.CTkFont(size=11),
                          text_color="#555555", wraplength=210, justify="left").pack(anchor="w")
             return
+
+        # A explicação é a mesma para todas as facetas que falharam pelo mesmo motivo:
+        # repeti-la seis vezes numa coluna de 210px empurraria os filtros que FUNCIONARAM
+        # para fora da tela — exatamente o oposto do que o aviso existe para fazer.
+        explicada = next((f for f in facets.values() if getattr(f, "error_key", "")), None)
+        if explicada is not None:
+            args = dict(getattr(explicada, "error_args", None) or {})
+            ctk.CTkLabel(self.sidebar, text=t(explicada.error_key, **args),
+                         font=ctk.CTkFont(size=11), text_color=RED,
+                         wraplength=210, justify="left").pack(anchor="w", pady=(0, 8))
 
         marcados = ativos or {}
         for campo, faceta in facets.items():

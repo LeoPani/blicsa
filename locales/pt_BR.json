@@ -274,7 +274,7 @@
   "browse.selected_of": "{sel} selecionados de {total}",
   "browse.select_page": "Selecionar página",
   "browse.clear_selection": "Limpar seleção",
-  "search.error_rate_limit": "Limite gratuito diário do OpenAlex atingido. Uma chave gratuita, colada em Ajustes → Chave OpenAlex, aumenta esse limite. O app continua funcionando sem ela — o limite volta a zerar em algumas horas.",
+  "search.error_rate_limit": "Franquia diária gratuita do OpenAlex esgotada — por isso estes filtros não carregaram. Uma chave gratuita (openalex.org/settings/api) multiplica a franquia por dez: cerca de 1.000 créditos por dia sem chave, cerca de 10.000 com ela. Sem chave, a franquia zera à meia-noite UTC.",
   "browse.error_page_limit": "O {fonte} permite navegar até 10.000 resultados por busca. Esta busca tem mais do que isso, mas as páginas seguintes não podem ser abertas. Refine a busca com os filtros da lateral para chegar ao que procura, ou importe o conjunto completo — a importação não tem esse limite e traz todos os registros para análise.",
   "settings.openalex_key": "Chave OpenAlex (opcional)",
   "settings.openalex_key_hint": "Uma chave gratuita (openalex.org/settings/api) multiplica por dez a franquia diária: cerca de 1.000 créditos por dia sem chave, cerca de 10.000 com ela. O app funciona sem, mas buscas grandes esbarram no limite.",
