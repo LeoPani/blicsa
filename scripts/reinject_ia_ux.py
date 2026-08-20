@@ -10,60 +10,60 @@ TIMEOUT_S = 90
 
 CASOS = [
     ("diagnósticos agrupados num erro genérico",
-     "ai/onboarding.py",
-     '''        if e.code in (401, 403):
-            return ResultadoTeste("invalida", "ai.key_invalid", detalhe=f"HTTP {e.code}")
-        if e.code == 429:
-            return ResultadoTeste("limite", "ai.key_rate_limit", detalhe="HTTP 429")''',
-     '        pass',
+     "core/credenciais.py",
+     '''    if codigo in (401, 403):
+        return ResultadoTeste("invalida", f"{prefixo}.key_invalid", detalhe=f"HTTP {codigo}")
+    if codigo == 429:
+        return ResultadoTeste("limite", f"{prefixo}.key_rate_limit", detalhe="HTTP 429")''',
+     '    pass',
      "tests/test_ai_onboarding.py::test_os_quatro_diagnosticos_sao_DISTINTOS_entre_si"),
 
     ("sem internet vira 'chave inválida'",
-     "ai/onboarding.py",
-     'return ResultadoTeste("sem_internet", "ai.key_offline",',
-     'return ResultadoTeste("invalida", "ai.key_invalid",',
+     "core/credenciais.py",
+     'return None, ResultadoTeste("sem_internet", f"{prefixo}.key_offline",',
+     'return None, ResultadoTeste("invalida", f"{prefixo}.key_invalid",',
      "tests/test_ai_onboarding.py::test_sem_internet"),
 
     ("500 do provedor vira 'chave recusada'",
-     "ai/onboarding.py",
-     'return ResultadoTeste("erro", "ai.key_error", detalhe=f"HTTP {e.code}")',
-     'return ResultadoTeste("invalida", "ai.key_invalid", detalhe=f"HTTP {e.code}")',
+     "core/credenciais.py",
+     '    return ResultadoTeste("erro", f"{prefixo}.key_error", detalhe=f"HTTP {codigo}")',
+     '    return ResultadoTeste("invalida", f"{prefixo}.key_invalid", detalhe=f"HTTP {codigo}")',
      "tests/test_ai_onboarding.py::test_erro_http_desconhecido_nao_vira_chave_invalida"),
 
     ("trim da chave some",
-     "ai/onboarding.py",
+     "core/credenciais.py",
      '    chave = (chave or "").strip()\n    if not chave:\n        return ResultadoTeste("vazia", "ai.key_empty")',
      '    chave = (chave or "")\n    if not chave:\n        return ResultadoTeste("vazia", "ai.key_empty")',
      "tests/test_ai_onboarding.py::test_chave_com_espacos_em_volta_e_aceita"),
 
     ("campo vazio passa a gastar requisição",
-     "ai/onboarding.py",
+     "core/credenciais.py",
      '    if not chave:\n        return ResultadoTeste("vazia", "ai.key_empty")',
      '    if False:\n        return ResultadoTeste("vazia", "ai.key_empty")',
      "tests/test_ai_onboarding.py::test_chave_vazia_e_rejeitada_sem_bater_na_rede"),
 
     ("mascaramento devolve a chave inteira",
-     "ai/onboarding.py",
+     "core/credenciais.py",
      '    return f"{chave[:4]}…{chave[-4:]}"',
      '    return chave',
      "tests/test_ai_onboarding.py::test_chave_e_exibida_mascarada"),
 
     ("redação da chave no diagnóstico some",
-     "ai/onboarding.py",
+     "core/credenciais.py",
      '                              detalhe=_redigir(str(e.reason), chave)[:120])',
      '                              detalhe=str(e.reason)[:120])',
      "tests/test_ai_onboarding.py::test_diagnostico_nunca_carrega_a_chave"),
 
     ("teste de conexão deixa de ser mínimo (gasta cota do usuário)",
-     "ai/onboarding.py",
-     '"max_tokens": 1,',
+     "core/credenciais.py",
+     '"max_tokens": 1}',
      '"max_tokens": 512,',
      "tests/test_ai_onboarding.py::test_chamada_de_teste_e_minima"),
 
     ("URL do tutorial errada",
-     "ai/onboarding.py",
-     'URL_CONSOLE_GROQ = "https://console.groq.com/keys"',
-     'URL_CONSOLE_GROQ = "https://groq.com"',
+     "core/credenciais.py",
+     '"groq":       ("https://console.groq.com/keys",',
+     '"groq":       ("https://groq.com",',
      "tests/test_ai_onboarding.py::test_url_do_tutorial_e_a_correta"),
 
     ("declaração de custo zero some",
@@ -219,9 +219,9 @@ CASOS = [
      "tests/test_research_context_ui.py::test_indicador_apagado_sem_contexto"),
 
     ("teste de conexão perde o User-Agent (chave boa vira 'chave recusada')",
-     "ai/onboarding.py",
-     '            "User-Agent": USER_AGENT,\n',
-     "",
+     "core/credenciais.py",
+     '    cab = {"User-Agent": USER_AGENT}\n    cab.update(cabecalhos or {})',
+     '    cab = dict(cabecalhos or {})',
      "tests/test_ai_onboarding.py::test_teste_de_conexao_manda_user_agent"),
 
     ("User-Agent volta a ser literal em ai/client.py",

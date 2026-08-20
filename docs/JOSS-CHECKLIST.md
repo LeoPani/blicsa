@@ -18,7 +18,7 @@ Legenda: **✅ atendido** · **⏳ pendente** · **➖ não aplicável**
 | 4 | Dependências declaradas | ✅ | `requirements-core.txt` (app), `requirements.txt` (com extras), `requirements-dev.txt` (testes) |
 | 5 | Exemplo funcional de uso | ✅ | [`docs/uso.md`](uso.md) + `docs/sample_dataset.csv` (200 registros reais do OpenAlex) |
 | 6 | Documentação da API / funcionalidade | ✅ | [`docs/index.md`](index.md), [`uso.md`](uso.md), [`mapas.md`](mapas.md) |
-| 7 | Testes automatizados | ✅ | **1.054 testes**, `python3 -m pytest tests/ -q`, mais **27 testes `live`** que batem nas APIs reais e ficam fora da execução padrão (`pytest -m live`). Inclui matriz de **reinjeção de defeitos** (`scripts/reinject_ia_ux.py`, 101 casos): cada bug corrigido é reintroduzido e a suíte tem de ficar vermelha. Última execução: **90 dos 101 detectados**, não 101 — a ressalva está em [`RELATORIO-AUDITORIA-2.md`](RELATORIO-AUDITORIA-2.md#8-aceite) |
+| 7 | Testes automatizados | ✅ | **1.054 testes**, `python3 -m pytest tests/ -q`, mais **27 testes `live`** que batem nas APIs reais e ficam fora da execução padrão (`pytest -m live`). Inclui matriz de **reinjeção de defeitos** (`scripts/reinject_ia_ux.py`, 101 casos): cada bug corrigido é reintroduzido e a suíte tem de ficar vermelha. Última execução: **100 dos 101 detectados**, não 101 — a ressalva está em [`RELATORIO-AUDITORIA-2.md`](RELATORIO-AUDITORIA-2.md#8-aceite) |
 | 8 | Integração contínua | ✅ | GitHub Actions, matriz 3.11/3.12 — [workflow](https://github.com/LeoPani/blicsa/actions/workflows/ci.yml) |
 | 9 | Diretrizes de contribuição | ✅ | `CONTRIBUTING.md` |
 | 10 | Código de conduta | ✅ | `CODE_OF_CONDUCT.md` (ver item 2b) |

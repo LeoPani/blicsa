@@ -160,21 +160,34 @@ Resolvidos desde a auditoria:
 ## 8. Aceite
 
 - `python3 -m pytest tests/ -q` → **1.054 passed, 1 xfailed**, mais 27 testes `live` excluídos por padrão (`pytest -m live`). ✅
-- `python3 scripts/reinject_ia_ux.py` → **90 dos 101 defeitos detectados**. ⚠️
+- `python3 scripts/reinject_ia_ux.py` → **100 dos 101 defeitos detectados**. ⚠️
 
-A matriz **não está em 100%**, e as 11 falhas têm duas causas que não devem ser somadas numa
-só — o número agregado esconderia justamente a diferença que importa.
+A matriz **não está em 100%**. A execução anterior marcava 90; dez daqueles casos eram
+**setup quebrado, não teste furado** — patchavam trechos de `ai/onboarding.py` que a aba de
+Credenciais moveu para `core/credenciais.py`, e o harness conta "trecho não encontrado" como
+falha. Os dez foram reapontados e voltaram a detectar.
 
-**Dez são setup quebrado, não teste furado.** Esses casos patcham trechos de
-`ai/onboarding.py` que a aba de Credenciais moveu para `core/credenciais.py`. O harness não
-encontra o trecho, imprime `[SETUP RUIM]` e conta como falha. O comportamento continua
-coberto pelos testes que rodam contra o módulo novo; o que se perdeu foi a **prova
-automatizada** de que aqueles testes ficam vermelhos quando o defeito volta. Reapontar os
-dez casos devolve à matriz o que ela diz medir.
+**O caso restante também é de mira, não de cobertura.** "Limitador de taxa do bridge deixa
+de valer" muta o **ponto de chamada** no handler HTTP (`core/bridge.py`):
 
-**A décima primeira é um furo real.** Reinjetar "limitador de taxa do bridge deixa de valer"
-mantém `tests/test_seguranca.py::test_limite_de_taxa_responde_429_pela_rede` **verde**. Esse
-teste não protege o que o nome dele promete, e o defeito é anterior a esta rodada.
+```python
+if not self._dentro_do_limite_de_taxa():   →   if False:
+```
+
+mas aponta para `tests/test_seguranca.py::test_limite_de_taxa_dispara`, que exercita a
+**regra isolada**, chamando `_dentro_do_limite_de_taxa()` diretamente. Desligar o call site
+não toca a regra, e o teste passa. Ele está correto sobre o que testa; não é o teste que
+esse defeito atinge.
+
+O teste que atinge já existe doze linhas abaixo:
+`test_limite_de_taxa_responde_429_pela_rede`, que enche a janela e faz **uma** requisição
+esperando 429. Medido com o defeito injetado: `test_limite_de_taxa_dispara` passa,
+`test_limite_de_taxa_responde_429_pela_rede` falha.
+
+A separação entre os dois é deliberada e está documentada no docstring do primeiro: a versão
+por HTTP disparava 70 requisições em rajada e ficava instável na suíte completa, então a
+regra virou teste de unidade e a versão de rede foi reduzida a uma requisição. Os dois
+existem por bom motivo — o que ficou desalinhado foi a mira do caso.
 
 Uma ressalva sobre o próprio harness, que afeta como o número deve ser lido:
 `TimeoutExpired` é contado como `vermelho=True`. Um teste que **trava** entra na conta como
