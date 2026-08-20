@@ -160,15 +160,18 @@ Resolvidos desde a auditoria:
 ## 8. Aceite
 
 - `python3 -m pytest tests/ -q` → **1.054 passed, 1 xfailed**, mais 27 testes `live` excluídos por padrão (`pytest -m live`). ✅
-- `python3 scripts/reinject_ia_ux.py` → **100 dos 101 defeitos detectados**. ⚠️
+- `python3 scripts/reinject_ia_ux.py` → **101/101 defeitos detectados**. ✅
 
-A matriz **não está em 100%**. A execução anterior marcava 90; dez daqueles casos eram
-**setup quebrado, não teste furado** — patchavam trechos de `ai/onboarding.py` que a aba de
-Credenciais moveu para `core/credenciais.py`, e o harness conta "trecho não encontrado" como
-falha. Os dez foram reapontados e voltaram a detectar.
+A matriz voltou a 101/101, mas **por dois consertos de mira, não por cobertura nova** — e a
+distinção é o que este registro existe para preservar. Uma execução intermediária marcou 90,
+outra 100; nenhuma das duas quedas significou teste deixando de proteger o que protegia.
 
-**O caso restante também é de mira, não de cobertura.** "Limitador de taxa do bridge deixa
-de valer" muta o **ponto de chamada** no handler HTTP (`core/bridge.py`):
+**Dez eram setup quebrado.** Patchavam trechos de `ai/onboarding.py` que a aba de
+Credenciais moveu para `core/credenciais.py`; o harness conta "trecho não encontrado" como
+falha. Reapontados, voltaram a detectar.
+
+**O décimo primeiro também era de mira, não de cobertura.** "Limitador de taxa do bridge
+deixa de valer" muta o **ponto de chamada** no handler HTTP (`core/bridge.py`):
 
 ```python
 if not self._dentro_do_limite_de_taxa():   →   if False:
@@ -179,10 +182,17 @@ mas aponta para `tests/test_seguranca.py::test_limite_de_taxa_dispara`, que exer
 não toca a regra, e o teste passa. Ele está correto sobre o que testa; não é o teste que
 esse defeito atinge.
 
-O teste que atinge já existe doze linhas abaixo:
+O teste que atinge já existia doze linhas abaixo:
 `test_limite_de_taxa_responde_429_pela_rede`, que enche a janela e faz **uma** requisição
-esperando 429. Medido com o defeito injetado: `test_limite_de_taxa_dispara` passa,
-`test_limite_de_taxa_responde_429_pela_rede` falha.
+esperando 429. A evidência é essa medição, com o defeito injetado no call site:
+
+| teste | com o defeito |
+|---|---|
+| `test_limite_de_taxa_dispara` (alvo antigo) | passa — a regra isolada não foi tocada |
+| `test_limite_de_taxa_responde_429_pela_rede` (alvo atual) | **falha** |
+
+A correção foi trocar o alvo do caso, uma linha. Nenhum teste novo, nenhuma mudança em
+`core/bridge.py`: **a cobertura nunca esteve ausente**, só não estava sendo apontada.
 
 A separação entre os dois é deliberada e está documentada no docstring do primeiro: a versão
 por HTTP disparava 70 requisições em rajada e ficava instável na suíte completa, então a
@@ -215,7 +225,7 @@ pela trava do onboarding em vez da invalidação da chave; outro que passava por
 redundante; e um terceiro que chamava `update_idletasks` antes de medir e observava um
 estado que se auto-curava.
 - `python3 scripts/check_evidence_privacy.py` → **80 imagens · 80 OK**. ✅
-- `pip-audit -r` × 5 arquivos → **zero vulnerabilidades**. ✅
+- `pip-audit -r` × 5 arquivos → **zero vulnerabilidades** (pip-audit 2.10.1 em venv isolado, 20/08/2026). ✅
 - `ls docs/AUDITORIA-SEGURANCA.md docs/LIMPEZA-COMENTARIOS.md SECURITY.md` → presentes. ✅
 
 ## 9. Um padrão que atravessou as duas auditorias

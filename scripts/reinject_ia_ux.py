@@ -667,7 +667,11 @@ CASOS = [
      "core/bridge.py",
      "        if not self._dentro_do_limite_de_taxa():",
      "        if False:",
-     "tests/test_seguranca.py::test_limite_de_taxa_dispara"),
+     # O defeito muta o PONTO DE CHAMADA no handler HTTP; `test_limite_de_taxa_dispara`
+     # exercita a REGRA isolada, chamando `_dentro_do_limite_de_taxa()` direto, e por isso
+     # continuava verde. Não era cobertura ausente: era mira errada. Medido com o defeito
+     # injetado — o de unidade passa, este falha.
+     "tests/test_seguranca.py::test_limite_de_taxa_responde_429_pela_rede"),
 
     ("CORS volta a ecoar qualquer origem",
      "core/bridge.py",
