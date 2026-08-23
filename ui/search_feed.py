@@ -137,7 +137,7 @@ class ArticleCard(ctk.CTkFrame):
         cites = record.get("citations", 0)
         if cites > 0:
             # Contagem de citações é DADO da base — o oposto de conteúdo gerado. Sem amarelo.
-            ctk.CTkLabel(title_frame, text=f"★ {cites}", fg_color=INK, text_color=WHITE, font=ctk.CTkFont(size=11, weight="bold"), corner_radius=0).pack(side="left", padx=(0, 6))
+            ctk.CTkLabel(title_frame, text=f"{cites} cit.", fg_color=INK, text_color=WHITE, font=ctk.CTkFont(size=11, weight="bold"), corner_radius=0).pack(side="left", padx=(0, 6))
             
         if record.get("is_oa"):
             ctk.CTkLabel(title_frame, text="OPEN ACCESS", fg_color="#7A9E7E", text_color=WHITE, font=ctk.CTkFont(size=11, weight="bold"), corner_radius=0).pack(side="left", padx=(0, 6))
@@ -287,7 +287,7 @@ class SearchFeedView(ctk.CTkFrame):
         ctk.CTkButton(self.bottom_bar, text="Importar para o corpus", fg_color=RED, text_color=WHITE, hover_color="#b82611", corner_radius=0, border_width=0, font=ctk.CTkFont(weight="bold"), command=self._show_summary_and_import).pack(side="right", padx=(0, 24))
         
         if self.on_ai_assistant:
-            ctk.CTkButton(self.bottom_bar, text="✨ Blink", fg_color="#F5BE00", text_color=INK, hover_color="#D4A000", corner_radius=0, border_width=0, font=ctk.CTkFont(weight="bold"), command=self._trigger_ai).pack(side="right", padx=16)
+            ctk.CTkButton(self.bottom_bar, text="Blink", fg_color="#F5BE00", text_color=INK, hover_color="#D4A000", corner_radius=0, border_width=0, font=ctk.CTkFont(weight="bold"), command=self._trigger_ai).pack(side="right", padx=16)
         
         self.cards = []
         self.page = 0
@@ -661,7 +661,7 @@ class SearchFeedView(ctk.CTkFrame):
         self._blink_drawer.grid_columnconfigure(0, weight=1)
         hdr = ctk.CTkFrame(self._blink_drawer, fg_color="transparent")
         hdr.grid(row=0, column=0, sticky="ew", padx=8, pady=8)
-        ctk.CTkLabel(hdr, text="✨ Blink", font=ctk.CTkFont(size=14, weight="bold"), text_color=INK).pack(side="left")
+        ctk.CTkLabel(hdr, text="Blink", font=ctk.CTkFont(size=14, weight="bold"), text_color=INK).pack(side="left")
         ctk.CTkButton(hdr, text="✕", width=28, fg_color=WHITE, text_color=INK, border_width=1, border_color=INK, corner_radius=0, hover_color="#EEEEEE", command=self.close_blink_drawer).pack(side="right")
         self._blink_output = ctk.CTkTextbox(self._blink_drawer, wrap="word", font=ctk.CTkFont(size=12), fg_color=PAPER, text_color=INK, border_width=1, border_color=INK, corner_radius=0)
         self._blink_output.grid(row=1, column=0, sticky="nsew", padx=8, pady=(0, 8))
@@ -701,7 +701,7 @@ class SearchFeedView(ctk.CTkFrame):
         # Re-consulta server-side com os filtros abaixo (encolhe a query de verdade,
         # não só esconde o que já foi baixado). Ano/OA/tipo/idioma vão para a API.
         if self.on_refilter is not None:
-            ctk.CTkButton(self.sidebar, text="🔁 Rebuscar na fonte", corner_radius=0,
+            ctk.CTkButton(self.sidebar, text="Rebuscar na fonte", corner_radius=0,
                           fg_color=INK, text_color=WHITE, hover_color="#333333",
                           command=lambda: self.on_refilter(self._server_filters())
                           ).pack(fill="x", pady=(0, 8))

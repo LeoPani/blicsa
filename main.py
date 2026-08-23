@@ -64,6 +64,25 @@ ctk.set_appearance_mode("Light")
 
 log = logging.getLogger("blicsa")
 
+def caminho_do_recurso(relativo: str) -> str:
+    """Caminho absoluto de um arquivo empacotado (`assets/`, `locales/`), venha de onde vier.
+
+    Os onze pontos que carregam imagem usavam caminho relativo ao DIRETÓRIO DE TRABALHO.
+    Iniciado de dentro do repositório funcionava; iniciado de qualquer outro lugar — atalho,
+    Spotlight, duplo clique — todo `Image.open("assets/...")` levantava `FileNotFoundError`,
+    e o `except:` nu ao lado engolia. O efeito visível era a marca virar a palavra "Blicsa"
+    na barra lateral, as abas perderem os ícones, as bandeiras e o splash sumirem — sem uma
+    linha de log dizendo por quê.
+
+    No binário do PyInstaller o problema é estrutural, não de hábito: os dados são extraídos
+    para `sys._MEIPASS`, que nunca é o diretório de trabalho. O `Blicsa.spec` empacota
+    `assets/` corretamente desde sempre (linha 16); faltava alguém procurar no lugar certo.
+    """
+    base = getattr(sys, "_MEIPASS", None) or os.path.dirname(os.path.abspath(__file__))
+    return os.path.join(base, relativo)
+
+
+
 OUTPUT_DIR  = Path(__file__).parent
 MAP_PATH    = str(OUTPUT_DIR / "blicsa_mapa.html")
 PLOTLY_PATH = str(OUTPUT_DIR / "blicsa_plotly.html")
@@ -517,9 +536,12 @@ class BlicsaApp(ctk.CTk):
         center.place(relx=0.5, rely=0.5, anchor="center")
         
         try:
-            logo_img = ctk.CTkImage(light_image=Image.open("assets/branding/blicsa-logo-vertical.png"), size=(180, 180))
+            logo_img = ctk.CTkImage(light_image=Image.open(caminho_do_recurso("assets/branding/blicsa-logo-horizontal.png")), size=(300, 80))
             ctk.CTkLabel(center, image=logo_img, text="").pack(pady=(0, 20))
-        except:
+        except Exception as e:
+            # Plano B com aviso. O `except:` nu daqui escondeu por meses que o arquivo pedido
+            # (`blicsa-logo-vertical.png`) nunca existiu na pasta.
+            log.warning(f"[Marca] logo da tela inicial não carregou: {type(e).__name__}: {e}")
             ctk.CTkLabel(center, text="Blicsa", font=ctk.CTkFont(size=56, weight="bold"), text_color=INK).pack(pady=(0, 20))
             
         ctk.CTkLabel(center, text=t("welcome.subtitle"),
@@ -538,12 +560,12 @@ class BlicsaApp(ctk.CTk):
             
         # corner_radius=0: os dois cards estavam com 20, violando o "canto zero" do design
         # system — e é a PRIMEIRA tela que o usuário vê.
-        c1 = ctk.CTkButton(cards_frame, text=f'✨\n\n{t("welcome.new")}', font=ctk.CTkFont(size=24, weight="bold"),
+        c1 = ctk.CTkButton(cards_frame, text=f'{t("welcome.new")}', font=ctk.CTkFont(size=24, weight="bold"),
                            width=260, height=260, fg_color=BLUE, hover_color="#153a7a", corner_radius=0,
                            command=new_proj)
         c1.grid(row=0, column=0, padx=30)
 
-        c2 = ctk.CTkButton(cards_frame, text=f'📂\n\n{t("welcome.load")}', font=ctk.CTkFont(size=24, weight="bold"),
+        c2 = ctk.CTkButton(cards_frame, text=f'{t("welcome.load")}', font=ctk.CTkFont(size=24, weight="bold"),
                            width=260, height=260, fg_color=WHITE_CARD, text_color=INK, hover_color="#E5E5E5",
                            border_width=2, border_color=INK, corner_radius=0,
                            command=load_proj)
@@ -619,9 +641,10 @@ class BlicsaApp(ctk.CTk):
 
         try:
             from PIL import Image
-            logo_img = ctk.CTkImage(light_image=Image.open("assets/branding/blicsa-logo-horizontal.png"), size=(180, 48))
+            logo_img = ctk.CTkImage(light_image=Image.open(caminho_do_recurso("assets/branding/blicsa-logo-horizontal.png")), size=(180, 48))
             ctk.CTkLabel(sb, image=logo_img, text="").grid(row=0, column=0, padx=16, pady=(30, 22), sticky="w")
-        except:
+        except Exception as e:
+            log.warning(f"[Marca] logo da barra lateral não carregou: {type(e).__name__}: {e}")
             ctk.CTkLabel(sb, text="Blicsa",
                          font=ctk.CTkFont(size=34, weight="bold"),
                          text_color=ACCENT).grid(
@@ -641,20 +664,26 @@ class BlicsaApp(ctk.CTk):
             ("credenciais", "stack", t("nav.credenciais")),
             ("import",   "magnet",  t("nav.collect")),
             ("corpus",   "stack",   "Corpus"),
-            ("stats",    "chart",   t("nav.stats")),
-            ("analises", "chart",   t("nav.analyses")),
+            ("stats",    "chart-network", t("nav.stats")),
+            ("analises", "chart-network", t("nav.analyses")),
             ("hist",     "stack",   t("history.title")),
             ("galeria",  "stack",   t("nav.gallery")),
-            ("export",   "export",  t("nav.export")),
+            ("export",   "export-arrow", t("nav.export")),
         ], start=1):
-            try:
-                img_normal = ctk.CTkImage(light_image=Image.open(f"assets/icons/{icon_name}.png"), size=(20, 20))
-                img_active = ctk.CTkImage(light_image=Image.open(f"assets/icons/{icon_name}_active.png"), size=(20, 20))
-                self._nav_icons[key] = (img_normal, img_active)
-                image_arg = img_normal
-            except Exception:
-                self._nav_icons[key] = (None, None)
-                image_arg = None
+            # Navegação em TEXTO, sem ícone, e isso é escolha.
+            #
+            # `assets/icons/` tem 14 arquivos e apenas DUAS imagens distintas: os sete
+            # `_normal` são byte a byte idênticos entre si, e os sete `_active` também.
+            # O conjunto nunca foi desenhado — é espaço reservado. Ligá-lo põe o mesmo
+            # círculo ao lado de Blink, Corpus, Estatísticas e Exportar: dez repetições
+            # de um símbolo que não distingue nada.
+            #
+            # Os nomes dos arquivos aqui já estão corretos (`{icon_name}_normal.png`, e
+            # `chart-network`/`export-arrow` no lugar de `chart`/`export`), o que antes não
+            # era verdade. Quando existir um conjunto de ícones de fato, basta voltar a
+            # carregar por `caminho_do_recurso`.
+            self._nav_icons[key] = (None, None)
+            image_arg = None
                 
             btn = ctk.CTkButton(
                 sb, text=f" {label_text}", anchor="w", image=image_arg,
@@ -681,9 +710,9 @@ class BlicsaApp(ctk.CTk):
         self._corpus_badge.grid(row=10, column=0, padx=16, pady=(10, 5), sticky="sw")
         
         try:
-            gear_img = ctk.CTkImage(light_image=Image.open("assets/icons/gear.png"), size=(16, 16))
+            gear_img = None   # mesmo espaço reservado dos ícones de navegação: ver acima
         except: gear_img = None
-        self._settings_btn = ctk.CTkButton(sb, text=f' {t("menu_settings")}' if gear_img else f'⚙️ {t("menu_settings")}', image=gear_img, anchor="w", font=ctk.CTkFont(size=11), fg_color="transparent", hover_color="#e0e0e0", text_color=INK, corner_radius=0, height=32, border_width=1, border_color=INK, command=self._show_settings)
+        self._settings_btn = ctk.CTkButton(sb, text=t("menu_settings"), image=gear_img, anchor="w", font=ctk.CTkFont(size=11), fg_color="transparent", hover_color="#e0e0e0", text_color=INK, corner_radius=0, height=32, border_width=1, border_color=INK, command=self._show_settings)
         self._settings_btn.grid(row=12, column=0, padx=16, pady=(0, 10), sticky="ew")
 
         self._status_square = ctk.CTkFrame(sb, width=10, height=10, fg_color=BLUE, corner_radius=0)
@@ -802,7 +831,7 @@ class BlicsaApp(ctk.CTk):
             
         try:
             for i, (l, f_name) in enumerate(_flag_options()):
-                img = ImageTk.PhotoImage(Image.open(f"assets/branding/{f_name}").resize((32, 22)))
+                img = ImageTk.PhotoImage(Image.open(caminho_do_recurso(f"assets/branding/{f_name}")).resize((32, 22)))
                 btn = tk.Button(flag_f, image=img, command=lambda x=l: set_l(x), bg="#F6F4EE", relief="flat", bd=2, highlightbackground="#141414")
                 btn.image = img
                 btn.grid(row=0, column=i, padx=5)
@@ -903,11 +932,12 @@ class BlicsaApp(ctk.CTk):
         
         try:
             from PIL import ImageTk
-            img = ImageTk.PhotoImage(Image.open("assets/branding/blicsa-logo-horizontal.png").resize((200, 54)))
+            img = ImageTk.PhotoImage(Image.open(caminho_do_recurso("assets/branding/blicsa-logo-horizontal.png")).resize((200, 54)))
             lbl = tk.Label(content, image=img, bg="#F6F4EE")
             lbl.image = img
             lbl.pack(pady=(20, 0))
-        except:
+        except Exception as e:
+            log.warning(f"[Marca] logo dos Ajustes não carregou: {type(e).__name__}: {e}")
             tk.Label(content, text="Blicsa", font=("Arial", 24, "bold"), bg="#F6F4EE", fg="#141414").pack(pady=(20, 0))
             
         tk.Label(content, text="just blink", font=("Arial", 12), bg="#F6F4EE", fg="#8A877F").pack(pady=(0, 10))
@@ -1286,7 +1316,7 @@ class BlicsaApp(ctk.CTk):
             
         try:
             for i, (l, f_name) in enumerate(_flag_options()):
-                img = ctk.CTkImage(light_image=Image.open(f"assets/branding/{f_name}"), size=(32, 22))
+                img = ctk.CTkImage(light_image=Image.open(caminho_do_recurso(f"assets/branding/{f_name}")), size=(32, 22))
                 btn = ctk.CTkButton(flag_f, image=img, text="", width=32, height=22, fg_color="transparent", corner_radius=0, border_width=2, border_color=INK, hover_color="#e0e0e0", command=lambda x=l: set_l(x))
                 btn.grid(row=0, column=i, padx=4)
         except:
@@ -1555,12 +1585,12 @@ class BlicsaApp(ctk.CTk):
                                                      command=lambda: self._search_max_entry.configure(state="disabled" if self._search_unlimited_var.get() else "normal"))
         self._search_unlimited_chk.pack(side="left", padx=4)
         
-        self._btn(act_sf, "⚙ Avançada", self._open_query_builder, height=30).pack(side="left", padx=4)
+        self._btn(act_sf, "Avançada", self._open_query_builder, height=30).pack(side="left", padx=4)
         self._btn(act_sf, t("preview.button"), self._run_preview, height=30, color=INK, hover=INK_HOV).pack(side="left", padx=4)
-        self._btn(act_sf, "🔍 Buscar", self._on_gui_search, height=30, color=RED, hover=RED_HOV).pack(side="left", padx=4)
-        self._btn(act_sf, "✨ Blink", self._trigger_import_ai_assistant, height=30, color=YELLOW, hover=YELLOW_HOV).pack(side="left", padx=4)
+        self._btn(act_sf, "Buscar", self._on_gui_search, height=30, color=RED, hover=RED_HOV).pack(side="left", padx=4)
+        self._btn(act_sf, "Blink", self._trigger_import_ai_assistant, height=30, color=YELLOW, hover=YELLOW_HOV).pack(side="left", padx=4)
         
-        self._search_cancel_btn = self._btn(act_sf, "✕ Cancelar", self._cancel_search, height=30, color="#E63946", hover="#C12B37")
+        self._search_cancel_btn = self._btn(act_sf, "Cancelar", self._cancel_search, height=30, color="#E63946", hover="#C12B37")
         self._search_cancel_btn.pack_forget() # Hide initially
         
         filter_f = ctk.CTkFrame(scard, fg_color="transparent")
@@ -1642,8 +1672,8 @@ class BlicsaApp(ctk.CTk):
         
         fbf = ctk.CTkFrame(fcard, fg_color="transparent")
         fbf.grid(row=1, column=2, padx=12, pady=(8, 16), sticky="n")
-        self._btn(fbf, "➕  Adicionar Arquivos", self._pick_file, height=36).pack(pady=(0, 6))
-        self._btn(fbf, "🗑  Limpar Tudo", self._clear_files, color="#4a1a1a", hover="#6a2a2a", height=36).pack()
+        self._btn(fbf, "Adicionar Arquivos", self._pick_file, height=36).pack(pady=(0, 6))
+        self._btn(fbf, "Limpar Tudo", self._clear_files, color="#4a1a1a", hover="#6a2a2a", height=36).pack()
         
         act_f = ctk.CTkFrame(fcard, fg_color="transparent")
         act_f.grid(row=2, column=0, columnspan=3, padx=16, pady=(12, 16), sticky="ew")
@@ -1652,9 +1682,9 @@ class BlicsaApp(ctk.CTk):
         # DECISÃO DE PRODUTO: a deduplicação saiu da Coletar — é ação explícita
         # no Corpus (botão Deduplicar).
         act_f.grid_columnconfigure((0, 1), weight=1)
-        self._btn(act_f, "⚡  Carregar e Combinar", self._load_data, height=40, color=RED, hover=RED_HOV).grid(
+        self._btn(act_f, "Carregar e Combinar", self._load_data, height=40, color=RED, hover=RED_HOV).grid(
             row=0, column=0, padx=(0, 4), sticky="ew")
-        self._btn(act_f, "📂  Abrir Projeto (.blicsa)", self._load_project_gui, height=40,
+        self._btn(act_f, "Abrir Projeto (.blicsa)", self._load_project_gui, height=40,
                   color=BLUE, hover=BLUE_HOV).grid(
             row=0, column=1, padx=(4, 0), sticky="ew")
 
@@ -1722,7 +1752,7 @@ class BlicsaApp(ctk.CTk):
         
         # Title of config sidebar
         ctk.CTkLabel(
-            config_panel, text="⚙️ Parâmetros do Mapa",
+            config_panel, text="Parâmetros do Mapa",
             font=ctk.CTkFont(size=14, weight="bold"),
             text_color=ACCENT
         ).grid(row=0, column=0, padx=16, pady=(12, 6), sticky="w")
@@ -1744,9 +1774,9 @@ class BlicsaApp(ctk.CTk):
         br.grid(row=0, column=0, pady=(0, 4), sticky="ew")
         br.grid_columnconfigure((0, 1, 2, 3), weight=1)
 
-        self._btn(br, "⚡  Gerar Mapa", self._run_mapping,
+        self._btn(br, "Gerar Mapa", self._run_mapping,
                   height=44).grid(row=0, column=0, padx=4, sticky="ew")
-        self._btn(br, "✦  Abrir Plotly Interativo",
+        self._btn(br, "Abrir Plotly Interativo",
                   self._open_plotly, color="#1a4a7a",
                   hover="#153a60", height=44).grid(
             row=0, column=1, padx=4, sticky="ew")
@@ -1810,37 +1840,37 @@ class BlicsaApp(ctk.CTk):
             messagebox.showinfo("Sucesso", f"Mapa salvo na galeria!\nVerifique a aba Galeria.")
             self._refresh_gallery()
 
-        self._btn(br, "💾  Salvar na Galeria",
+        self._btn(br, "Salvar na Galeria",
                   save_plot,
                   color=RED, hover=RED_HOV, height=44).grid(
             row=0, column=2, padx=4, sticky="ew")
             
         # Removing AI insights button since Blink Research sidebar is preferred
             
-        self._btn(br, "🏷️  Nomear Clusters", self._auto_label_clusters,
+        self._btn(br, "Nomear Clusters", self._auto_label_clusters,
                   color="#1a5a3a", hover="#144a2e", height=44).grid(
             row=1, column=0, padx=4, pady=(4, 0), sticky="ew")
-        self._btn(br, "📈  Tendências", self._open_trends,
+        self._btn(br, "Tendências", self._open_trends,
                   color=INK, hover=INK_HOV, height=44).grid(
             row=1, column=1, padx=4, pady=(4, 0), sticky="ew")
         # BLUE: a nuvem de palavras é DADO do corpus, não conteúdo gerado por IA.
-        self._btn(br, "☁  Word Cloud", self._show_wordcloud,
+        self._btn(br, "Word Cloud", self._show_wordcloud,
                   color=BLUE, hover=BLUE_HOV, height=44).grid(
             row=1, column=2, columnspan=2, padx=4, pady=(4, 0), sticky="ew")
 
         # Row 2 Actions
-        self._btn(br, "📊  Sankey (3 Campos)", self._open_sankey,
+        self._btn(br, "Sankey (3 Campos)", self._open_sankey,
                   color="#D4A017", hover="#b88a10", height=44).grid(
             row=2, column=0, padx=4, pady=(4, 0), sticky="ew")
         self._btn(br, "⏳  Linha do Tempo", self._open_timeline,
                   color="#1a4a7a", hover="#153a60", height=44).grid(
             row=2, column=1, padx=4, pady=(4, 0), sticky="ew")
-        self._btn(br, "💥  Surtos (Bursts)", self._open_bursts,
+        self._btn(br, "Surtos (Bursts)", self._open_bursts,
                   color="#800020", hover="#600018", height=44).grid(
             row=2, column=2, padx=4, pady=(4, 0), sticky="ew")
 
         # Row 3 Actions
-        self._btn(br, "🗺️  Mapa Temático (Callon)", self._open_thematic_map,
+        self._btn(br, "Mapa Temático (Callon)", self._open_thematic_map,
                   color="#2A9D8F", hover="#207a6f", height=44).grid(
             row=3, column=0, padx=4, pady=(4, 0), sticky="ew")
         self._btn(br, "⏳  Historiografia de Citações", self._open_historiograph,
@@ -1883,7 +1913,7 @@ class BlicsaApp(ctk.CTk):
         info_panel.grid_rowconfigure(1, weight=1)
 
         ctk.CTkLabel(
-            info_panel, text="✨ IA & Análise",
+            info_panel, text="IA & Análise",
             font=ctk.CTkFont(size=14, weight="bold"),
             text_color=ACCENT
         ).grid(row=0, column=0, padx=16, pady=(12, 6), sticky="w")
@@ -1941,7 +1971,7 @@ class BlicsaApp(ctk.CTk):
         ).pack(fill="x", pady=(0, 6))
 
         ctk.CTkButton(
-            sem_btn_frame, text="📂 Criar Pasta da Biblioteca", height=32,
+            sem_btn_frame, text="Criar Pasta da Biblioteca", height=32,
             fg_color=ACCENT, hover_color=ACCENT_HOV, text_color="#000000",
             font=ctk.CTkFont(weight="bold"), command=self._create_seminal_library
         ).pack(fill="x")
@@ -2020,7 +2050,7 @@ class BlicsaApp(ctk.CTk):
                               "muitas vezes num único artigo distorce o mapa inteiro.")
 
         # 5c. Lista de termos revisável ANTES de gerar (passo 13 do guia).
-        self._btn(sc, "📋  Revisar termos…", self._open_term_review, height=30,
+        self._btn(sc, "Revisar termos…", self._open_term_review, height=30,
                   color=INK, hover=INK_HOV).pack(fill="x", padx=10, pady=(0, 6))
         self._excluded_lbl = ctk.CTkLabel(sc, text="", font=ctk.CTkFont(size=10),
                                           text_color=TEXT_MUTED)
@@ -2081,7 +2111,7 @@ class BlicsaApp(ctk.CTk):
         # Reclusterizar SEM refazer o layout: o mapa continua o mesmo mapa, só as cores e os
         # grupos mudam. Refazer o layout a cada ajuste custaria segundos e, pior, embaralharia
         # o desenho — o usuário perderia a referência visual do que estava olhando.
-        self._btn(sc, "🎯  Aplicar resolução (sem refazer layout)", self._recluster_only,
+        self._btn(sc, "Aplicar resolução (sem refazer layout)", self._recluster_only,
                   height=30, color=INK, hover=INK_HOV).pack(fill="x", padx=10, pady=(0, 6))
 
         # Atração e repulsão do ForceAtlas2. O guia recomenda attraction=1 / repulsion=0
@@ -2134,7 +2164,7 @@ class BlicsaApp(ctk.CTk):
         th_f.pack(fill="x", padx=10, pady=(0, 6))
         self._thesaurus_lbl = ctk.CTkLabel(th_f, text="Nenhum carregado", font=ctk.CTkFont(size=10), text_color=TEXT_MUTED)
         self._thesaurus_lbl.pack(side="left", fill="x", expand=True, anchor="w")
-        self._btn(th_f, "📄", self._pick_thesaurus, height=26, width=32).pack(side="right")
+        self._btn(th_f, "", self._pick_thesaurus, height=26, width=32).pack(side="right")
         
         # 12. Cor Plotly
         ctk.CTkLabel(sc, text="Cor do Plotly:", font=ctk.CTkFont(size=11, weight="bold")).pack(anchor="w", padx=10, pady=(4, 2))
@@ -2198,8 +2228,8 @@ class BlicsaApp(ctk.CTk):
         # 15. Config Persistence
         pf = ctk.CTkFrame(sc, fg_color="transparent")
         pf.pack(fill="x", padx=10, pady=8)
-        self._btn(pf, "💾 Salvar", self._save_config, height=28, color=INK, hover=INK_HOV).pack(side="left", fill="x", expand=True, padx=(0, 4))
-        self._btn(pf, "📂 Carregar", self._load_config, height=28, color=INK, hover=INK_HOV).pack(side="right", fill="x", expand=True, padx=(4, 0))
+        self._btn(pf, "Salvar", self._save_config, height=28, color=INK, hover=INK_HOV).pack(side="left", fill="x", expand=True, padx=(0, 4))
+        self._btn(pf, "Carregar", self._load_config, height=28, color=INK, hover=INK_HOV).pack(side="right", fill="x", expand=True, padx=(4, 0))
     # ── Tab: Rankings ──────────────────────────────────────────────────
     def _build_tab_ranking(self, parent=None) -> ctk.CTkFrame:
         frame = ctk.CTkFrame(parent if parent else self._content, fg_color="transparent", corner_radius=0)
@@ -2696,8 +2726,11 @@ class BlicsaApp(ctk.CTk):
                       command=dlg.destroy).pack(side="right")
 
     # ── Aba Histórico: linha do tempo do backlog do projeto ───────────────
-    _HIST_ICONS = {"search": "🔍", "import": "📥", "dedup": "🧹", "corpus_add": "➕",
-                   "analysis": "📊", "export": "📤", "map": "🗺", "extension_add": "🧩"}
+    #: Marcador de tipo na linha do histórico. Texto curto, não emoji: o emoji era a única
+    #: informação da coluna e removê-lo sem substituto deixaria a linha sem tipo.
+    _HIST_ICONS = {"search": "busca", "import": "import", "dedup": "dedup",
+                   "corpus_add": "corpus", "analysis": "análise", "export": "export",
+                   "map": "mapa", "extension_add": "extensão"}
 
     def _build_tab_hist(self) -> ctk.CTkFrame:
         frame = self._tab()
@@ -3465,7 +3498,7 @@ class BlicsaApp(ctk.CTk):
             if lang_filtered_total:
                 trail += f" · filtrados por idioma: {lang_filtered_total}"
             if net_error_info:
-                trail += f" · ⚠ interrompido ({net_error_info[0]}, página {net_error_info[1]}) por erro de rede — resultados parciais"
+                trail += f" · interrompido ({net_error_info[0]}, página {net_error_info[1]}) por erro de rede — resultados parciais"
             log.info(f"[Search] {trail}")
             self.after(0, lambda tr=trail: self._search_trail_lbl.configure(text=tr))
 
@@ -5771,7 +5804,7 @@ class BlicsaApp(ctk.CTk):
                     log.info(f"[Word Cloud] Salva → {path}\n")
 
             ctk.CTkButton(
-                win, text="💾  Salvar", height=34,
+                win, text="Salvar", height=34,
                 fg_color=ACCENT, hover_color=ACCENT_HOV, text_color="#000",
                 command=_save,
             ).grid(row=1, column=0, pady=8)
@@ -6183,8 +6216,8 @@ class BlicsaApp(ctk.CTk):
         # Header
         hdr = ctk.CTkFrame(main_content, fg_color="transparent")
         hdr.grid(row=0, column=0, padx=20, pady=(20, 10), sticky="ew")
-        ctk.CTkLabel(hdr, text="🖼️ Galeria de Mapas", font=ctk.CTkFont(size=24, weight="bold"), text_color=INK).pack(side="left")
-        ctk.CTkButton(hdr, text="🔄 Atualizar", width=100, height=32, fg_color=CARD_BG, hover_color=CARD2_BG, text_color=INK, border_width=1, border_color=INK, command=self._refresh_gallery).pack(side="right")
+        ctk.CTkLabel(hdr, text="Galeria de Mapas", font=ctk.CTkFont(size=24, weight="bold"), text_color=INK).pack(side="left")
+        ctk.CTkButton(hdr, text="Atualizar", width=100, height=32, fg_color=CARD_BG, hover_color=CARD2_BG, text_color=INK, border_width=1, border_color=INK, command=self._refresh_gallery).pack(side="right")
         
         # Grid/List of maps
         self._gallery_scroll = ctk.CTkScrollableFrame(main_content, fg_color=CONTENT_BG)
@@ -6198,7 +6231,7 @@ class BlicsaApp(ctk.CTk):
         
         header = ctk.CTkFrame(self._gallery_drawer, fg_color="transparent")
         header.grid(row=0, column=0, sticky="ew", padx=10, pady=10)
-        ctk.CTkLabel(header, text="✨ Blink", font=ctk.CTkFont(size=16, weight="bold"), text_color=INK).pack(side="left")
+        ctk.CTkLabel(header, text="Blink", font=ctk.CTkFont(size=16, weight="bold"), text_color=INK).pack(side="left")
         
         self._gallery_chat_history = ctk.CTkTextbox(self._gallery_drawer, wrap="word", font=ctk.CTkFont(size=13), fg_color=PAPER, text_color=INK, border_width=1, border_color=INK, corner_radius=0)
         self._gallery_chat_history.grid(row=1, column=0, sticky="nsew", padx=10, pady=10)
@@ -6299,7 +6332,7 @@ class BlicsaApp(ctk.CTk):
             info_f = ctk.CTkFrame(card, fg_color="transparent")
             info_f.pack(side="left", padx=15, pady=15, fill="x", expand=True)
             
-            ctk.CTkLabel(info_f, text=f"📊 {name}", font=ctk.CTkFont(size=14, weight="bold"), text_color=INK, anchor="w").pack(fill="x")
+            ctk.CTkLabel(info_f, text=f"{name}", font=ctk.CTkFont(size=14, weight="bold"), text_color=INK, anchor="w").pack(fill="x")
             ctk.CTkLabel(info_f, text=f"Salvo em: {date_str}", font=ctk.CTkFont(size=11), text_color=TEXT_MUTED, anchor="w").pack(fill="x")
             
             btn_f = ctk.CTkFrame(card, fg_color="transparent")
@@ -6419,7 +6452,9 @@ class BlicsaApp(ctk.CTk):
             empty_container = ctk.CTkFrame(self._corpus_tab_frame, fg_color="transparent")
             empty_container.pack(expand=True)
             
-            ctk.CTkLabel(empty_container, text="📂", font=ctk.CTkFont(size=64)).pack(pady=10)
+            # O estado vazio era ilustrado por um `📂` de 64pt. Removido junto com os outros
+            # emoji; o label ficaria de 64 pixels de altura sem nada dentro, então sai
+            # inteiro em vez de virar um vão. A frase abaixo já diz o que houve.
             ctk.CTkLabel(empty_container, text="Nenhum corpus carregado.", font=ctk.CTkFont(size=20, weight="bold"), text_color=MUTED).pack(pady=10)
             self._btn(empty_container, "Coletar Dados", lambda: self._switch_tab("import"), height=40).pack(pady=20)
             return
@@ -6668,7 +6703,7 @@ if __name__ == "__main__":
     
     frames = []
     try:
-        gif = Image.open("assets/branding/blicsa-splash.gif")
+        gif = Image.open(caminho_do_recurso("assets/branding/blicsa-splash.gif"))
         for i in range(gif.n_frames):
             gif.seek(i)
             frames.append(ImageTk.PhotoImage(gif.copy()))
@@ -6695,9 +6730,9 @@ if __name__ == "__main__":
     # Apply app icon
     try:
         if sys.platform == "win32":
-            app.iconbitmap("assets/branding/blicsa-icon.ico")
+            app.iconbitmap(caminho_do_recurso("assets/branding/blicsa-icon.ico"))
         else:
-            ico = tk.PhotoImage(file="assets/branding/blicsa-icon-256.png")
+            ico = tk.PhotoImage(file=caminho_do_recurso("assets/branding/blicsa-icon-256.png"))
             app.iconphoto(True, ico)
     except:
         pass

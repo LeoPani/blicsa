@@ -46,7 +46,7 @@ class QueryBuilderDialog(ctk.CTkToplevel):
         self.preview_lbl.pack(fill="x", padx=10, pady=(2, 10), anchor="w")
         
         # --- Submit ---
-        self.submit_btn = ctk.CTkButton(self.bottom_frame, text="Aplicar Filtros 🔍", fg_color="#2A9D8F", hover_color="#21867a", width=160, font=ctk.CTkFont(weight="bold"), command=self.submit)
+        self.submit_btn = ctk.CTkButton(self.bottom_frame, text="Aplicar Filtros", fg_color="#2A9D8F", hover_color="#21867a", width=160, font=ctk.CTkFont(weight="bold"), command=self.submit)
         self.submit_btn.pack(side="right")
         
         # Add initial rows

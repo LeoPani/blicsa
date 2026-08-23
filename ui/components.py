@@ -264,7 +264,7 @@ class AIInsightsWindow(ctk.CTkToplevel):
         hdr.grid_columnconfigure(0, weight=1)
         
         ctk.CTkLabel(
-            hdr, text="✨ Percepções & Insights com IA (Groq)",
+            hdr, text="Percepções & Insights com IA (Groq)",
             font=ctk.CTkFont(size=14, weight="bold"),
             text_color=ACCENT
         ).grid(row=0, column=0, padx=16, pady=10, sticky="w")
@@ -287,7 +287,7 @@ class AIInsightsWindow(ctk.CTkToplevel):
             messagebox.showinfo("Copiado", "Insights copiados para a área de transferência!")
             
         ctk.CTkButton(
-            ftr, text="📋 Copiar Texto", width=130, height=32,
+            ftr, text="Copiar Texto", width=130, height=32,
             fg_color=ACCENT, hover_color=ACCENT_HOV, text_color="#000000",
             font=ctk.CTkFont(weight="bold"), command=copy
         ).pack(side="left", padx=4)
@@ -369,7 +369,7 @@ class TrendChartWindow(ctk.CTkToplevel):
         ).pack(side="left", padx=2)
 
         ctk.CTkButton(
-            lp, text="📈  Plotar", height=38,
+            lp, text="Plotar", height=38,
             fg_color=ACCENT, hover_color=ACCENT_HOV,
             text_color="#000000", font=ctk.CTkFont(weight="bold"),
             command=self._plot,
@@ -611,7 +611,7 @@ class VerificationDialog(ctk.CTkToplevel):
         for term, occ, df_val, score in self._all_data:
             if query and query not in term.lower():
                 continue
-            status_str = "☑ SIM" if self._terms_status[term] else "☐ NÃO"
+            status_str = "SIM" if self._terms_status[term] else "NÃO"
             self._tree.insert("", "end", values=(status_str, term, occ, df_val, f"{score:.4f}"))
 
         self._refresh_count()
@@ -625,7 +625,7 @@ class VerificationDialog(ctk.CTkToplevel):
         term = vals[1]
         new_status = not self._terms_status[term]
         self._terms_status[term] = new_status
-        new_status_str = "☑ SIM" if new_status else "☐ NÃO"
+        new_status_str = "SIM" if new_status else "NÃO"
         self._tree.item(item_id, values=(new_status_str, vals[1], vals[2], vals[3], vals[4]))
         self._refresh_count()
 

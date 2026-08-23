@@ -85,7 +85,10 @@ def test_paleta_de_clusters_nao_tem_amarelo():
 def test_badge_de_citacoes_nao_e_amarelo():
     """Contagem de citações vem da base — é o oposto de conteúdo gerado."""
     texto = (RAIZ / "ui/search_feed.py").read_text(encoding="utf-8")
-    trecho = re.search(r'text=f"★ \{cites\}".{0,120}', texto, re.S)
+    # O rótulo era `★ {cites}`; a estrela saiu junto com os outros emoji da interface. O
+    # que este teste protege não é o símbolo, é a COR: amarelo, no design system, significa
+    # "conteúdo gerado por IA", e contagem de citações é dado da base.
+    trecho = re.search(r'text=f"\{cites\} cit\.".{0,120}', texto, re.S)
     assert trecho, "o badge de citações sumiu — teste desatualizado"
     assert "#F5BE00" not in trecho.group(0) and "YELLOW" not in trecho.group(0)
 
