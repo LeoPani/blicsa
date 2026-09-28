@@ -97,3 +97,33 @@ como "SIM" (manter), embora o mapa as removesse. Agora a lista já sai sem elas.
 
 Observado e não mexido (visual): em janela de 1380 px, alguns rótulos de botão da aba
 Análises aparecem cortados ("alvar na Galer", "iankey (3 Campos").
+
+## Parte 3 — travadinhas de interface (28/09, manhã)
+
+Medido com `scripts/medir_travadas.py`: um batimento de 20 ms dentro do Tk; o maior intervalo
+entre batimentos durante uma ação é o tempo em que a janela ficou sem responder. 38 ações
+comuns × corpus de 200 e de 2000 registros, mais a abertura do projeto real de qualificação.
+
+| Ação | Antes | Depois | O que mudou |
+|---|---|---|---|
+| Abrir o projeto "Qualificação 2026 — Grace Period" | **4,9 s** congelado | 0,25 s | Estatísticas (7 redes da evolução temporal, diâmetro, caminho médio) só são calculadas quando a aba Estatísticas é aberta, e em segundo plano (T1) |
+| Revisar termos (2000 registros) | **5,4 s** | 0,25 s | Extração de termos em segundo plano; as 600 linhas são desenhadas em lotes (T2) |
+| Fechar Revisar termos (2000) | 1,8 s | 0 s | idem |
+| Revisar termos (200) | 2,5 s | 0,5 s | idem |
+| Deduplicar (2000) | 1,8 s sem aviso | 1,6 s com "Procurando duplicatas…" na barra | Aviso antes de calcular (T3) |
+
+Ações com congelamento ≥ 500 ms: **12 → 7**. As que restam são exportações e salvamento com
+2000 registros (~1 s: Excel, PNG, lote, salvar projeto) — ações explícitas em que o usuário
+espera uma pausa curta.
+
+Bônus: na revisão de termos, exclusões feitas antes em termos além dos 600 visíveis se
+perdiam ao "Aplicar"; agora são mantidas.
+
+### O erro "Error -3 while decompressing data: incorrect header check"
+
+Não é defeito do código. O `Blicsa.app` estava aberto desde 02:57 e o `dist/Blicsa.app` foi
+recompilado às 09:07 por baixo dele. O executável carrega módulos sob demanda de dentro do
+próprio pacote; ao gerar o mapa buscou o exportador num arquivo já substituído e a
+descompressão falhou. Conferido: o mapa foi calculado (registrado no histórico às 09:24:10)
+e o mesmo projeto gera o mapa sem erro fora do app antigo. **Regra: feche o Blicsa antes de
+recompilar.**

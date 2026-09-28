@@ -222,3 +222,40 @@ def test_d6_reclusterizar_importa_time():
     i = fonte.index("    def _recluster_only")
     corpo = fonte[i:fonte.index("\n    def ", i + 10)]
     assert "time.time()" not in corpo or "import time" in corpo
+
+
+# ── T1/T2: travadas de interface (medidas com scripts/medir_travadas.py) ───────
+
+def test_t1_estatisticas_so_calculam_com_a_aba_aberta(app, monkeypatch):
+    import main as M
+    import threading
+    import time
+    chamadas = []
+    original = M.BlicsaApp._compor_estatisticas
+    monkeypatch.setattr(M.BlicsaApp, "_compor_estatisticas",
+                        lambda self, *a, **k: chamadas.append(1) or original(self, *a, **k))
+    app._switch_tab("corpus")
+    _carregar_e_mapear(app)
+    app._update_stats_tab()
+    assert chamadas == [], "abrir projeto/importar não pode recalcular estatísticas fora da aba"
+    app._switch_tab("stats")
+    fim = time.time() + 30
+    while any(t.name == "stats_worker" and t.is_alive() for t in threading.enumerate()) \
+            and time.time() < fim:
+        time.sleep(0.05)
+    assert chamadas, "ao abrir a aba Estatísticas o cálculo tem de acontecer"
+
+
+def test_t2_revisar_termos_nao_congela_a_janela(app, monkeypatch):
+    import time
+    import core.term_extraction as TE
+    _carregar_e_mapear(app)
+    original = TE.extract_terms
+
+    def lento(*a, **k):
+        time.sleep(1.5)
+        return original(*a, **k)
+    monkeypatch.setattr(TE, "extract_terms", lento)
+    inicio = time.perf_counter()
+    app._open_term_review()
+    assert time.perf_counter() - inicio < 0.3, "a extração de termos voltou a rodar na tela"

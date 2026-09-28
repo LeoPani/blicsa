@@ -1082,6 +1082,8 @@ class BlicsaApp(ctk.CTk):
                 self._refresh_hist_tab()
             elif tab_key == "relatorio":
                 self._refresh_relatorio_tab()
+            elif tab_key == "stats" and getattr(self, "_stats_pendente", False):
+                self._calcular_estatisticas()
             self._tabs[tab_key].grid(row=0, column=0, sticky="nsew")
         
         for k, btn in self._nav_btns.items():
@@ -4446,16 +4448,29 @@ class BlicsaApp(ctk.CTk):
                  "abstracts": "title_abstract", "titles_abstracts": "title_abstract"}.get(
             self._field_var.get(), "keywords")
 
+        # Extração em segundo plano: em corpus grande levava segundos na thread da tela e a
+        # janela congelava ao clicar em "Revisar termos…" (auditoria 2026-09, T2).
+        df = self._dataframe
+        binaria = self._binary_count_var.get()
+        minimo = int(self._min_occ_var.get())
+        tesauro = getattr(self, "_thesaurus", None)
         self._set_busy("Extraindo termos…")
-        try:
-            resultado = extract_terms(
-                self._dataframe, fields=campo,
-                binary_count=self._binary_count_var.get(),
-                min_occurrences=int(self._min_occ_var.get()),
-                thesaurus=getattr(self, "_thesaurus", None))
-        finally:
-            self._set_idle("")
 
+        def worker():
+            try:
+                res = extract_terms(df, fields=campo, binary_count=binaria,
+                                    min_occurrences=minimo, thesaurus=tesauro)
+            except Exception as exc:
+                log.info(f"[ERRO] revisão de termos: {type(exc).__name__}: {exc}")
+                self.after(0, self._set_idle, "")
+                msg = _mensagem_para_usuario(exc, t("map.erro_generico"))
+                self.after(0, lambda m=msg: messagebox.showerror("Erro", m))
+                return
+            self.after(0, self._set_idle, "")
+            self.after(0, self._mostrar_revisao_termos, res)
+        threading.Thread(target=worker, name="term_review_worker", daemon=True).start()
+
+    def _mostrar_revisao_termos(self, resultado):
         if not resultado.terms:
             messagebox.showinfo(
                 "Nenhum termo",
@@ -4485,7 +4500,11 @@ class BlicsaApp(ctk.CTk):
 
         marcas: dict[str, ctk.BooleanVar] = {}
 
+        geracao = [0]
+
         def preencher():
+            geracao[0] += 1
+            minha = geracao[0]
             for w in lista.winfo_children():
                 w.destroy()
             termos = list(resultado.terms)
@@ -4503,18 +4522,30 @@ class BlicsaApp(ctk.CTk):
                 ctk.CTkLabel(cabecalho, text=texto, width=largura, anchor="w",
                              font=ctk.CTkFont(size=11, weight="bold")).pack(side="left")
 
-            for info in termos[:600]:      # a UI mostra os 600 primeiros; a exclusão vale p/ todos
-                linha = ctk.CTkFrame(lista, fg_color="transparent")
-                linha.pack(fill="x")
-                var = marcas.setdefault(
+            # Linhas desenhadas em lotes: são até 600 linhas × 4 widgets, e desenhar tudo de
+            # uma vez congelava a janela por segundos (T2). A lista aparece na hora e vai se
+            # completando; reordenar no meio cancela o desenho anterior.
+            visiveis = termos[:600]    # a UI mostra os 600 primeiros; a exclusão vale p/ todos
+            for info in termos:
+                marcas.setdefault(
                     info.term, ctk.BooleanVar(value=info.term not in self._excluded_terms))
-                ctk.CTkCheckBox(linha, text="", variable=var, width=60,
-                                fg_color=ACCENT, hover_color=ACCENT_HOV).pack(side="left")
-                ctk.CTkLabel(linha, text=info.term, width=300, anchor="w").pack(side="left")
-                ctk.CTkLabel(linha, text=str(info.occurrences), width=70,
-                             anchor="w").pack(side="left")
-                ctk.CTkLabel(linha, text=f"{info.relevance:.2f}", width=70,
-                             anchor="w").pack(side="left")
+
+            def lote(inicio=0, tamanho=25):
+                if minha != geracao[0] or not win.winfo_exists():
+                    return
+                for info in visiveis[inicio:inicio + tamanho]:
+                    linha = ctk.CTkFrame(lista, fg_color="transparent")
+                    linha.pack(fill="x")
+                    ctk.CTkCheckBox(linha, text="", variable=marcas[info.term], width=60,
+                                    fg_color=ACCENT, hover_color=ACCENT_HOV).pack(side="left")
+                    ctk.CTkLabel(linha, text=info.term, width=300, anchor="w").pack(side="left")
+                    ctk.CTkLabel(linha, text=str(info.occurrences), width=70,
+                                 anchor="w").pack(side="left")
+                    ctk.CTkLabel(linha, text=f"{info.relevance:.2f}", width=70,
+                                 anchor="w").pack(side="left")
+                if inicio + tamanho < len(visiveis):
+                    win.after(1, lote, inicio + tamanho, tamanho)
+            lote()
 
         ord_f = ctk.CTkFrame(cab, fg_color="transparent")
         ord_f.pack(side="right")
@@ -4555,10 +4586,14 @@ class BlicsaApp(ctk.CTk):
         if map_type == MAP_TYPES[0] and self._candidate_counts:
             min_occ = self._min_occ_var.get()
             field   = self._field_var.get()
+            # A lista de revisão já sai sem as stopwords extras: antes elas apareciam como
+            # "SIM" (manter), embora o mapa as removesse — o usuário via uma coisa e recebia
+            # outra (D3, conferido no app real).
+            _sw = {w.strip().lower() for w in self._extra_sw_var.get().split(",") if w.strip()}
             terms_data = [
                 (term, count, 0, self._candidate_scores.get(term, 0.0))
                 for term, count in self._candidate_counts.items()
-                if count >= min_occ
+                if count >= min_occ and str(term).strip().lower() not in _sw
             ]
             # Acrescenta a frequência documental (doc_freq).
             from core.matrix_builders import _extract_term_lists
@@ -6527,8 +6562,17 @@ class BlicsaApp(ctk.CTk):
             messagebox.showwarning("Sem dados", "Carregue um corpus primeiro.")
             return
         log.info("[Dedup] Procurando duplicatas…")
+        # Em corpus grande leva 1–2 s: avisar ANTES, senão parece travado (T3).
+        self._set_busy("Procurando duplicatas…")
+        try:
+            self.update_idletasks()
+        except Exception:
+            pass
         df    = self._dataframe
-        dupes = find_duplicates(df, title_threshold=0.93)
+        try:
+            dupes = find_duplicates(df, title_threshold=0.93)
+        finally:
+            self._set_idle("")
         if not dupes:
             messagebox.showinfo("Blicsa", t("dedup.none"))
             log.info("[Dedup] Nenhuma duplicata.\n")
@@ -6824,8 +6868,58 @@ class BlicsaApp(ctk.CTk):
         return frame
 
     def _update_stats_tab(self):
+        """Atualiza a aba Estatísticas sem congelar a janela.
+
+        O texto inclui a evolução temporal (uma rede por período), diâmetro e caminho médio:
+        num corpus de qualificação isso levava ~5 s, e rodava na thread da tela a cada projeto
+        aberto e a cada importação — a janela ficava sem responder (auditoria 2026-09, T1).
+        Agora o cálculo roda em segundo plano e só a escrita do texto volta para a tela. O
+        conteúdo é o mesmo de antes.
+        """
         if self._dataframe is None:
             return
+        if not hasattr(self, "after"):          # uso direto (testes): síncrono, como antes
+            BlicsaApp._escrever_estatisticas(self, BlicsaApp._compor_estatisticas(self))
+            return
+        # Só calcula quando a aba Estatísticas está (ou for) aberta. Ao abrir um projeto de
+        # qualificação o cálculo recriava 7 redes (uma com 63 mil arestas) e, mesmo em segundo
+        # plano, disputava o processador com a tela por ~5 s (T1).
+        self._stats_pendente = True
+        if getattr(self, "_current_tab_key", None) == "stats":
+            self._calcular_estatisticas()
+
+    def _calcular_estatisticas(self):
+        if self._dataframe is None:
+            return
+        self._stats_pendente = False
+        self._stats_geracao = getattr(self, "_stats_geracao", 0) + 1
+        geracao = self._stats_geracao
+        campo = self._field_var.get() if hasattr(self, "_field_var") else "keywords"
+
+        def worker():
+            try:
+                linhas = self._compor_estatisticas(campo)
+            except Exception as exc:
+                log.info(f"[Estatísticas] falhou: {type(exc).__name__}: {exc}")
+                return
+            if geracao == getattr(self, "_stats_geracao", geracao):   # descarta resultado velho
+                try:
+                    self.after(0, self._escrever_estatisticas, linhas)
+                except RuntimeError:
+                    pass
+        threading.Thread(target=worker, name="stats_worker", daemon=True).start()
+
+    def _escrever_estatisticas(self, lines):
+        if lines is None:
+            return
+        self._stats_box.configure(state="normal")
+        self._stats_box.delete("1.0", "end")
+        self._stats_box.insert("end", "\n".join(lines))
+        self._stats_box.configure(state="disabled")
+
+    def _compor_estatisticas(self, campo: str | None = None) -> list[str] | None:
+        if self._dataframe is None:
+            return None
         df = self._dataframe
         lines: list[str] = []
 
@@ -7027,10 +7121,11 @@ class BlicsaApp(ctk.CTk):
 
         if self._generator is not None:
             try:
-                field = self._field_var.get() if hasattr(self, "_field_var") else "keywords"
+                field = campo or (self._field_var.get() if hasattr(self, "_field_var")
+                                  else "keywords")
                 evolution = self._generator.get_temporal_evolution(
                     period_size=5, field=field,
-                    min_occurrence=2, thesaurus=self._thesaurus,
+                    min_occurrence=2, thesaurus=getattr(self, "_thesaurus", None),
                 )
                 if evolution:
                     lines.append("")
@@ -7052,10 +7147,7 @@ class BlicsaApp(ctk.CTk):
         lines.append("")
         lines.append("═" * 60)
 
-        self._stats_box.configure(state="normal")
-        self._stats_box.delete("1.0", "end")
-        self._stats_box.insert("end", "\n".join(lines))
-        self._stats_box.configure(state="disabled")
+        return lines
     def _build_tab_analises(self) -> ctk.CTkFrame:
         f = self._tab()
         f.grid_columnconfigure(0, weight=1)
