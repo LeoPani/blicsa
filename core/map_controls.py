@@ -360,3 +360,37 @@ def build_legend(query: str, documents: int, period: str, method: str, date: str
     """Monta a legenda obrigatória dos exports."""
     return {"query": query or "—", "documents": int(documents or 0),
             "period": period or "—", "method": method or "—", "date": date or "—"}
+
+
+# ── Viabilidade de cada tipo de mapa para o corpus (auditoria 2026-09, M2) ──────────
+# Numa matriz de 350 combinações nos projetos reais, três dos sete tipos NUNCA geravam
+# mapa com dados do OpenAlex (citação direta, IPC, embeddings) e o usuário só descobria
+# depois de clicar. Esta função diz ANTES, com o motivo. Devolve chave de catálogo ou None.
+
+def _preenchidos(df, coluna: str) -> int:
+    if df is None or coluna not in df.columns:
+        return 0
+    serie = df[coluna].astype(str).str.strip()
+    return int((~serie.isin(["", "nan", "None", "[]"])).sum())
+
+
+def viabilidade_tipo(indice: int, df) -> str | None:
+    """Chave de catálogo explicando por que o tipo `indice` (posição em MAP_TYPES) não pode
+    gerar mapa com este corpus, ou None se pode."""
+    if df is None or len(df) == 0:
+        return None                      # sem corpus o fluxo normal já avisa
+    if indice == 1 and _preenchidos(df, "authors") < 2:
+        return "map.inviavel_sem_autores"
+    if indice in (2, 3, 4) and _preenchidos(df, "references") < 2:
+        return "map.inviavel_sem_referencias"
+    if indice == 4:
+        refs = df["references"].astype(str).str.strip()
+        refs = refs[~refs.isin(["", "nan", "None", "[]"])]   # só quem tem referência conta
+        so_openalex = len(refs) > 0 and refs.str.contains("openalex.org/W", regex=False).mean() > 0.5
+        if so_openalex and _preenchidos(df, "openalex_id") < 2:
+            return "map.inviavel_citdir_openalex"
+    if indice == 5 and max(_preenchidos(df, "ipc"), _preenchidos(df, "classification")) < 1:
+        return "map.inviavel_sem_ipc"
+    if indice == 6:
+        return "map.inviavel_embeddings"
+    return None

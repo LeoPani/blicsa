@@ -142,3 +142,44 @@ recompilar.**
 
 Suíte completa: **1.358 passam**; as 5 falhas restantes são as de janela no Linux sem tela,
 presentes antes da auditoria.
+
+## Parte 5 — fluxo de mapas (28/09, tarde)
+
+Motivação: "frequentemente não consigo gerar o mapa". Rodei a matriz completa — 7 tipos de mapa
+(coocorrência em 4 campos) × limiar 1, 2, 3, 5, 10 × 4 projetos reais de qualificação = 200
+combinações, direto pelo worker do app.
+
+| | Antes | Depois |
+|---|---|---|
+| Combinações que terminaram | 175 de 200 (cocitação travava a matriz) | 200 de 200 |
+| Mapa gerado | 114 | 150 |
+| Sem mapa, descoberto só depois de clicar | 61 | 0 |
+| Tipo que não serve para o corpus, avisado **antes** de clicar | 0 | 45 (IPC sem patentes, semântico, citação direta sem ID) |
+| Sem mapa, com a causa real explicada | 0 | 5 (nenhum artigo do corpus cita outro) |
+| Mais lento | cocitação limiar 1: 196–300 s | 3,8 s |
+
+O que mudou (nenhum tipo de mapa removido, nenhum parâmetro com outro significado):
+
+- **Limite de nós vale para todos os tipos.** Cocitação e acoplamento ignoravam "Máx. Nós" e
+  montavam redes de milhares de referências — era isso que travava. O rótulo agora diz
+  "Máx. Nós (itens; 0=∞)".
+- **Aviso antes de clicar** (`viabilidade_tipo` em `core/map_controls.py`): ao escolher um tipo que
+  o corpus não sustenta, aparece em vermelho, embaixo do seletor, o motivo e o que fazer.
+- **O limiar muda de nome conforme o tipo**: "ocorrências mínimas do termo", "publicações mínimas
+  por autor", "cocitações mínimas do par"… — era um rótulo só para sete significados.
+- **Limiar alto demais não deixa ninguém sem mapa**: o Blicsa reduz pela metade até aparecer algo,
+  avisa ("com o mínimo 10 nenhum item passou; usei 2") e o controle passa a mostrar o valor usado.
+- **Citação direta com corpus do OpenAlex**: as referências do OpenAlex são IDs, não DOIs, e o
+  construtor só casava por DOI ou sobrenome+ano — nunca gerava. Agora casa pelo `openalex_id`.
+  No projeto PatentBERT: 99 artigos, 151 citações internas.
+- **Mapa vazio explica a causa certa**: "reduza a frequência mínima" não aparece mais quando o
+  mínimo já é 1 nem na citação direta sem citações internas.
+- Rótulos de referência do OpenAlex encurtados ("W2741809807" em vez da URL inteira).
+- Bug de teste: um teste gravava o idioma "fr" nas preferências reais — rodar a suíte no Mac
+  trocava o Blicsa para francês. Os testes agora usam preferências isoladas.
+- `tk.eval` com texto formatado (sinalizado pelo teste de segurança) trocado por `tk.call`.
+
+Fica para a camada 3 (precisa de internet; prompt em `docs/PROMPT-MAPAS-CAMADA3.md`):
+completar `openalex_id` em projetos antigos, mostrar referências como "Sobrenome (ano)" e
+agrupar o seletor de tipos por pergunta ("Sobre o que se escreve? / Quem escreve com quem? /
+Em que o campo se apoia?").

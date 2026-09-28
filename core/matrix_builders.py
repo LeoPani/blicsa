@@ -83,6 +83,22 @@ def _apply_clustering(G: nx.Graph, algorithm: str = "louvain", resolution: float
     return partition
 
 
+def _id_openalex(valor) -> str:
+    """'https://openalex.org/W123' ou 'W123' → 'W123'; qualquer outra coisa → ''."""
+    m = re.search(r"(?:openalex\.org/)?\b(W\d+)\b", str(valor or "").strip(), re.IGNORECASE)
+    return m.group(1).upper() if m else ""
+
+
+def _rotulo_ref(ref: str) -> str:
+    """Rótulo curto de uma referência. As do OpenAlex chegam como URL
+    (`https://openalex.org/W1496449353`), que como rótulo ocupava o mapa inteiro; fica só o
+    identificador. Resolver para "Autor (ano)" exige a API — fica para quando houver rede."""
+    ref = str(ref)
+    if ref.startswith(("https://openalex.org/", "http://openalex.org/")):
+        return ref.rsplit("/", 1)[-1]
+    return ref[:40]
+
+
 def _ceder():
     """Cede a vez à janela quando o cálculo roda numa thread de trabalho.
 
@@ -444,6 +460,22 @@ class NetworkGenerator:
     # ------------------------------------------------------------------ #
     #  Co-authorship                                                        #
     # ------------------------------------------------------------------ #
+    def _limitar_nos(self, max_nodes: int) -> int:
+        """Mantém só os `max_nodes` nós mais conectados (grau ponderado; desempate por nome).
+
+        Cocitação, acoplamento, citação direta e IPC não respeitavam "Máx. nós": com
+        frequência mínima 1, a cocitação de 255 artigos gerava 3.267 nós e 90 mil arestas e
+        levava ~5 min para agrupar e desenhar (auditoria 2026-09, M1). O corte acontece antes
+        do agrupamento. Devolve quantos nós foram removidos.
+        """
+        if max_nodes <= 0 or self.G.number_of_nodes() <= max_nodes:
+            return 0
+        ranked = sorted(self.G, key=lambda n: (-self.G.degree(n, weight="weight"),
+                                               str(n).casefold()))
+        fora = ranked[max_nodes:]
+        self.G.remove_nodes_from(fora)
+        return len(fora)
+
     def build_coauthorship_network(
         self,
         min_publications: int = 2,
@@ -499,7 +531,7 @@ class NetworkGenerator:
     # ------------------------------------------------------------------ #
     #  Co-citation                                                          #
     # ------------------------------------------------------------------ #
-    def build_cocitation_network(self, min_cocitations: int = 2) -> nx.Graph:
+    def build_cocitation_network(self, min_cocitations: int = 2, max_nodes: int = 0) -> nx.Graph:
         self.G.clear()
         ref_col = self._find_ref_col()
 
@@ -521,7 +553,7 @@ class NetworkGenerator:
         valid_pairs = {pair: w for pair, w in cooc.items() if w >= min_cocitations}
 
         for (a, b) in valid_pairs:
-            for node, label in ((a, a[:40]), (b, b[:40])):
+            for node, label in ((a, _rotulo_ref(a)), (b, _rotulo_ref(b))):
                 if node not in self.G:
                     self.G.add_node(
                         node,
@@ -532,6 +564,7 @@ class NetworkGenerator:
             self.G.add_edge(a, b, weight=valid_pairs[(a, b)],
                             title=f"Co-citações: {valid_pairs[(a, b)]}")
 
+        self._limitar_nos(max_nodes)
         partition = self.apply_clustering()
         self.compute_overlay_scores()
         return self.G
@@ -539,7 +572,7 @@ class NetworkGenerator:
     # ------------------------------------------------------------------ #
     #  Bibliographic Coupling                                              #
     # ------------------------------------------------------------------ #
-    def build_bibliographic_coupling(self, min_shared_refs: int = 2) -> nx.Graph:
+    def build_bibliographic_coupling(self, min_shared_refs: int = 2, max_nodes: int = 0) -> nx.Graph:
         """Nodes = papers; edges = number of shared cited references."""
         self.G.clear()
         ref_col = self._find_ref_col()
@@ -581,6 +614,7 @@ class NetworkGenerator:
             deg = self.G.degree(n, weight="weight")
             self.G.nodes[n]["size"] = int(8 + deg * 0.5)
 
+        self._limitar_nos(max_nodes)
         partition = self.apply_clustering()
         self.compute_overlay_scores()
         return self.G
@@ -600,7 +634,7 @@ class NetworkGenerator:
     # ------------------------------------------------------------------ #
     #  Direct citation (paper → paper)                                    #
     # ------------------------------------------------------------------ #
-    def build_direct_citation_network(self, min_citations: int = 1) -> nx.Graph:
+    def build_direct_citation_network(self, min_citations: int = 1, max_nodes: int = 0) -> nx.Graph:
         """Nodes = papers; edges = A cites B (matched by DOI or author+year).
 
         Works best with Crossref/OpenAlex data that carry reference DOIs.
@@ -611,6 +645,11 @@ class NetworkGenerator:
         # Build lookup: doi → label  AND  (surname, year) → label
         doi_map:   dict[str, str] = {}
         fuzzy_map: dict[tuple, str] = {}
+        # OpenAlex: as referências são IDs (https://openalex.org/W…), não DOIs. Sem casar pelo
+        # ID, um corpus do OpenAlex nunca gerava citação direta, mesmo com dezenas de artigos
+        # do corpus citando uns aos outros.
+        oa_map:    dict[str, str] = {}
+        row_labels: list[str] = []
         labels_used: set[str] = set()
 
         for _, row in self.df.iterrows():
@@ -626,7 +665,11 @@ class NetworkGenerator:
                 label = f"{base} #{suffix}"
                 suffix += 1
             labels_used.add(label)
+            row_labels.append(label)
 
+            oa = _id_openalex(row.get("openalex_id", ""))
+            if oa:
+                oa_map[oa] = label
             if doi:
                 doi_map[doi] = label
             if surname and yr:
@@ -634,6 +677,9 @@ class NetworkGenerator:
 
         def _resolve_ref(ref_text: str) -> str | None:
             ref_text = ref_text.strip()
+            oa = _id_openalex(ref_text)
+            if oa and oa in oa_map:
+                return oa_map[oa]
             # DOI match
             doi_candidate = ref_text.lower().replace("https://doi.org/", "")
             if doi_candidate in doi_map:
@@ -649,15 +695,9 @@ class NetworkGenerator:
         cite_counts: Counter = Counter()
         label_lookup: dict[str, str] = {}
 
-        for _, row in self.df.iterrows():
-            doi = str(row.get("doi", "") or "").strip().lower().replace("https://doi.org/", "")
-            yr  = int(row.get("year", 0) or 0)
-            raw_auth = str(row.get("authors", "") or "")
-            surname = raw_auth.split(";")[0].split(",")[0].strip().lower()
-
-            citing_label = doi_map.get(doi) or fuzzy_map.get((surname, yr))
-            if not citing_label:
-                continue
+        for (_, row), citing_label in zip(self.df.iterrows(), row_labels):
+            # O rótulo de quem cita é o da própria linha: buscá-lo de novo por DOI ou
+            # sobrenome+ano perdia artigos sem DOI e confundia homônimos do mesmo ano.
 
             refs_raw = str(row.get("references", "") or "")
             for ref in refs_raw.split(";"):
@@ -676,6 +716,7 @@ class NetworkGenerator:
         for n in self.G.nodes():
             self.G.nodes[n]["size"] = int(8 + self.G.degree(n, weight="weight") * 1.5)
 
+        self._limitar_nos(max_nodes)
         partition = self.apply_clustering()
         self.compute_overlay_scores()
         print(f"[Citação Direta] {self.G.number_of_nodes()} nós · {self.G.number_of_edges()} arestas\n")
@@ -684,7 +725,7 @@ class NetworkGenerator:
     # ------------------------------------------------------------------ #
     #  IPC co-classification (patents)                                     #
     # ------------------------------------------------------------------ #
-    def build_ipc_cooccurrence(self, min_occurrence: int = 2) -> nx.Graph:
+    def build_ipc_cooccurrence(self, min_occurrence: int = 2, max_nodes: int = 0) -> nx.Graph:
         """Nodes = IPC codes (truncated to 4 chars = subclass level);
         edges = co-occurrence in same patent.
         Requires 'ipc' column with semicolon-separated codes.
@@ -730,6 +771,7 @@ class NetworkGenerator:
         for (a, b), w in cooc.items():
             self.G.add_edge(a, b, weight=w, title=f"Co-ocorrências: {w}")
 
+        self._limitar_nos(max_nodes)
         partition = self.apply_clustering()
         self.compute_overlay_scores()
         print(f"[IPC] {self.G.number_of_nodes()} códigos · {self.G.number_of_edges()} arestas\n")

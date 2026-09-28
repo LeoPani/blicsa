@@ -10,7 +10,7 @@ import re
 #: no rodapé e na janela Sobre, `0.9.0` no CHANGELOG e `2.0-upgrade` no CITATION.cff — e o
 #: `v3.0` não correspondia a nenhuma versão que tivesse existido. Ele aparecia nas capturas
 #: de tela da documentação.
-__version__ = "2.1.0-beta.2"
+__version__ = "2.1.0-beta.3"
 
 try:
     if os.path.exists(".env"):
@@ -889,7 +889,7 @@ class BlicsaApp(ctk.CTk):
         dlg.resizable(False, False)
         dlg.bind("<Escape>", lambda _e: dlg.destroy())
         try:
-            dlg.tk.eval('tk::PlaceWindow %s center' % dlg)
+            dlg.tk.call("tk::PlaceWindow", str(dlg), "center")
         except Exception:
             pass
         return dlg
@@ -2310,7 +2310,12 @@ class BlicsaApp(ctk.CTk):
         lbl_tipo = ctk.CTkLabel(sc, text="Tipo de Mapa:", font=ctk.CTkFont(size=11, weight="bold"))
         lbl_tipo.pack(anchor="w", padx=10, pady=(8, 2))
         HoverTooltip(lbl_tipo, "O tipo de rede a ser construída.\n- Coocorrência: Itens que aparecem juntos no mesmo artigo.\n- Coautoria: Autores que publicam juntos.\n- Cocitação: Duas referências citadas pelo mesmo artigo.\n- Acoplamento: Artigos que citam as mesmas referências.")
-        ctk.CTkComboBox(sc, values=MAP_TYPES, variable=self._map_type_var, height=28, button_color=ACCENT, border_color=ACCENT).pack(fill="x", padx=10, pady=(0, 6))
+        self._tipo_combo = ctk.CTkComboBox(sc, values=MAP_TYPES, variable=self._map_type_var, height=28, button_color=ACCENT, border_color=ACCENT,
+                        command=lambda _v: self._atualizar_tipo_de_mapa())
+        self._tipo_combo.pack(fill="x", padx=10, pady=(0, 6))
+        # Aviso ANTES de clicar quando o corpus não tem os dados que o tipo exige (M2).
+        self._aviso_tipo_lbl = ctk.CTkLabel(sc, text="", font=ctk.CTkFont(size=11), text_color=RED,
+                                            wraplength=240, justify="left", anchor="w")
         
         # 2. Campo
         lbl_campo = ctk.CTkLabel(sc, text="Campo:", font=ctk.CTkFont(size=11, weight="bold"))
@@ -2342,6 +2347,7 @@ class BlicsaApp(ctk.CTk):
         lbl_freq = ctk.CTkLabel(sc, text=t("map.filter_min_frequency_label"),
                                 font=ctk.CTkFont(size=11, weight="bold"))
         lbl_freq.pack(anchor="w", padx=10, pady=(4, 2))
+        self._lbl_freq = lbl_freq
         HoverTooltip(lbl_freq, t("map.filter_min_frequency_help"))
         occ_f = ctk.CTkFrame(sc, fg_color="transparent")
         occ_f.pack(fill="x", padx=10, pady=(0, 6))
@@ -4372,6 +4378,10 @@ class BlicsaApp(ctk.CTk):
 
     # ── Threshold preview ──────────────────────────────────────────────
     def _refresh_candidate_counts(self):
+        try:
+            self._atualizar_tipo_de_mapa()      # o corpus mudou: reavaliar o aviso do tipo (M2)
+        except Exception:
+            pass
         if self._dataframe is None:
             return
         # Começa depois que a tela termina de se desenhar. A contagem é Python puro e, rodando
@@ -4580,6 +4590,35 @@ class BlicsaApp(ctk.CTk):
 
         preencher()
 
+    def _indice_tipo_de_mapa(self) -> int:
+        try:
+            return MAP_TYPES.index(self._map_type_var.get())
+        except ValueError:
+            return 0
+
+    def _atualizar_tipo_de_mapa(self):
+        """Rótulo do limiar conforme o tipo, e aviso quando o corpus não serve para ele (M2).
+
+        O mesmo controle significava "ocorrências do termo", "publicações por autor",
+        "cocitações do par"… com um rótulo só. E o usuário só descobria que o tipo não
+        funcionava com o corpus depois de clicar em Gerar Mapa.
+        """
+        indice = self._indice_tipo_de_mapa()
+        if getattr(self, "_lbl_freq", None) is not None:
+            self._lbl_freq.configure(text=t(f"map.min_label.{indice}"))
+        aviso = getattr(self, "_aviso_tipo_lbl", None)
+        if aviso is None:
+            return
+        from core.map_controls import viabilidade_tipo
+        motivo = viabilidade_tipo(indice, self._dataframe)
+        if motivo:
+            aviso.configure(text=t(motivo))
+            if not aviso.winfo_ismapped():
+                aviso.pack(anchor="w", fill="x", padx=10, pady=(0, 6), after=self._tipo_combo)
+        else:
+            aviso.configure(text="")
+            aviso.pack_forget()
+
     def _on_field_change(self):
         self._refresh_candidate_counts()
 
@@ -4587,6 +4626,11 @@ class BlicsaApp(ctk.CTk):
     def _run_mapping(self):
         if self._dataframe is None:
             messagebox.showwarning("Sem dados", "Carregue um arquivo na aba Importação.")
+            return
+        from core.map_controls import viabilidade_tipo
+        motivo = viabilidade_tipo(self._indice_tipo_de_mapa(), self._dataframe)
+        if motivo:
+            messagebox.showwarning(t("map.inviavel_titulo"), t(motivo))
             return
 
         map_type = self._map_type_var.get()
@@ -4716,67 +4760,102 @@ class BlicsaApp(ctk.CTk):
                 except ValueError:
                     pass
 
-            gen      = NetworkGenerator(df)
-            gen.clustering_algorithm = self._cluster_alg_var.get()
-            gen.clustering_resolution = self._cluster_res_var.get()
             min_occ  = self._min_occ_var.get()
             field    = self._field_var.get()
             counting = self._counting_var.get()
             strength = self._assoc_var.get()
+            algoritmo = self._cluster_alg_var.get()
+            resolucao = self._cluster_res_var.get()
+            podar_isolados = self._prune_isolated_var.get()
+            maior_componente = self._prune_largest_var.get()
 
-            if map_type == MAP_TYPES[0]:
-                gen.build_keyword_cooccurrence(
-                    min_occurrence=min_occ,
-                    counting_method=counting,
-                    normalize_strength=strength,
-                    field=field,
-                    thesaurus=self._thesaurus,
-                    max_nodes=max_nodes,
-                    allowed_terms=allowed_terms,
-                    extra_stop_words=extra_sw,
-                )
-            elif map_type == MAP_TYPES[1]:
-                gen.build_coauthorship_network(
-                    min_publications=min_occ,
-                    counting_method=counting,
-                    max_nodes=max_nodes,
-                )
-            elif map_type == MAP_TYPES[2]:
-                gen.build_cocitation_network(min_cocitations=min_occ)
-            elif map_type == MAP_TYPES[3]:
-                gen.build_bibliographic_coupling(min_shared_refs=max(min_occ, 2))
-            elif map_type == MAP_TYPES[4]:
-                gen.build_direct_citation_network(min_citations=max(min_occ, 1))
-            elif map_type == MAP_TYPES[5]:
-                gen.build_ipc_cooccurrence(min_occurrence=min_occ)
-            else:
-                # "Agrupamento Semântico (Embeddings)" não tem construtor; antes caía no
-                # `else` e gerava, sem aviso, um mapa de IPC de patentes (B6).
-                raise ErroParaUsuario(
-                    f"O tipo de mapa \"{map_type}\" ainda não está disponível nesta versão.\n"
-                    "Escolha outro tipo de mapa (por exemplo, Coocorrência de Palavras-chave).")
+            def construir(limiar):
+                gen = NetworkGenerator(df)
+                gen.clustering_algorithm = algoritmo
+                gen.clustering_resolution = resolucao
+                if map_type == MAP_TYPES[0]:
+                    gen.build_keyword_cooccurrence(
+                        min_occurrence=limiar,
+                        counting_method=counting,
+                        normalize_strength=strength,
+                        field=field,
+                        thesaurus=self._thesaurus,
+                        max_nodes=max_nodes,
+                        allowed_terms=allowed_terms,
+                        extra_stop_words=extra_sw,
+                    )
+                elif map_type == MAP_TYPES[1]:
+                    gen.build_coauthorship_network(
+                        min_publications=limiar,
+                        counting_method=counting,
+                        max_nodes=max_nodes,
+                    )
+                elif map_type == MAP_TYPES[2]:
+                    gen.build_cocitation_network(min_cocitations=limiar, max_nodes=max_nodes)
+                elif map_type == MAP_TYPES[3]:
+                    gen.build_bibliographic_coupling(min_shared_refs=max(limiar, 2), max_nodes=max_nodes)
+                elif map_type == MAP_TYPES[4]:
+                    gen.build_direct_citation_network(min_citations=max(limiar, 1), max_nodes=max_nodes)
+                elif map_type == MAP_TYPES[5]:
+                    gen.build_ipc_cooccurrence(min_occurrence=limiar, max_nodes=max_nodes)
+                else:
+                    # "Agrupamento Semântico (Embeddings)" não tem construtor; antes caía no
+                    # `else` e gerava, sem aviso, um mapa de IPC de patentes (B6).
+                    raise ErroParaUsuario(
+                        f"O tipo de mapa \"{map_type}\" ainda não está disponível nesta versão.\n"
+                        "Escolha outro tipo de mapa (por exemplo, Coocorrência de Palavras-chave).")
 
-            # Network pruning
-            from core.map_controls import prune_network
-            n_isolated, n_component = prune_network(
-                gen.G,
-                remove_isolated=self._prune_isolated_var.get(),
-                largest_component=self._prune_largest_var.get(),
-            )
-            if n_isolated:
-                log.info(f"[Pruning] {n_isolated} nó(s) isolado(s) removido(s)\n")
-            if n_component:
-                log.info(f"[Pruning] Mantendo maior componente: "
-                         f"{gen.G.number_of_nodes()} nós\n")
+                # Network pruning
+                from core.map_controls import prune_network
+                n_isolated, n_component = prune_network(
+                    gen.G,
+                    remove_isolated=podar_isolados,
+                    largest_component=maior_componente,
+                )
+                if n_isolated:
+                    log.info(f"[Pruning] {n_isolated} nó(s) isolado(s) removido(s)\n")
+                if n_component:
+                    log.info(f"[Pruning] Mantendo maior componente: "
+                             f"{gen.G.number_of_nodes()} nós\n")
+                return gen
+
+            gen = construir(min_occ)
+            # Fluxo permissivo (M3): se o limiar zerou o mapa, tenta limiares menores (metade
+            # a cada passo: no máximo ~6 tentativas) e avisa qual usou. Antes o usuário recebia
+            # "Nenhum item passou pelos filtros" e tinha de adivinhar o número certo.
+            limiar_usado = min_occ
+            while gen.G.number_of_nodes() == 0 and limiar_usado > 1:
+                limiar_usado = max(1, limiar_usado // 2)
+                log.info(f"[Mapa] Mapa vazio; tentando limiar {limiar_usado}\n")
+                gen = construir(limiar_usado)
 
             if gen.G.number_of_nodes() == 0:
-                key = "map.warn_empty_coauth" if map_type == MAP_TYPES[1] else "map.warn_empty_network"
+                # Mensagem conforme a causa: "reduza a frequência mínima" não ajuda quando o
+                # Blicsa já tentou o mínimo 1, nem na citação direta, que depende de artigos do
+                # corpus citarem uns aos outros.
+                if map_type == MAP_TYPES[4]:
+                    key = "map.warn_empty_citdir"
+                elif limiar_usado <= 1:
+                    key = "map.warn_empty_mesmo_com_1"
+                else:
+                    key = "map.warn_empty_coauth" if map_type == MAP_TYPES[1] else "map.warn_empty_network"
                 detail = t(key, minimum=min_occ)
                 log.info(f"[Mapa] {detail}\n")
                 self.after(0, self._set_idle, t("map.warn_empty_title"))
                 self.after(0, lambda msg=detail: messagebox.showwarning(
                     t("map.warn_empty_title"), msg))
                 return
+
+            if limiar_usado != min_occ:
+                aviso_limiar = t("map.limiar_ajustado", pedido=min_occ, usado=limiar_usado)
+                log.info(f"[Mapa] {aviso_limiar}\n")
+
+                def _mostrar_limiar(v=limiar_usado, msg=aviso_limiar):
+                    self._min_occ_var.set(v)
+                    if getattr(self, "_occ_lbl", None) is not None:
+                        self._occ_lbl.configure(text=str(v))
+                    messagebox.showinfo(t("map.warn_empty_title"), msg)
+                self.after(0, _mostrar_limiar)
 
             self._generator = gen
             self._graph = gen.G
@@ -4794,7 +4873,7 @@ class BlicsaApp(ctk.CTk):
                 "tipo": self._map_type_var.get(),
                 "params": {"field": self._field_var.get(),
                            "counting": self._counting_var.get(),
-                           "min_occ": self._min_occ_var.get(),
+                           "min_occ": limiar_usado,
                            "cluster_algorithm": self._cluster_alg_var.get()},
                 "nos": stats.get("total_nodes", 0),
                 "arestas": stats.get("total_edges", 0),

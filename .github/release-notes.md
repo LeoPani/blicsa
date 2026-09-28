@@ -1,7 +1,7 @@
 **Blicsa** é um aplicativo de desktop para análise bibliométrica: buscar literatura, montar um
 corpus, gerar mapas de conhecimento e extrair estatísticas — tudo na sua máquina.
 
-Esta é a versão pública de testes **Blicsa Beta 2.1.0-beta.2**. Ela reúne as melhorias
+Esta é a versão pública de testes **Blicsa Beta 2.1.0-beta.3**. Ela reúne as melhorias
 desenvolvidas depois do snapshot estável 2.0.0. Comece pela
 **[documentação](../../blob/main/docs/index.md)**.
 
@@ -25,7 +25,17 @@ Confira o download com o `SHA256SUMS.txt` anexado:
 sha256sum -c SHA256SUMS.txt
 ```
 
-## Novo nesta versão (beta.2)
+## Novo nesta versão (beta.3)
+
+Mapas mais fáceis de gerar. Nenhum tipo de mapa foi removido.
+
+- **Cocitação e acoplamento não travam mais**: respeitam o limite de nós (antes, até 5 minutos).
+- **Citação direta funciona com dados do OpenAlex.**
+- **O Blicsa avisa antes de você clicar** quando o tipo de mapa não serve para o seu corpus, e diz por quê.
+- **Limiar alto demais não deixa ninguém sem mapa**: o Blicsa reduz, avisa e mostra o valor usado.
+- **O controle de limiar diz o que ele conta** em cada tipo de mapa (termos, autores, pares de referências…).
+
+## Da versão anterior (beta.2)
 
 Correções de uma auditoria completa, com testes simulando o usuário que faz tudo errado.
 Nenhuma funcionalidade foi removida ou mudou de comportamento.

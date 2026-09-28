@@ -2,6 +2,21 @@
 
 All notable changes to this project will be documented in this file.
 
+## [2.1.0-beta.3] - 2026-09-28
+
+Fluxo de mapas mais permissivo — só correções, nenhum tipo de mapa removido.
+Matriz de 200 combinações em projetos reais: de 114 para 150 mapas gerados; nenhum tipo inviável
+descoberto só depois de clicar. Detalhes em [`docs/AUDITORIA-2026-09.md`](docs/AUDITORIA-2026-09.md) (Parte 5).
+
+### Corrigido
+- Cocitação e acoplamento ignoravam o limite de nós e travavam por minutos (até 300 s) em corpus reais.
+- Citação direta nunca gerava mapa com corpus do OpenAlex (referências são IDs, não DOIs).
+- Limiar alto demais deixava o usuário sem mapa; agora é reduzido com aviso.
+- Tipo de mapa que o corpus não sustenta (IPC sem patentes, semântico, citação direta sem ID) só era descoberto depois de clicar.
+- Mensagem de mapa vazio mandava "reduzir a frequência mínima" mesmo quando ela já era 1.
+- Rótulo do limiar era o mesmo para os sete tipos; referências do OpenAlex apareciam como URL inteira.
+- Rodar os testes gravava o idioma francês nas preferências reais do usuário.
+
 ## [2.1.0-beta.2] - 2026-09-28
 
 Auditoria de setembro de 2026 — só correções, nenhuma funcionalidade nova ou alterada.

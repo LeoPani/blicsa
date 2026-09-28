@@ -259,3 +259,131 @@ def test_t2_revisar_termos_nao_congela_a_janela(app, monkeypatch):
     inicio = time.perf_counter()
     app._open_term_review()
     assert time.perf_counter() - inicio < 0.3, "a extração de termos voltou a rodar na tela"
+
+
+# ── M1–M3: fluxo de geração de mapas (matriz de 350 combinações nos projetos reais) ──
+
+def _df_refs(n=30, refs_por=12, universo=40, seed=1):
+    import random
+    rnd = random.Random(seed)
+    linhas = []
+    for i in range(n):
+        refs = "; ".join(f"https://openalex.org/W{rnd.randint(1, universo)}"
+                         for _ in range(refs_por))
+        linhas.append({"authors": f"Autor {i % 7}; Autor {(i + 3) % 11}", "title": f"T{i}",
+                       "year": 2020, "keywords": "a; b", "references": refs, "doi": f"10.1/{i}",
+                       "citations": i, "source": "Revista X", "abstract": ""})
+    return pd.DataFrame(linhas)
+
+
+def test_m2_viabilidade_explica_antes_de_clicar():
+    from core.map_controls import viabilidade_tipo
+    df = _df_refs()
+    assert viabilidade_tipo(0, df) is None
+    assert viabilidade_tipo(2, df) is None                      # cocitação: tem referências
+    assert viabilidade_tipo(4, df) == "map.inviavel_citdir_openalex"
+    assert viabilidade_tipo(5, df) == "map.inviavel_sem_ipc"
+    assert viabilidade_tipo(6, df) == "map.inviavel_embeddings"
+    sem_refs = df.assign(references="")
+    assert viabilidade_tipo(3, sem_refs) == "map.inviavel_sem_referencias"
+    com_ids = df.assign(openalex_id=[f"https://openalex.org/W{i}" for i in range(len(df))])
+    assert viabilidade_tipo(4, com_ids) is None
+
+
+def test_m1_limite_de_nos_vale_para_cocitacao_e_acoplamento():
+    from core.matrix_builders import NetworkGenerator
+    df = _df_refs(n=60, refs_por=15, universo=300)
+    G = NetworkGenerator(df).build_cocitation_network(min_cocitations=1, max_nodes=25)
+    assert 0 < G.number_of_nodes() <= 25
+    G = NetworkGenerator(df).build_bibliographic_coupling(min_shared_refs=1, max_nodes=10)
+    assert 0 < G.number_of_nodes() <= 10
+    # sem limite, o comportamento antigo continua igual
+    assert NetworkGenerator(df).build_cocitation_network(min_cocitations=1).number_of_nodes() > 25
+
+
+def test_m1_rotulo_de_referencia_openalex_curto():
+    from core.matrix_builders import _rotulo_ref
+    assert _rotulo_ref("https://openalex.org/W1496449353") == "W1496449353"
+    assert _rotulo_ref("SMITH J, 2001, RES POLICY, V30, P1") == "SMITH J, 2001, RES POLICY, V30, P1"[:40]
+
+
+def test_m3_limiar_alto_demais_e_ajustado_com_aviso(app, monkeypatch):
+    import main as M
+    infos = []
+    monkeypatch.setattr(M.messagebox, "showinfo", lambda t, m, *a, **k: infos.append(m))
+    avisos = []
+    monkeypatch.setattr(M.messagebox, "showwarning", lambda t, m, *a, **k: avisos.append(m))
+    _carregar_e_mapear(app)
+    app._map_type_var.set(M.MAP_TYPES[1])                        # coautoria
+    app._min_occ_var.set(50)                                      # ninguém tem 50 artigos
+    app._graph = None
+    app._mapping_worker(None)
+    app.update()
+    assert app._graph is not None and app._graph.number_of_nodes() > 0, avisos
+    assert infos and "50" in infos[-1], "ajustou o limiar sem avisar"
+    assert app._min_occ_var.get() < 50, "o controle não mostra o limiar realmente usado"
+
+
+def test_m2_tipo_inviavel_avisa_antes_e_nao_calcula(app, monkeypatch):
+    import main as M
+    avisos = []
+    monkeypatch.setattr(M.messagebox, "showwarning", lambda t, m, *a, **k: avisos.append(m))
+    _carregar_e_mapear(app)
+    app._map_type_var.set(M.MAP_TYPES[5])                        # IPC sem patentes
+    app._atualizar_tipo_de_mapa()
+    assert "patentes" in app._aviso_tipo_lbl.cget("text")
+    app._graph = None
+    app._run_mapping()
+    assert avisos and "patentes" in avisos[-1]
+    assert app._graph is None
+    app._map_type_var.set(M.MAP_TYPES[0])
+    app._atualizar_tipo_de_mapa()
+    assert app._aviso_tipo_lbl.cget("text") == ""
+    assert "termo" in app._lbl_freq.cget("text")
+
+
+def _df_openalex_que_se_cita():
+    """Corpus do OpenAlex em que os artigos citam uns aos outros pelo ID (sem DOI nas refs)."""
+    linhas = []
+    for i in range(12):
+        refs = [f"https://openalex.org/W{9000 + j}" for j in range(i)]      # cita os anteriores
+        refs += [f"https://openalex.org/W{i * 100 + k}" for k in range(3)]  # e obras de fora
+        linhas.append({"authors": f"Silva{i}, A.", "title": f"T{i}", "year": 2010 + i,
+                       "keywords": "a; b", "references": "; ".join(refs), "doi": "",
+                       "openalex_id": f"https://openalex.org/W{9000 + i}",
+                       "citations": i, "source": "R", "abstract": ""})
+    return pd.DataFrame(linhas)
+
+
+def test_m4_citacao_direta_casa_pelo_id_do_openalex():
+    from core.matrix_builders import NetworkGenerator
+    from core.map_controls import viabilidade_tipo
+    df = _df_openalex_que_se_cita()
+    assert viabilidade_tipo(4, df) is None
+    G = NetworkGenerator(df).build_direct_citation_network(min_citations=1)
+    assert G.number_of_nodes() == 12 and G.number_of_edges() == 66     # 12·11/2 pares
+
+
+def test_m4_viabilidade_conta_so_quem_tem_referencia():
+    """Metade do corpus sem referência não pode esconder que as referências são do OpenAlex."""
+    from core.map_controls import viabilidade_tipo
+    df = _df_refs(n=10)
+    vazios = _df_refs(n=12).assign(references="")
+    assert viabilidade_tipo(4, pd.concat([df, vazios])) == "map.inviavel_citdir_openalex"
+
+
+def test_m4_mapa_vazio_explica_a_causa_certa(app, monkeypatch):
+    import main as M
+    avisos = []
+    monkeypatch.setattr(M.messagebox, "showwarning", lambda t, m, *a, **k: avisos.append(m))
+    monkeypatch.setattr(M.messagebox, "showinfo", lambda *a, **k: None)
+    df = _df_openalex_que_se_cita().assign(openalex_id="https://openalex.org/W7777777")   # ninguém do corpus é citado
+    app._dataframe = df
+    app._map_type_var.set(M.MAP_TYPES[4])
+    app._min_occ_var.set(5)
+    app._graph = None
+    app._mapping_worker(None)
+    app.update()
+    assert app._graph is None
+    assert avisos and "cita outro artigo" in avisos[-1], avisos
+    assert "Reduza a frequência" not in avisos[-1]

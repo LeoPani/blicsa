@@ -92,3 +92,20 @@ def pytest_configure(config):
         "markers",
         "live: testes que batem nas APIs reais (rodar com pytest -m live)",
     )
+
+
+# --- Isolamento: nenhum teste escreve nas preferências reais do usuário ---
+# Antes, um teste que chamava set_lang("fr") gravava "fr" no settings.json de verdade:
+# rodar a suíte no Mac do usuário trocava o idioma do Blicsa dele para francês.
+import pytest  # noqa: E402
+
+
+@pytest.fixture(autouse=True)
+def _preferencias_isoladas(tmp_path, monkeypatch):
+    import core.settings as cs
+    from core import i18n
+    monkeypatch.setattr(cs, "_OVERRIDE_PATH", tmp_path / "settings_teste.json")
+    idioma = i18n.get_lang()
+    yield
+    if i18n.get_lang() != idioma:
+        i18n.load_locales(idioma)
