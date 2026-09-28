@@ -516,5 +516,19 @@
   "stats.type.report": "Relatório",
   "stats.type.standard": "Norma técnica",
   "stats.type.other": "Outro tipo",
-  "stats.type.unknown": "Não informado"
+  "stats.type.unknown": "Não informado",
+  "importacao.erro_titulo": "Não foi possível importar",
+  "importacao.erro_vazio": "Nenhum registro foi lido do(s) arquivo(s).\n\nConfira o formato escolhido ao lado do nome do arquivo (Scopus CSV, WoS TXT, BibTeX, RIS, Blicsa CSV…) e tente de novo.",
+  "importacao.erro_leitura": "O arquivo \"{arquivo}\" não pôde ser lido como {formato}.\n\nConfira se o formato escolhido ao lado do nome do arquivo é o certo. O detalhe técnico foi registrado no log.",
+  "campo.nao_numero": "O campo \"{campo}\" precisa de um número, mas recebeu \"{valor}\". Corrija o valor ou deixe o campo vazio.",
+  "campo.max_nos": "Máx. de nós",
+  "campo.top_pct": "Top %",
+  "campo.ano_inicial": "Ano inicial",
+  "campo.ano_final": "Ano final",
+  "map.erro_generico": "Não foi possível gerar o mapa com estes dados e parâmetros. O detalhe técnico foi registrado no log do programa.",
+  "export.erro_titulo": "Não foi possível exportar",
+  "export.erro_permissao": "O sistema negou a gravação. O arquivo pode estar aberto em outro programa (por exemplo, o Excel) ou a pasta não permite gravar. Feche o arquivo ou escolha outro local.",
+  "export.erro_pasta": "A pasta escolhida não existe mais. Escolha outro local para salvar.",
+  "export.erro_disco": "O arquivo não pôde ser gravado. Verifique se há espaço em disco e se o local permite gravação.",
+  "export.erro_generico": "A exportação falhou. O detalhe técnico foi registrado no log do programa."
 }

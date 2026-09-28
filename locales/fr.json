@@ -517,5 +517,19 @@
   "stats.type.report": "Rapport",
   "stats.type.standard": "Norme",
   "stats.type.other": "Autre type",
-  "stats.type.unknown": "Non renseigné"
+  "stats.type.unknown": "Non renseigné",
+  "importacao.erro_titulo": "Importation impossible",
+  "importacao.erro_vazio": "Aucune notice n’a été lue dans le(s) fichier(s).\n\nVérifiez le format choisi à côté du nom du fichier (Scopus CSV, WoS TXT, BibTeX, RIS, Blicsa CSV…) et réessayez.",
+  "importacao.erro_leitura": "Le fichier « {arquivo} » n’a pas pu être lu comme {formato}.\n\nVérifiez que le format choisi à côté du nom du fichier est le bon. Le détail technique a été enregistré dans le journal.",
+  "campo.nao_numero": "Le champ « {campo} » attend un nombre, mais a reçu « {valor} ». Corrigez la valeur ou laissez le champ vide.",
+  "campo.max_nos": "Nœuds max.",
+  "campo.top_pct": "Top %",
+  "campo.ano_inicial": "Année de début",
+  "campo.ano_final": "Année de fin",
+  "map.erro_generico": "La carte n’a pas pu être générée avec ces données et paramètres. Le détail technique a été enregistré dans le journal.",
+  "export.erro_titulo": "Exportation impossible",
+  "export.erro_permissao": "Le système a refusé l’écriture. Le fichier est peut-être ouvert dans un autre programme (par exemple Excel) ou le dossier n’autorise pas l’écriture. Fermez le fichier ou choisissez un autre emplacement.",
+  "export.erro_pasta": "Le dossier choisi n’existe plus. Choisissez un autre emplacement.",
+  "export.erro_disco": "Le fichier n’a pas pu être écrit. Vérifiez l’espace disque et que l’emplacement autorise l’écriture.",
+  "export.erro_generico": "L’exportation a échoué. Le détail technique a été enregistré dans le journal."
 }

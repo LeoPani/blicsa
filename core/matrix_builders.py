@@ -127,13 +127,23 @@ def _extract_term_lists(
     result: list[list[str]] = []
 
     if field == "keywords":
+        # Stopwords extras valem também para palavras-chave — é o que a dica da tela promete
+        # ("remover explicitamente das palavras-chave"). Antes só título/resumo as usavam, e o
+        # termo excluído continuava no mapa (auditoria 2026-09, D3). Compara antes e depois do
+        # tesauro, para excluir tanto a forma original quanto a harmonizada.
+        sw = {normalizar_termo(w).lower() for w in (extra_stop_words or ()) if w.strip()}
         for kw_str in df["keywords"].dropna():
             if isinstance(kw_str, str) and kw_str.strip():
                 sep = ";" if ";" in kw_str else ","
-                kws = [
-                    apply_thesaurus(normalizar_termo(k).lower(), thesaurus)
-                    for k in kw_str.split(sep) if k.strip()
-                ]
+                kws = []
+                for k in kw_str.split(sep):
+                    if not k.strip():
+                        continue
+                    bruto = normalizar_termo(k).lower()
+                    termo = apply_thesaurus(bruto, thesaurus)
+                    if bruto in sw or termo in sw:
+                        continue
+                    kws.append(termo)
                 result.append(kws)
     else:
         col_map = {

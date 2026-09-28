@@ -3,6 +3,7 @@ import logging
 # Console em INFO desde o IMPORT: a migracao de settings roda ao importar core.i18n.
 logging.basicConfig(level=logging.INFO, format="%(message)s")
 import os
+import re
 
 #: FONTE ÚNICA da versão do app. Rodapé, janela "Sobre", `--version` e o `CITATION.cff`
 #: derivam daqui. Antes havia cinco declarações independentes — `1.1.0-beta` aqui, `v3.0`
@@ -84,9 +85,21 @@ def caminho_do_recurso(relativo: str) -> str:
 
 
 
-OUTPUT_DIR  = Path(__file__).parent
-MAP_PATH    = str(OUTPUT_DIR / "blicsa_mapa.html")
-PLOTLY_PATH = str(OUTPUT_DIR / "blicsa_plotly.html")
+OUTPUT_DIR  = Path(__file__).parent   # leitura de assets empacotados
+
+# Onde o app GRAVA (B10, auditoria 2026-09). Rodando do código-fonte, nada muda: pasta do
+# app e `reports/`. No executável (PyInstaller) a pasta do app é temporária (onefile, apagada
+# ao fechar) ou protegida (instalado em "Arquivos de Programas"); lá tudo vai para ~/Blicsa,
+# onde já ficam os projetos e o diretório servido.
+if getattr(sys, "frozen", False):
+    WORK_DIR    = Path.home() / "Blicsa" / "saidas"
+    REPORTS_DIR = Path.home() / "Blicsa" / "reports"
+else:
+    WORK_DIR    = OUTPUT_DIR
+    REPORTS_DIR = Path("reports")
+WORK_DIR.mkdir(parents=True, exist_ok=True)
+MAP_PATH    = str(WORK_DIR / "blicsa_mapa.html")
+PLOTLY_PATH = str(WORK_DIR / "blicsa_plotly.html")
 
 MAP_TYPES = [
     "Coocorrência de Palavras-chave",
@@ -123,6 +136,48 @@ def _flag_options() -> list[tuple[str, str]]:
 
 
 # ── Main App ───────────────────────────────────────────────────────────────────
+class ErroParaUsuario(Exception):
+    """Falha cuja mensagem já foi escrita para o usuário (pode ir direto para a caixa)."""
+
+
+class CampoInvalido(ErroParaUsuario, ValueError):
+    """Valor digitado num campo numérico que não é número. A mensagem já é para o usuário."""
+
+
+def _numero_do_campo(texto, nome_do_campo: str) -> float | None:
+    """Lê um número digitado à mão: vazio → None; aceita vírgula decimal, "%" e espaços."""
+    bruto = str(texto if texto is not None else "").strip().replace("%", "").replace(" ", "")
+    if not bruto:
+        return None
+    try:
+        return float(bruto.replace(",", "."))
+    except ValueError:
+        raise CampoInvalido(t("campo.nao_numero", campo=nome_do_campo, valor=str(texto).strip()))
+
+
+_JARGAO_TECNICO = re.compile(
+    r"Traceback|invalid literal|KeyError|IndexError|NoneType|AttributeError|TypeError|"
+    r"object has no attribute|could not convert|Errno|not subscriptable|unexpected keyword|"
+    r"division by zero|out of range|is not defined|codec can't", re.I)
+
+
+def _mensagem_para_usuario(exc: BaseException, generica: str) -> str:
+    """A mensagem da exceção, se ela já foi escrita para gente (ex.: "Coluna de códigos IPC
+    não encontrada"); a genérica, se é erro interno de Python."""
+    if isinstance(exc, ErroParaUsuario):
+        return str(exc)
+    texto = str(exc).strip()
+    if not texto or isinstance(exc, (KeyError, IndexError, AttributeError, TypeError,
+                                     NameError, ZeroDivisionError)) \
+            or _JARGAO_TECNICO.search(texto):
+        return generica
+    return texto
+
+
+class _ImportacaoVazia(Exception):
+    """Nenhum registro foi lido dos arquivos escolhidos (B2)."""
+
+
 class BlicsaApp(ctk.CTk):
     """
     Main application window and controller for the Blicsa UI.
@@ -139,6 +194,7 @@ class BlicsaApp(ctk.CTk):
         self.resizable(True, True)
         self.configure(fg_color=CONTENT_BG)
 
+        self._mapping_lock = threading.Lock()   # um mapa por vez (D4)
         self._file_paths: list[str]              = []
         self._file_formats: list[str]            = []
         self._dataframe                          = None
@@ -2047,7 +2103,7 @@ class BlicsaApp(ctk.CTk):
                 messagebox.showwarning("Sem mapa", "Gere o mapa primeiro.")
                 return
             import os, time, re
-            os.makedirs("reports", exist_ok=True)
+            os.makedirs(REPORTS_DIR, exist_ok=True)
             
             # Guarda na galeria uma cópia autocontida do mapa Sigma.
             from core.sigma_exporter import export_sigma_json
@@ -2074,13 +2130,10 @@ class BlicsaApp(ctk.CTk):
 
             os.remove(sigma_path)
 
-            # Replace fetch with inline data robustly
-            map_js = re.sub(
-                r'const response = await fetch\("graph\.json"\);.*?data = await response\.json\(\);',
-                f'data = {graph_json};',
-                map_js,
-                flags=re.DOTALL
-            )
+            # Dados embutidos no lugar do fetch("graph.json"). Função própria e testada:
+            # a versão anterior corrompia o JSON com aspas/barras nos termos (B7).
+            from core.sigma_exporter import inline_graph_data
+            map_js = inline_graph_data(map_js, graph_json)
 
             # HTML da galeria é 100% autossuficiente e offline: vendors e i18n
             # do idioma ativo embutidos inline (nenhum fetch/URL externa).
@@ -2093,7 +2146,7 @@ class BlicsaApp(ctk.CTk):
                 '<script src="map.js"></script>',
                 f'<script>\nwindow.BLICSA_I18N = {i18n_json};\n{map_js}\n</script>')
 
-            path = f"reports/blicsa_mapa_{int(time.time())}.html"
+            path = str(REPORTS_DIR / f"blicsa_mapa_{int(time.time())}.html")
             with open(path, "w", encoding="utf-8") as f:
                 f.write(template)
             self._record_export("html", path, action="map")
@@ -2591,7 +2644,7 @@ class BlicsaApp(ctk.CTk):
 
         def run_export():
             import os, time
-            os.makedirs("reports", exist_ok=True)
+            os.makedirs(REPORTS_DIR, exist_ok=True)
             ts = int(time.time())
             files_saved = []
             
@@ -2600,24 +2653,32 @@ class BlicsaApp(ctk.CTk):
                     import networkx as nx
                     import pandas as pd
                     df_adj = nx.to_pandas_adjacency(self._graph)
-                    p = f"reports/adj_{ts}.csv"
+                    p = str(REPORTS_DIR / f"adj_{ts}.csv")
                     df_adj.to_csv(p)
                     files_saved.append(p)
                     
                 if self._exp_gml_var.get() and getattr(self, '_graph', None):
                     import networkx as nx
-                    p = f"reports/rede_{ts}.gml"
+                    p = str(REPORTS_DIR / f"rede_{ts}.gml")
                     nx.write_gml(self._graph, p)
                     files_saved.append(p)
                     
                 if self._exp_ai_var.get() and getattr(self, '_generator', None):
-                    p = f"reports/ai_report_{ts}.txt"
+                    p = str(REPORTS_DIR / f"ai_report_{ts}.txt")
+                    # get_cluster_report() devolve lista de dicts; gravá-la direto levantava
+                    # TypeError e abortava a exportação inteira (B4). Mesmo texto do export
+                    # de clusters individual.
                     with open(p, "w", encoding="utf-8") as f:
-                        f.write(self._generator.get_cluster_report())
+                        for c in self._generator.get_cluster_report():
+                            f.write(
+                                f"Cluster {c['cluster_id']}  |  "
+                                f"{c['size']} nós  |  {c['color']}\n"
+                                f"  Top nós: {', '.join(map(str, c['top_nodes']))}\n\n"
+                            )
                     files_saved.append(p)
                     
                 if self._exp_xls_var.get() and getattr(self, '_dataframe', None) is not None:
-                    p = f"reports/corpus_{ts}.xlsx"
+                    p = str(REPORTS_DIR / f"corpus_{ts}.xlsx")
                     self._dataframe.to_excel(p, index=False)
                     files_saved.append(p)
                     
@@ -2653,6 +2714,7 @@ class BlicsaApp(ctk.CTk):
         "openalex": "OpenAlex JSON",
         "crossref": "Crossref JSON",
         "ris":      "RIS",
+        "blicsa":   "Blicsa CSV",
     }
 
     def _auto_detect_format(self, path: str) -> str:
@@ -2694,6 +2756,10 @@ class BlicsaApp(ctk.CTk):
         if ext == ".csv" or "," in head or ";" in head:
             lines = head.splitlines()
             first_line = lines[0] if lines else ""
+            # CSV do próprio Blicsa (export de corpus e docs/sample_dataset.csv): antes caía
+            # como "ambíguo" → Scopus → 0 registros (B1).
+            if BibliometricParser.is_blicsa_csv_header(first_line):
+                return "blicsa"
             if "Authors" in first_line or "Source title" in first_line or "Cited by" in first_line:
                 return "scopus"
             # WoS CSV files use AU, TI, SO, PY, etc.
@@ -2784,6 +2850,7 @@ class BlicsaApp(ctk.CTk):
 
     def _load_worker(self):
         self.after(0, self._set_busy, "Carregando arquivos…")
+        arquivo_atual = None
         try:
             loaders_map = {
                 "scopus":   "load_scopus_csv",
@@ -2794,9 +2861,12 @@ class BlicsaApp(ctk.CTk):
                 "crossref": "load_crossref_json",
                 "ris":      "load_ris",
                 "pdf":      "load_pdf",
+                "blicsa":   "load_blicsa_csv",
             }
             dfs = []
+            arquivo_atual = None
             for path, fmt in zip(self._file_paths, self._file_formats):
+                arquivo_atual = (Path(path).name, self._FORMAT_LABELS.get(fmt, fmt))
                 method_name = loaders_map.get(fmt, "load_scopus_csv")
                 log.info(f"[Blicsa] Carregando {Path(path).name} ({fmt}) ...")
                 parser = BibliometricParser(path)
@@ -2808,6 +2878,10 @@ class BlicsaApp(ctk.CTk):
             combined = dfs[0] if len(dfs) == 1 else BibliometricParser.merge(*dfs)
             if len(dfs) > 1:
                 log.info(f"[OK] Combinados: {len(combined)} registros únicos.\n")
+            if combined is None or len(combined) == 0:
+                # Antes: "0 registros carregados" e salto para a aba de mapa, como se tivesse
+                # dado certo (B2). Agora diz o que houve e o que fazer.
+                raise _ImportacaoVazia()
             self._dataframe = combined
             self._generator = None
             self._graph = None
@@ -2836,8 +2910,20 @@ class BlicsaApp(ctk.CTk):
             # algum item da navegação. Ver `test_switch_tab_so_usa_abas_que_existem`.
             self.after(0, lambda: self._switch_tab("analises"))
         except Exception as exc:
-            self.after(0, self._set_idle, t("projeto.erro_titulo"))
-            self.after(0, lambda e=exc: self._erro_de_projeto(e, t("projeto.erro_titulo")))
+            # Mensagem de IMPORTAÇÃO, não de projeto (B12): antes um CSV com defeito dizia
+            # "Não foi possível abrir o projeto", e o usuário nem tinha aberto projeto.
+            log.info(f"[ERRO] importação: {type(exc).__name__}: {exc}\n")
+            if isinstance(exc, _ImportacaoVazia):
+                msg = t("importacao.erro_vazio")
+            elif isinstance(exc, OSError):
+                from core.project import diagnosticar_projeto
+                msg = t(diagnosticar_projeto(exc))
+            else:
+                nome, formato = arquivo_atual if arquivo_atual else ("?", "?")
+                msg = t("importacao.erro_leitura", arquivo=nome, formato=formato)
+            titulo = t("importacao.erro_titulo")
+            self.after(0, self._set_idle, titulo)
+            self.after(0, lambda m=msg, tt=titulo: messagebox.showerror(tt, m))
 
     def _cancel_search(self):
         if hasattr(self, '_search_cancel_event') and self._search_cancel_event:
@@ -4331,6 +4417,7 @@ class BlicsaApp(ctk.CTk):
         # pelo navegador, não por um canvas Tk interno.
         self._publish_sigma_map()
         if not getattr(self, "_demo_no_browser", False):
+            import time      # faltava: NameError ao reclusterizar, sempre (D6)
             import webbrowser
             webbrowser.open(
                 f"http://127.0.0.1:{self._local_server_port}/assets/map_template.html"
@@ -4481,8 +4568,8 @@ class BlicsaApp(ctk.CTk):
                 from collections import Counter as _C
                 doc_freq = _C()
                 for lst in term_lists:
-                    for t in set(lst):
-                        doc_freq[t] += 1
+                    for termo in set(lst):
+                        doc_freq[termo] += 1
                 terms_data = [
                     (term, count, doc_freq.get(term, 0), self._candidate_scores.get(term, 0.0))
                     for term, count, _, score in terms_data
@@ -4502,6 +4589,17 @@ class BlicsaApp(ctk.CTk):
         threading.Thread(target=self._mapping_worker, args=(None,), daemon=True).start()
 
     def _mapping_worker(self, allowed_terms: set[str] | None):
+        """Um mapa por vez. Clique duplo em "Gerar Mapa" (ou Ctrl+G repetido) disparava dois
+        cálculos ao mesmo tempo, que gravavam grafo e layout um por cima do outro (D4)."""
+        if not self._mapping_lock.acquire(blocking=False):
+            log.info("[Mapa] Já há um mapa sendo gerado; clique ignorado.\n")
+            return
+        try:
+            self._mapping_worker_impl(allowed_terms)
+        finally:
+            self._mapping_lock.release()
+
+    def _mapping_worker_impl(self, allowed_terms: set[str] | None):
         # Exclusões da lista revisável (passo 13 do guia): valem SEMPRE, inclusive quando o
         # chamador não passou uma seleção própria. Sem isso o botão "Revisar termos" seria
         # decorativo — o mapa sairia com os termos que o usuário acabou de descartar.
@@ -4525,11 +4623,12 @@ class BlicsaApp(ctk.CTk):
 
             # Apply year filter
             df = self._dataframe.copy()
-            try:
-                yr_min = int(self._year_min_var.get().strip()) if self._year_min_var.get().strip() else None
-                yr_max = int(self._year_max_var.get().strip()) if self._year_max_var.get().strip() else None
-            except ValueError:
-                yr_min = yr_max = None
+            # Antes um ano digitado errado ("dois mil") era ignorado em silêncio e o mapa
+            # saía com o corpus inteiro, sem filtro (D2). Agora o usuário é avisado.
+            _a = _numero_do_campo(self._year_min_var.get(), t("campo.ano_inicial"))
+            _b = _numero_do_campo(self._year_max_var.get(), t("campo.ano_final"))
+            yr_min = int(_a) if _a is not None else None
+            yr_max = int(_b) if _b is not None else None
             # `year` pode faltar: a normalização de schema só roda ao ABRIR um projeto, e um
             # DataFrame vindo de importação de arquivo ou de uma busca chega por outro
             # caminho. Sem a guarda, `df["year"]` levanta KeyError e o cálculo de rede morre
@@ -4551,11 +4650,15 @@ class BlicsaApp(ctk.CTk):
                 extra_sw = {w.strip().lower() for w in extra_sw_raw.split(",") if w.strip()}
 
             # Compute max_nodes from top%
-            max_nodes = int(self._max_nodes_var.get() or 0)
+            # Campos de texto livre: aceitar "10,5", "50%" e espaços, como um usuário
+            # brasileiro digita. Antes "abc" ou "10.5" mostravam "invalid literal for int()"
+            # e "50%" era ignorado em silêncio (o mapa saía com todos os nós) — D2.
+            max_nodes = _numero_do_campo(self._max_nodes_var.get(), t("campo.max_nos"))
+            max_nodes = max(0, int(max_nodes or 0))
             pct_str   = self._max_pct_var.get().strip()
-            if pct_str and map_type in (MAP_TYPES[0], MAP_TYPES[1]):
+            pct = _numero_do_campo(pct_str, t("campo.top_pct")) if pct_str else None
+            if pct and pct > 0 and map_type in (MAP_TYPES[0], MAP_TYPES[1]):
                 try:
-                    pct = float(pct_str)
                     preview = NetworkGenerator(df)
                     if map_type == MAP_TYPES[1]:
                         counts = preview.get_author_counts()
@@ -4601,8 +4704,14 @@ class BlicsaApp(ctk.CTk):
                 gen.build_bibliographic_coupling(min_shared_refs=max(min_occ, 2))
             elif map_type == MAP_TYPES[4]:
                 gen.build_direct_citation_network(min_citations=max(min_occ, 1))
-            else:
+            elif map_type == MAP_TYPES[5]:
                 gen.build_ipc_cooccurrence(min_occurrence=min_occ)
+            else:
+                # "Agrupamento Semântico (Embeddings)" não tem construtor; antes caía no
+                # `else` e gerava, sem aviso, um mapa de IPC de patentes (B6).
+                raise ErroParaUsuario(
+                    f"O tipo de mapa \"{map_type}\" ainda não está disponível nesta versão.\n"
+                    "Escolha outro tipo de mapa (por exemplo, Coocorrência de Palavras-chave).")
 
             # Network pruning
             from core.map_controls import prune_network
@@ -4673,9 +4782,12 @@ class BlicsaApp(ctk.CTk):
                 self._show_ai_modal = False
                 self.after(200, lambda: threading.Thread(target=self._trigger_map_ai_insights, daemon=True).start())
         except Exception as exc:
-            log.info(f"[ERRO] {exc}\n")
+            log.info(f"[ERRO] {type(exc).__name__}: {exc}\n")
+            # Mensagem escrita para gente; erro interno inesperado não vai cru para a tela.
+            msg = _mensagem_para_usuario(exc, t("map.erro_generico"))
             self.after(0, self._set_idle, "Erro")
-            self.after(0, lambda e=exc: messagebox.showerror("Erro", str(e)))
+            self.after(0, lambda m=msg: messagebox.showerror("Erro", m))
+
 
     def _update_stats(self, stats: dict):
         for key, lbl in self._stat_labels.items():
@@ -4822,7 +4934,7 @@ class BlicsaApp(ctk.CTk):
             import time
             map_type = self._viz_mode_var.get().replace(" ", "_")
             out_name = f"blicsa_mapa_{map_type}_{int(time.time())}.html"
-            path = str(OUTPUT_DIR / out_name)
+            path = str(WORK_DIR / out_name)
             
             fig.write_html(path, include_plotlyjs=True)
             log.info(f"[Plotly] Interativo salvo → {path}\n")
@@ -4847,7 +4959,7 @@ class BlicsaApp(ctk.CTk):
             fig = build_sankey_diagram(self._dataframe, "authors", "keywords", "source", top_n=10)
             
             import time
-            sankey_path = str(OUTPUT_DIR / f"blicsa_sankey_{int(time.time())}.html")
+            sankey_path = str(WORK_DIR / f"blicsa_sankey_{int(time.time())}.html")
             fig.write_html(sankey_path, include_plotlyjs=True)
             log.info(f"[Sankey] Diagrama salvo → {sankey_path}\n")
             self._open_in_webview("Blicsa - Sankey", sankey_path)
@@ -4866,7 +4978,7 @@ class BlicsaApp(ctk.CTk):
             fig = build_timeline_view(self._generator.G, self._positions)
             
             import time
-            timeline_path = str(OUTPUT_DIR / f"blicsa_linha_tempo_{int(time.time())}.html")
+            timeline_path = str(WORK_DIR / f"blicsa_linha_tempo_{int(time.time())}.html")
             fig.write_html(timeline_path, include_plotlyjs=True)
             log.info(f"[Linha do Tempo] Salva → {timeline_path}\n")
             self._open_in_webview("Blicsa - Linha do Tempo", timeline_path)
@@ -4907,7 +5019,7 @@ class BlicsaApp(ctk.CTk):
         try:
             fig = build_thematic_map(self._generator.G)
             import time
-            thematic_path = str(OUTPUT_DIR / f"blicsa_mapa_tematico_{int(time.time())}.html")
+            thematic_path = str(WORK_DIR / f"blicsa_mapa_tematico_{int(time.time())}.html")
             fig.write_html(thematic_path, include_plotlyjs=True)
             log.info(f"[Mapa Temático] Salvo → {thematic_path}\n")
             self._open_in_webview("Blicsa - Mapa Temático", thematic_path)
@@ -4924,7 +5036,7 @@ class BlicsaApp(ctk.CTk):
         try:
             fig = build_historiograph(self._dataframe)
             import time
-            hist_path = str(OUTPUT_DIR / f"blicsa_historiografia_{int(time.time())}.html")
+            hist_path = str(WORK_DIR / f"blicsa_historiografia_{int(time.time())}.html")
             fig.write_html(hist_path, include_plotlyjs=True)
             log.info(f"[Historiografia] Salva → {hist_path}\n")
             self._open_in_webview("Blicsa - Historiografia", hist_path)
@@ -5910,13 +6022,19 @@ class BlicsaApp(ctk.CTk):
             log.info(f"[Export] Clusters → {path}")
 
     def _export_plotly_html(self):
-        if not Path(PLOTLY_PATH).exists():
+        # Antes copiava PLOTLY_PATH, que nenhum código grava: o botão sempre dizia "Gere o
+        # mapa primeiro" (B8). Agora monta a mesma figura do "Abrir Plotly".
+        if self._generator is None or not self._positions:
             messagebox.showwarning("Sem mapa", "Gere o mapa primeiro.")
             return
         if path := filedialog.asksaveasfilename(
                 defaultextension=".html", filetypes=[("HTML", "*.html")]):
-            import shutil
-            shutil.copy(PLOTLY_PATH, path)
+            from core.visualizer import build_plotly_map
+            fig = build_plotly_map(self._generator.G, self._positions,
+                                   color_mode=self._plotly_mode_var.get(),
+                                   df=self._dataframe)
+            fig.write_html(path, include_plotlyjs=True)
+            self._record_export("html", path)
             log.info(f"[Export] Plotly HTML → {path}")
 
     def _export_pyvis_html(self):
@@ -5929,29 +6047,58 @@ class BlicsaApp(ctk.CTk):
             shutil.copy(MAP_PATH, path)
             log.info(f"[Export] PyVis HTML → {path}")
 
+    def _static_map_canvas(self):
+        """Figura estática (matplotlib) do mapa atual para PNG/SVG/PDF.
+
+        Esses exports liam `self._map_canvas`, o canvas matplotlib que saiu da aba de mapa
+        quando o Sigma.js assumiu a visualização; ficou sempre `None` e os três botões
+        respondiam "Gere o mapa primeiro" com mapa gerado (B8). Aqui o mesmo `MapCanvas` é
+        montado numa janela oculta e desenhado com o grafo e o layout atuais.
+        """
+        if self._map_canvas is not None:
+            return self._map_canvas
+        gen = self._generator
+        if gen is None or gen.G.number_of_nodes() == 0 or not self._positions:
+            return None
+        host = getattr(self, "_static_canvas_host", None)
+        if host is None or not host.winfo_exists():
+            host = ctk.CTkToplevel(self)
+            host.withdraw()
+            host.grid_columnconfigure(0, weight=1)
+            host.grid_rowconfigure(0, weight=1)
+            self._static_canvas_host = host
+            self._static_canvas = MapCanvas(host)
+        canvas = self._static_canvas
+        canvas.set_cluster_labels(self._cluster_labels or {})
+        canvas.render(gen.G, self._positions)
+        return canvas
+
     def _export_png(self):
-        if self._map_canvas is None:
+        if (canvas := self._static_map_canvas()) is None:
             messagebox.showwarning("Sem mapa", "Gere o mapa primeiro.")
             return
         if path := filedialog.asksaveasfilename(
                 defaultextension=".png", filetypes=[("PNG", "*.png")]):
-            export_figure_image(self._map_canvas.figure, path, dpi=300)
+            export_figure_image(canvas.figure, path, dpi=300)
+            self._record_export("png", path)
 
     def _export_svg(self):
-        if self._map_canvas is None:
+        if (canvas := self._static_map_canvas()) is None:
             messagebox.showwarning("Sem mapa", "Gere o mapa primeiro.")
             return
         if path := filedialog.asksaveasfilename(
                 defaultextension=".svg", filetypes=[("SVG", "*.svg")]):
-            export_figure_image(self._map_canvas.figure, path, dpi=150)
+            export_figure_image(canvas.figure, path, dpi=150)
+            self._record_export("svg", path)
 
     def _export_pdf(self):
-        if self._map_canvas is None:
+        if (canvas := self._static_map_canvas()) is None:
             messagebox.showwarning("Sem mapa", "Gere o mapa primeiro.")
             return
         if path := filedialog.asksaveasfilename(
                 defaultextension=".pdf", filetypes=[("PDF", "*.pdf")]):
-            export_figure_image(self._map_canvas.figure, path, dpi=300)
+            export_figure_image(canvas.figure, path, dpi=300)
+            self._record_export("pdf", path)
 
     def _mapa_pronto(self) -> bool:
         """Grafo e posições disponíveis. Sem os dois não há o que animar nem cartografar."""
@@ -6305,6 +6452,10 @@ class BlicsaApp(ctk.CTk):
             self._graph = G
             self._generator.clustering_algorithm = self._cluster_alg_var.get()
             self._generator.clustering_resolution = self._cluster_res_var.get()
+        else:
+            # Projeto sem mapa salvo: não herdar o mapa do projeto aberto antes (B9).
+            self._generator = None
+            self._graph = None
             
         self._refresh_candidate_counts()
         self._update_stats_tab()
@@ -7036,7 +7187,7 @@ class BlicsaApp(ctk.CTk):
         from pathlib import Path
         import os, time
         
-        reports_dir = Path("reports")
+        reports_dir = REPORTS_DIR
         if not reports_dir.exists(): return
         
         files = list(reports_dir.glob("*.html"))
@@ -7083,7 +7234,6 @@ class BlicsaApp(ctk.CTk):
             ctk.CTkButton(btn_f, text="Abrir", width=80, height=28, fg_color=BLUE, hover_color="#103050", command=open_map).pack(side="left", padx=5)
             ctk.CTkButton(btn_f, text="Excluir", width=80, height=28, fg_color=RED, hover_color=RED_HOV, command=delete_map).pack(side="left", padx=5)
 
-        return f
 
     
     def _download_oa_pdfs(self):
@@ -7316,6 +7466,40 @@ class BlicsaApp(ctk.CTk):
         except Exception as e:
             ctk.CTkLabel(tab_card, text=f"Erro na tabela: {e}").grid(row=1, column=0)
 
+
+
+# ── Exportações nunca falham caladas (auditoria 2026-09, D5) ──────────────────────────
+# Uma exceção num botão do Tk só vai para o terminal: o usuário clica e nada acontece. O
+# caso mais comum no Windows é o arquivo de destino estar aberto no Excel (gravação negada).
+def _exportacao_protegida(metodo):
+    import functools
+
+    @functools.wraps(metodo)
+    def envolvido(self, *a, **k):
+        try:
+            return metodo(self, *a, **k)
+        except Exception as exc:
+            log.info(f"[ERRO] {metodo.__name__}: {type(exc).__name__}: {exc}\n")
+            if isinstance(exc, PermissionError):
+                chave = "export.erro_permissao"
+            elif isinstance(exc, (FileNotFoundError, NotADirectoryError)) or (
+                    isinstance(exc, OSError) and "directory" in str(exc).lower()):
+                chave = "export.erro_pasta"
+            elif isinstance(exc, OSError):
+                chave = "export.erro_disco"
+            else:
+                chave = "export.erro_generico"
+            try:
+                self._set_idle(t("export.erro_titulo"))
+            except Exception:
+                pass
+            messagebox.showerror(t("export.erro_titulo"), t(chave))
+    return envolvido
+
+
+for _nome in [n for n in vars(BlicsaApp) if n.startswith("_export_")]:
+    setattr(BlicsaApp, _nome, _exportacao_protegida(getattr(BlicsaApp, _nome)))
+del _nome
 
 if __name__ == "__main__":
     import sys

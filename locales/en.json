@@ -516,5 +516,19 @@
   "stats.type.report": "Report",
   "stats.type.standard": "Standard",
   "stats.type.other": "Other type",
-  "stats.type.unknown": "Not reported"
+  "stats.type.unknown": "Not reported",
+  "importacao.erro_titulo": "Import failed",
+  "importacao.erro_vazio": "No records were read from the file(s).\n\nCheck the format selected next to the file name (Scopus CSV, WoS TXT, BibTeX, RIS, Blicsa CSV…) and try again.",
+  "importacao.erro_leitura": "The file \"{arquivo}\" could not be read as {formato}.\n\nCheck that the format selected next to the file name is correct. The technical detail was written to the log.",
+  "campo.nao_numero": "The field \"{campo}\" needs a number, but got \"{valor}\". Fix the value or leave the field empty.",
+  "campo.max_nos": "Max. nodes",
+  "campo.top_pct": "Top %",
+  "campo.ano_inicial": "Start year",
+  "campo.ano_final": "End year",
+  "map.erro_generico": "The map could not be generated with these data and parameters. The technical detail was written to the log.",
+  "export.erro_titulo": "Export failed",
+  "export.erro_permissao": "The system refused to write the file. It may be open in another program (for example, Excel) or the folder may not allow writing. Close the file or choose another location.",
+  "export.erro_pasta": "The chosen folder no longer exists. Choose another location.",
+  "export.erro_disco": "The file could not be written. Check that there is free disk space and that the location allows writing.",
+  "export.erro_generico": "The export failed. The technical detail was written to the log."
 }

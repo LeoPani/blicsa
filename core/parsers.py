@@ -113,6 +113,30 @@ class BibliometricParser:
         self.df: pd.DataFrame | None = None
 
     # ------------------------------------------------------------------ #
+    #  CSV do próprio Blicsa (schema canônico em minúsculas)               #
+    # ------------------------------------------------------------------ #
+    def load_blicsa_csv(self) -> pd.DataFrame:
+        """CSV no schema do Blicsa: o que "Exportar corpus (CSV)" grava e o formato de
+        `docs/sample_dataset.csv`. Sem este leitor o arquivo caía no leitor Scopus, que não
+        acha nenhuma coluna e devolve 0 registros sem erro (B1, auditoria 2026-09)."""
+        from core.project import normalize_dataframe
+        raw = pd.read_csv(self.file_path, encoding="utf-8-sig", dtype=str,
+                          keep_default_na=False)
+        df = normalize_dataframe(raw)
+        if "origin" in df.columns:
+            df["origin"] = df["origin"].where(df["origin"].astype(str).str.strip() != "",
+                                              "Blicsa CSV")
+        self.df = df
+        return self.df
+
+    @staticmethod
+    def is_blicsa_csv_header(first_line: str) -> bool:
+        """Cabeçalho do schema do Blicsa? Exige os nomes exatos em minúsculas, o que o
+        distingue do Scopus (`Authors`, `Title`, `Year`, com maiúscula)."""
+        cols = {c.strip().strip('"') for c in first_line.lstrip("\ufeff").split(",")}
+        return {"authors", "title", "year"} <= cols
+
+    # ------------------------------------------------------------------ #
     #  Scopus CSV                                                          #
     # ------------------------------------------------------------------ #
     def load_scopus_csv(self) -> pd.DataFrame:
@@ -430,8 +454,10 @@ class BibliometricParser:
         try:
             with pdfplumber.open(self.file_path) as pdf:
                 for page in pdf.pages:
-                    t = page.extract_text()
-                    if t: full_text += t + "\n"
+                    # `texto`, não `t`: uma variável local `t` sombreava a função de
+                    # tradução `t()` usada no `except ImportError` acima (B5).
+                    texto = page.extract_text()
+                    if texto: full_text += texto + "\n"
         except Exception as e:
             print(f"Error reading PDF: {e}")
         import pandas as pd

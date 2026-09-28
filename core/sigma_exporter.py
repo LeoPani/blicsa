@@ -14,6 +14,7 @@ Duas regras que valem contrato (e têm teste):
    neutro de "sem dado", e a legenda diz quantos são.
 """
 
+import re
 import json
 import math
 
@@ -208,3 +209,18 @@ def export_sigma_json(G: nx.Graph, positions: dict, filepath: str, **kwargs):
     with open(filepath, "w", encoding="utf-8") as f:
         json.dump(payload, f, ensure_ascii=False, allow_nan=False)
     return payload
+
+
+_FETCH_GRAPH_RE = re.compile(
+    r'const response = await fetch\("graph\.json"\);.*?data = await response\.json\(\);',
+    flags=re.DOTALL)
+
+
+def inline_graph_data(map_js: str, graph_json: str) -> str:
+    """Troca o `fetch("graph.json")` do map.js pelos dados embutidos (HTML da Galeria).
+
+    Substituição por FUNÇÃO de propósito: como texto de substituição, `re.sub` interpretaria
+    `\\"`, `\\n` e `\\\\` do JSON — um termo com aspas ou barra invertida corrompia o JSON e
+    o mapa da galeria abria em branco (B7, auditoria 2026-09).
+    """
+    return _FETCH_GRAPH_RE.sub(lambda _m: f"data = {graph_json};", map_js)
