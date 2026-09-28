@@ -279,7 +279,7 @@ def test_registros_do_historico_tem_o_mesmo_formato_de_sempre():
     with patch("urllib.request.urlopen", side_effect=fake):
         (r,) = list(prov.search("x", max_results=1))
 
-    assert set(r) == {"authors", "title", "year", "source", "keywords", "abstract",
+    assert set(r) == {"authors", "title", "year", "source", "keywords", "document_type", "abstract",
                       "citations", "doi", "references", "origin", "language",
                       "is_oa", "oa_url"}
     assert r["title"] == "Estudo 0"

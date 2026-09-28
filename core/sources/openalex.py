@@ -2,8 +2,10 @@ import urllib.parse
 import urllib.error
 import json
 import logging
+import re
 from typing import Iterator, Dict, Any, Optional, Callable
 from core.sources.base import AuthError, PaginationLimitError, RateLimitError, SearchProvider
+from core.document_types import normalize_document_type
 
 logger = logging.getLogger("OpenAlexProvider")
 
@@ -102,7 +104,15 @@ class OpenAlexProvider(SearchProvider):
         authors = "; ".join(
             a.get("author", {}).get("display_name", "")
             for a in w.get("authorships", []) if a.get("author", {}).get("display_name"))
-        kws = "; ".join(c.get("display_name", "") for c in w.get("concepts", []) if c.get("display_name"))
+        # Os conceitos legados são categorias hierárquicas amplas (incluem, por exemplo,
+        # "Computer science" em quase todo artigo de IA). OpenAlex fornece keywords mais
+        # específicas; só recorrer aos conceitos quando a resposta antiga não as trouxer.
+        keyword_items = w.get("keywords") or w.get("concepts") or []
+        kws = "; ".join(
+            item.get("display_name", "")
+            for item in keyword_items
+            if isinstance(item, dict) and item.get("display_name")
+        )
         abstract = w.get("abstract", "") or ""
         if not abstract and w.get("abstract_inverted_index"):
             inv = w["abstract_inverted_index"]
@@ -114,7 +124,9 @@ class OpenAlexProvider(SearchProvider):
         oa_info = w.get("open_access", {})
         return {
             "authors": authors, "title": w.get("title", "") or "",
+            "openalex_id": str(w.get("id") or ""),
             "year": int(w.get("publication_year") or 0), "source": src, "keywords": kws,
+            "document_type": normalize_document_type(w.get("type")),
             "abstract": abstract, "citations": int(w.get("cited_by_count", 0)),
             "doi": w.get("doi", "") or "", "references": "; ".join(w.get("referenced_works", [])),
             "origin": "OpenAlex", "language": str(w.get("language") or ""),
@@ -149,6 +161,29 @@ class OpenAlexProvider(SearchProvider):
             raise
         except Exception as e:
             logger.warning(f"[OpenAlex] get_by_doi falhou para '{raw}': {e}")
+            return None
+        if not isinstance(data, dict) or not data.get("id"):
+            return None
+        return self._normalize_work(data)
+
+    def get_by_id(self, work_id: str, cancel_event=None) -> Optional[Dict[str, Any]]:
+        """Resolve um identificador W do OpenAlex exatamente, sem busca textual.
+
+        Referências de resultados OpenAlex contêm apenas ``https://openalex.org/W...``.
+        Interpretar esse código com IA inventava autores e títulos; a consulta exata entrega
+        os metadados correspondentes ou ``None`` se não houver registro.
+        """
+        match = re.fullmatch(r"(?:https?://openalex\.org/)?(W\d+)",
+                             str(work_id or "").strip(), flags=re.I)
+        if not match:
+            return None
+        url = f"https://api.openalex.org/works/{match.group(1).upper()}?mailto={self.mailto}"
+        try:
+            data = json.loads(self.fetch_url(url, cancel_event=cancel_event))
+        except (AuthError, RateLimitError):
+            raise
+        except Exception as e:
+            logger.warning("[OpenAlex] get_by_id falhou para %s: %s", match.group(1), e)
             return None
         if not isinstance(data, dict) or not data.get("id"):
             return None

@@ -47,11 +47,37 @@ def _has(mod):
     except (ImportError, ValueError):
         return False
 
+# Keyring — o COFRE das credenciais. Dois motivos para o PyInstaller não o enxergar
+# sozinho: o `import keyring` do app é lazy (dentro de `core.settings._keyring`) e os
+# backends são resolvidos por ENTRY POINT em tempo de execução, não por import estático.
+#
+# Sem isto o app congelado não tem cofre: `_keyring()` devolve None, as chaves caem no
+# settings.json em TEXTO PLANO e o bundle não enxerga o que a execução a partir do código
+# gravou no Keychain. Ficam dois cofres diferentes conforme o app seja aberto de um jeito
+# ou de outro — que é o que o usuário lê como "o Blicsa esqueceu minha chave".
+if _has('keyring'):
+    tmp_ret = collect_all('keyring')
+    datas += tmp_ret[0]; binaries += tmp_ret[1]; hiddenimports += tmp_ret[2]
+    # Os de outros SOs entram só se existirem: o filtro evita aviso de módulo ausente
+    # num build feito no macOS, onde `keyring.backends.Windows` não é importável.
+    hiddenimports += [m for m in (
+        'keyring.backends',
+        'keyring.backends.chainer',
+        'keyring.backends.fail',
+        'keyring.backends.null',
+        'keyring.backends.macOS',
+        'keyring.backends.SecretService',
+        'keyring.backends.libsecret',
+        'keyring.backends.kwallet',
+        'keyring.backends.Windows',
+    ) if _has(m)]
+
 # PDF (requirements-pdf.txt)
 if _has('pdfplumber'):
     tmp_ret = collect_all('pdfplumber')
     datas += tmp_ret[0]; binaries += tmp_ret[1]; hiddenimports += tmp_ret[2]
-    hiddenimports += ['pdfplumber', 'pdfminer', 'pdfminer.six']
+    # `pdfminer.six` é o nome do pacote no pip; o módulo importável se chama `pdfminer`.
+    hiddenimports += ['pdfplumber', 'pdfminer']
 
 # IA — LDA/TF-IDF (scikit-learn, parte do requirements-ai.txt)
 if _has('sklearn'):
@@ -144,5 +170,12 @@ app = BUNDLE(
     coll,
     name='Blicsa.app',
     icon='assets/branding/blicsa-icon.icns' if sys.platform == 'darwin' else 'assets/branding/blicsa-icon.ico',
-    bundle_identifier=None,
+    bundle_identifier='io.github.leopani.blicsa',
+    info_plist={
+        'CFBundleDisplayName': 'Blicsa Beta',
+        'CFBundleShortVersionString': '2.1.0',
+        'CFBundleVersion': '2.1.0.1',
+        'BlicsaReleaseChannel': 'beta',
+        'NSHighResolutionCapable': True,
+    },
 )

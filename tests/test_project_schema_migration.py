@@ -280,7 +280,11 @@ def test_versao_tem_fonte_unica_e_nada_hardcoded():
         if isinstance(no, ast.Assign) and getattr(no.targets[0], "id", "") == "__version__":
             versao = no.value.value
     assert versao, "__version__ sumiu de main.py"
-    assert re.fullmatch(r"\d+\.\d+\.\d+", versao), f"versão fora de semver: {versao!r}"
+    # SemVer também permite identificadores de pré-lançamento, como `-beta.1`.
+    assert re.fullmatch(
+        r"\d+\.\d+\.\d+(?:-[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?",
+        versao,
+    ), f"versão fora de semver: {versao!r}"
 
     # Nenhum literal de versão solto no código (comentários não contam).
     soltos = []

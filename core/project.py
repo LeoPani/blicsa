@@ -24,6 +24,7 @@ CURRENT_MANIFEST_VERSION = "1.0"
 #: levanta `KeyError` e o cálculo de rede morre com uma mensagem de uma palavra só.
 SCHEMA_REGISTRO: dict[str, object] = {
     "authors": "", "title": "", "year": 0, "source": "", "keywords": "",
+    "document_type": "",
     "abstract": "", "citations": 0, "doi": "", "references": "", "origin": "",
     "language": "", "is_oa": False, "oa_url": "",
 }

@@ -1,7 +1,9 @@
 **Blicsa** é um aplicativo de desktop para análise bibliométrica: buscar literatura, montar um
 corpus, gerar mapas de conhecimento e extrair estatísticas — tudo na sua máquina.
 
-Esta é a primeira versão estável. Comece pela **[documentação](../../blob/main/docs/index.md)**.
+Esta é a versão pública de testes **Blicsa Beta 2.1.0-beta.1**. Ela reúne as melhorias
+desenvolvidas depois do snapshot estável 2.0.0. Comece pela
+**[documentação](../../blob/main/docs/index.md)**.
 
 ## Instalação
 

@@ -1,9 +1,11 @@
 import urllib.parse
+import urllib.error
 import json
 import logging
 import re
 from typing import Iterator, Dict, Any, Optional, Callable
 from core.sources.base import SearchProvider
+from core.document_types import normalize_document_type
 
 logger = logging.getLogger("CrossrefProvider")
 
@@ -42,6 +44,28 @@ def _record_matches_language(record: Dict[str, Any], wanted: str) -> bool:
 
 class CrossrefProvider(SearchProvider):
     DISPLAY_NAME = "Crossref"
+
+    def get_by_doi(self, doi: str, cancel_event=None) -> Optional[Dict[str, Any]]:
+        """Consulta exata para conferir título e ano de uma referência com DOI."""
+        raw = str(doi or "").strip()
+        for prefix in ("https://doi.org/", "http://doi.org/", "doi:"):
+            if raw.lower().startswith(prefix):
+                raw = raw[len(prefix):]
+                break
+        if not raw:
+            return None
+        url = ("https://api.crossref.org/works/"
+               + urllib.parse.quote(raw, safe="")
+               + "?mailto=" + urllib.parse.quote(self.mailto, safe=""))
+        try:
+            data = json.loads(self.fetch_url(url, cancel_event=cancel_event))
+        except urllib.error.HTTPError as exc:
+            if exc.code == 404:
+                return None
+            raise
+        item = data.get("message")
+        return self._normalize_item(item) if isinstance(item, dict) else None
+
     def count(self, query: str, filters: Optional[Dict[str, Any]] = None, cancel_event=None) -> int:
         """Total de resultados (message.total-results) numa request barata (rows=0)."""
         import re
@@ -90,6 +114,7 @@ class CrossrefProvider(SearchProvider):
             "title": " ".join(w.get("title", [""])),
             "year": int(year or 0),
             "source": " ".join(w.get("container-title", [""])),
+            "document_type": normalize_document_type(w.get("type")),
             "keywords": "; ".join(w.get("subject", [])),
             "abstract": re.sub(r"<[^>]+>", " ", w.get("abstract", "") or "").strip(),
             "citations": int(w.get("is-referenced-by-count", 0)),
@@ -270,6 +295,7 @@ class CrossrefProvider(SearchProvider):
                     "title":      title,
                     "year":       int(year or 0),
                     "source":     source,
+                    "document_type": normalize_document_type(w.get("type")),
                     "keywords":   kws,
                     "abstract":   abstract,
                     "citations":  int(w.get("is-referenced-by-count", 0)),

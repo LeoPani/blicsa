@@ -1,0 +1,1262 @@
+FN Clarivate Analytics Web of Science
+VR 1.0
+PT J
+AU Okonkwo, C
+   Duarte, MS
+   Lindqvist, EM
+   Rezende, VL
+   Moreira, RC
+   Costa, AR
+AF Okonkwo, Chidi
+   Duarte, Marina S.
+   Lindqvist, Elsa M.
+   Rezende, Vitoria L.
+   Moreira, Rafael C.
+   Costa, Ana R.
+TI Participatory design practices for older adults with low vision
+SO ASSISTIVE TECHNOLOGY LETTERS
+LA English
+DT Article
+DE rehabilitation; assistive technology; independent living; universal design; technology transfer
+ID ASSISTIVE TECHNOLOGY; VISUAL IMPAIRMENT; ASSISTED NAVIGATION
+AB This study investigates how assistive navigation devices are actually adopted outside the laboratory. We follow a cohort of participants through a structured orientation and mobility programme, and assess the approach through task completion, perceived autonomy and abandonment rates over six months. Findings indicate that sustained use depends far more on training and fit than on sensor accuracy. We discuss the implications for  people with visual impairment.
+PY 2022
+VL 10
+IS 3
+BP 42
+EP 61
+DI 10.5555/atl.2022.0003
+TC 26
+Z9 27
+CR Santoro GP, 2014, J MULTIMODAL INTERFACES, V6, P182, DOI 10.5555/jmi.2014.0001
+   Moreira RC, 2016, REV BRAS TECNOL INCL, V22, P228, DOI 10.5555/rbti.2016.0003
+   Ferreira GB, 2017, SENSOR WEARABLE COMPUT, V18, P123, DOI 10.5555/swc.2017.0004
+   Rezende VL, 2018, REV BRAS TECNOL INCL, V5, P103, DOI 10.5555/rbti.2018.0007
+   Bergstrom K, 2018, J EMBED VIS SYST, V26, P140, DOI 10.5555/jevs.2018.0002
+NR 5
+UT WOS:900000000000061
+ER
+
+PT J
+AU Duarte, MS
+   Okonkwo, C
+   Barbosa, TA
+   Lindqvist, EM
+AF Duarte, Marina S.
+   Okonkwo, Chidi
+   Barbosa, Thiago A.
+   Lindqvist, Elsa M.
+TI Wayfinding support in rehabilitation centres
+SO ASSISTIVE TECHNOLOGY LETTERS
+LA English
+DT Article
+DE visual impairment; universal design; assistive technology; orientation and mobility
+ID ASSISTIVE TECHNOLOGY; VISUAL IMPAIRMENT; ASSISTED NAVIGATION
+AB This study investigates how assistive navigation devices are actually adopted outside the laboratory. We follow a cohort of participants through a structured orientation and mobility programme, and assess the approach through task completion, perceived autonomy and abandonment rates over six months. Findings indicate that sustained use depends far more on training and fit than on sensor accuracy. We discuss the implications for  people with visual impairment.
+PY 2022
+VL 6
+IS 2
+BP 202
+EP 225
+DI 10.5555/atl.2022.0004
+TC 51
+Z9 53
+CR Ramalho JP, 2018, ASSIST TECHNOL LETT, V20, P125, DOI 10.5555/atl.2018.0001
+   Vasconcelos LM, 2020, TECHNOL ASSESS Q, V3, P66, DOI 10.5555/taq.2020.0003
+   Ferreira GB, 2021, FRONT ACCESS COMPUT, V22, P68, DOI 10.5555/fac.2021.0004
+NR 3
+UT WOS:900000000000062
+ER
+
+PT J
+AU Oliveira, PH
+   Almeida, LF
+AF Oliveira, Pedro H.
+   Almeida, Luiza F.
+TI Edge-cloud offloading strategies in embedded vision pipelines
+SO FRONTIERS IN ACCESSIBLE COMPUTING
+LA English
+DT Article
+DE embedded systems; computer vision; object detection; edge inference
+ID COMPUTER VISION; DEEP LEARNING; TINYML
+AB This study investigates how compact vision models can run within the power and memory envelope of wearable hardware. We train a family of quantized detectors and profile them on microcontroller-class boards, and assess the approach through latency, energy draw and detection accuracy on an indoor scene benchmark. Findings indicate that 8-bit quantization preserves most of the accuracy while cutting inference time by roughly half. We discuss the implications for microcontroller-class hardware.
+PY 2023
+VL 11
+IS 1
+BP 199
+EP 209
+DI 10.5555/fac.2023.0007
+TC 48
+Z9 51
+CR Bergstrom K, 2018, J EMBED VIS SYST, V26, P140, DOI 10.5555/jevs.2018.0002
+   Oliveira PH, 2019, SENSOR WEARABLE COMPUT, V21, P48, DOI 10.5555/swc.2019.0006
+   Almeida LF, 2019, SENSOR WEARABLE COMPUT, V12, P57, DOI 10.5555/swc.2019.0007
+   Almeida LF, 2020, J EMBED VIS SYST, V28, P155, DOI 10.5555/jevs.2020.0003
+   Almeida LF, 2020, J EMBED VIS SYST, V3, P167, DOI 10.5555/jevs.2020.0005
+   Ibrahim HA, 2021, J INNOV PUBLIC POLICY, V18, P161, DOI 10.5555/jipp.2021.0005
+   Okonkwo C, 2022, FRONT ACCESS COMPUT, V26, P56, DOI 10.5555/fac.2022.0006
+   Kowalski JZ, 2022, J MULTIMODAL INTERFACES, V20, P130, DOI 10.5555/jmi.2022.0011
+NR 8
+UT WOS:900000000000063
+ER
+
+PT J
+AU Ferreira, GB
+   Lindqvist, EM
+   Moreira, RC
+   Okonkwo, C
+   Vasconcelos, LM
+AF Ferreira, Gabriel B.
+   Lindqvist, Elsa M.
+   Moreira, Rafael C.
+   Okonkwo, Chidi
+   Vasconcelos, Leandro M.
+TI Accessibility guidelines in rehabilitation centres
+SO FRONTIERS IN ACCESSIBLE COMPUTING
+LA English
+DT Article
+DE assistive technology; visual impairment; assisted navigation; universal design
+ID ASSISTIVE TECHNOLOGY; VISUAL IMPAIRMENT; ASSISTED NAVIGATION
+AB This study investigates how assistive navigation devices are actually adopted outside the laboratory. We follow a cohort of participants through a structured orientation and mobility programme, and assess the approach through task completion, perceived autonomy and abandonment rates over six months. Findings indicate that sustained use depends far more on training and fit than on sensor accuracy. We discuss the implications for rehabilitation centres.
+PY 2023
+VL 16
+IS 2
+BP 27
+EP 51
+DI 10.5555/fac.2023.0008
+TC 19
+Z9 23
+CR Santoro GP, 2014, J MULTIMODAL INTERFACES, V6, P182, DOI 10.5555/jmi.2014.0001
+   Ferreira GB, 2014, REV BRAS TECNOL INCL, V15, P189, DOI 10.5555/rbti.2014.0001
+   Rezende VL, 2015, FRONT ACCESS COMPUT, V28, P6, DOI 10.5555/fac.2015.0002
+   Moreira RC, 2016, REV BRAS TECNOL INCL, V22, P228, DOI 10.5555/rbti.2016.0003
+   Cardoso IS, 2021, J INNOV PUBLIC POLICY, V5, P106, DOI 10.5555/jipp.2021.0006
+   Okonkwo C, 2022, FRONT ACCESS COMPUT, V26, P56, DOI 10.5555/fac.2022.0006
+   Haddad N, 2022, J MULTIMODAL INTERFACES, V26, P60, DOI 10.5555/jmi.2022.0010
+NR 7
+UT WOS:900000000000064
+ER
+
+PT J
+AU Pereira, AC
+   Nogueira, DR
+   Muller, SD
+AF Pereira, Alice C.
+   Nogueira, Diego R.
+   Muller, Stefan D.
+TI Technology transfer pathways for university spin-offs
+SO JOURNAL OF INNOVATION AND PUBLIC POLICY
+LA English
+DT Article
+DE technology assessment; health economics; public policy; public procurement
+ID TECHNOLOGY ASSESSMENT; COST-EFFECTIVENESS; PUBLIC POLICY
+AB This study investigates what it costs a public health system to deploy assistive wearables at scale. We build a decision-analytic model calibrated with procurement data from three regions, and assess the approach through incremental cost per quality-adjusted life year and budget impact over five years. Findings indicate that locally manufactured devices reach acceptable thresholds where imported ones do not. We discuss the implications for  university spin-offs.
+PY 2023
+VL 22
+IS 4
+BP 17
+EP 27
+DI 10.5555/jipp.2023.0009
+TC 33
+Z9 33
+CR Ferreira GB, 2017, SENSOR WEARABLE COMPUT, V18, P123, DOI 10.5555/swc.2017.0004
+   Nogueira DR, 2019, J INNOV PUBLIC POLICY, V13, P62, DOI 10.5555/jipp.2019.0004
+   Cardoso IS, 2021, J INNOV PUBLIC POLICY, V26, P230, DOI 10.5555/jipp.2021.0007
+   Nogueira DR, 2021, J MULTIMODAL INTERFACES, V14, P163, DOI 10.5555/jmi.2021.0007
+   Duarte MS, 2022, ASSIST TECHNOL LETT, V6, P202, DOI 10.5555/atl.2022.0004
+NR 5
+UT WOS:900000000000065
+ER
+
+PT J
+AU Menezes, FR
+   Haddad, N
+AF Menezes, Fernanda R.
+   Haddad, Nadia
+TI Haptic vibrotactile cues for scene description interfaces
+SO INTERACTION AND PERCEPTION REVIEW
+LA English
+DT Article
+DE wearable interfaces; multimodal interfaces; sonification; rehabilitation
+ID SPATIAL AUDIO; HAPTIC FEEDBACK; MULTIMODAL INTERFACES
+AB This study investigates how audio and tactile channels compete for attention when a device narrates the surroundings. We compare sonification schemes against vibrotactile encodings in a within-subject experiment, and assess the approach through reaction time, route deviation and NASA-TLX cognitive load scores. Findings indicate that sparse tactile cues outperform continuous audio once the environment gets noisy. We discuss the implications for  real-time obstacle alerts.
+PY 2023
+VL 21
+IS 2
+BP 188
+EP 197
+DI 10.5555/ipr.2023.0004
+TC 14
+Z9 15
+CR Santoro GP, 2017, REV BRAS TECNOL INCL, V28, P171, DOI 10.5555/rbti.2017.0005
+   Tanaka YU, 2018, J MULTIMODAL INTERFACES, V10, P65, DOI 10.5555/jmi.2018.0003
+   Vasconcelos LM, 2020, TECHNOL ASSESS Q, V3, P66, DOI 10.5555/taq.2020.0003
+   Andrade BM, 2021, INTERACT PERCEPT REV, V14, P214, DOI 10.5555/ipr.2021.0001
+   Silva JM, 2021, J EMBED VIS SYST, V12, P5, DOI 10.5555/jevs.2021.0006
+NR 5
+UT WOS:900000000000066
+ER
+
+PT J
+AU Oliveira, PH
+   Nakamura, T
+   Silva, JM
+   Ramalho, JP
+AF Oliveira, Pedro H.
+   Nakamura, Takeshi
+   Silva, Joao M.
+   Ramalho, Julio P.
+TI Quantized object detectors under constrained memory budgets
+SO JOURNAL OF INNOVATION AND PUBLIC POLICY
+LA English
+DT Article
+DE model quantization; TinyML; object detection; deep learning
+ID COMPUTER VISION; DEEP LEARNING; TINYML
+AB This study investigates how compact vision models can run within the power and memory envelope of wearable hardware. We train a family of quantized detectors and profile them on microcontroller-class boards, and assess the approach through latency, energy draw and detection accuracy on an indoor scene benchmark. Findings indicate that 8-bit quantization preserves most of the accuracy while cutting inference time by roughly half. We discuss the implications for  wearable cameras.
+PY 2023
+VL 13
+IS 2
+BP 208
+EP 228
+DI 10.5555/jipp.2023.0010
+TC 39
+Z9 41
+CR Silva JM, 2016, SENSOR WEARABLE COMPUT, V25, P103, DOI 10.5555/swc.2016.0002
+   Tanaka YU, 2018, J MULTIMODAL INTERFACES, V10, P65, DOI 10.5555/jmi.2018.0003
+   Silva JM, 2021, J EMBED VIS SYST, V12, P5, DOI 10.5555/jevs.2021.0006
+   Ramalho JP, 2022, REV BRAS TECNOL INCL, V20, P52, DOI 10.5555/rbti.2022.0011
+NR 4
+UT WOS:900000000000067
+ER
+
+PT J
+AU Lindqvist, EM
+   Barbosa, TA
+AF Lindqvist, Elsa M.
+   Barbosa, Thiago A.
+TI Longitudinal adoption studies in rehabilitation centres
+SO REVISTA BRASILEIRA DE TECNOLOGIA INCLUSIVA
+LA English
+DT Article
+DE independent living; assisted navigation; usability
+ID ASSISTIVE TECHNOLOGY; VISUAL IMPAIRMENT; ASSISTED NAVIGATION
+AB This study investigates how assistive navigation devices are actually adopted outside the laboratory. We follow a cohort of participants through a structured orientation and mobility programme, and assess the approach through task completion, perceived autonomy and abandonment rates over six months. Findings indicate that sustained use depends far more on training and fit than on sensor accuracy. We discuss the implications for  older adults with low vision.
+PY 2023
+VL 11
+IS 3
+BP 56
+EP 78
+DI 10.5555/rbti.2023.0012
+TC 49
+Z9 52
+CR Rezende VL, 2015, REV BRAS TECNOL INCL, V6, P8, DOI 10.5555/rbti.2015.0002
+   Moreira RC, 2015, SENSOR WEARABLE COMPUT, V20, P61, DOI 10.5555/swc.2015.0001
+   Moreira RC, 2017, REV BRAS TECNOL INCL, V7, P218, DOI 10.5555/rbti.2017.0004
+   Rezende VL, 2018, REV BRAS TECNOL INCL, V5, P103, DOI 10.5555/rbti.2018.0007
+   Tanaka YU, 2018, J MULTIMODAL INTERFACES, V10, P65, DOI 10.5555/jmi.2018.0003
+   Almeida LF, 2019, SENSOR WEARABLE COMPUT, V12, P57, DOI 10.5555/swc.2019.0007
+   Nogueira DR, 2021, J MULTIMODAL INTERFACES, V14, P163, DOI 10.5555/jmi.2021.0007
+   Duarte MS, 2021, FRONT ACCESS COMPUT, V13, P231, DOI 10.5555/fac.2021.0005
+NR 8
+UT WOS:900000000000068
+ER
+
+PT J
+AU Cardoso, IS
+   Pereira, AC
+   Vasconcelos, LM
+   Muller, SD
+   Ibrahim, HA
+   Haddad, N
+AF Cardoso, Isabela S.
+   Pereira, Alice C.
+   Vasconcelos, Leandro M.
+   Muller, Stefan D.
+   Ibrahim, Hana A.
+   Haddad, Nadia
+TI Intellectual property strategies in emerging innovation ecosystems
+SO JOURNAL OF INNOVATION AND PUBLIC POLICY
+LA English
+DT Article
+DE technology transfer; innovation ecosystems; intellectual property
+ID TECHNOLOGY ASSESSMENT; COST-EFFECTIVENESS; PUBLIC POLICY
+AB This study investigates what it costs a public health system to deploy assistive wearables at scale. We build a decision-analytic model calibrated with procurement data from three regions, and assess the approach through incremental cost per quality-adjusted life year and budget impact over five years. Findings indicate that locally manufactured devices reach acceptable thresholds where imported ones do not. We discuss the implications for public health systems.
+PY 2023
+VL 3
+IS 4
+BP 92
+EP 105
+DI 10.5555/jipp.2023.0011
+TC 28
+Z9 32
+CR Vasconcelos LM, 2014, J INNOV PUBLIC POLICY, V19, P185, DOI 10.5555/jipp.2014.0001
+   Ferreira GB, 2014, REV BRAS TECNOL INCL, V15, P189, DOI 10.5555/rbti.2014.0001
+   Cardoso IS, 2017, J INNOV PUBLIC POLICY, V12, P41, DOI 10.5555/jipp.2017.0002
+   Vasconcelos LM, 2020, TECHNOL ASSESS Q, V3, P66, DOI 10.5555/taq.2020.0003
+   Cardoso IS, 2022, TECHNOL ASSESS Q, V24, P109, DOI 10.5555/taq.2022.0004
+   Haddad N, 2022, J MULTIMODAL INTERFACES, V26, P60, DOI 10.5555/jmi.2022.0010
+NR 6
+UT WOS:900000000000069
+ER
+
+PT J
+AU Ferreira, GB
+   Duarte, MS
+   Moreira, RC
+AF Ferreira, Gabriel B.
+   Duarte, Marina S.
+   Moreira, Rafael C.
+TI Wayfinding support in urban public transport
+SO ASSISTIVE TECHNOLOGY LETTERS
+LA English
+DT Article
+DE usability; independent living; orientation and mobility
+ID ASSISTIVE TECHNOLOGY; VISUAL IMPAIRMENT; ASSISTED NAVIGATION
+AB This study investigates how assistive navigation devices are actually adopted outside the laboratory. We follow a cohort of participants through a structured orientation and mobility programme, and assess the approach through task completion, perceived autonomy and abandonment rates over six months. Findings indicate that sustained use depends far more on training and fit than on sensor accuracy. We discuss the implications for urban public transport.
+PY 2023
+VL 11
+IS 1
+BP 223
+EP 234
+DI 10.5555/atl.2023.0005
+TC 11
+Z9 11
+CR Barbosa TA, 2018, REV BRAS TECNOL INCL, V11, P94, DOI 10.5555/rbti.2018.0006
+   Tanaka YU, 2018, J MULTIMODAL INTERFACES, V10, P65, DOI 10.5555/jmi.2018.0003
+   Lindqvist EM, 2018, REV BRAS TECNOL INCL, V13, P220, DOI 10.5555/rbti.2018.0008
+   Nogueira DR, 2021, J MULTIMODAL INTERFACES, V14, P163, DOI 10.5555/jmi.2021.0007
+   Duarte MS, 2021, FRONT ACCESS COMPUT, V13, P231, DOI 10.5555/fac.2021.0005
+   Lindqvist EM, 2022, J MULTIMODAL INTERFACES, V14, P85, DOI 10.5555/jmi.2022.0009
+NR 6
+UT WOS:900000000000070
+ER
+
+PT J
+AU Almeida, LF
+   Silva, JM
+   Prado, CE
+   Nakamura, T
+   Oliveira, PH
+   Lindqvist, EM
+AF Almeida, Luiza F.
+   Silva, Joao M.
+   Prado, Camila E.
+   Nakamura, Takeshi
+   Oliveira, Pedro H.
+   Lindqvist, Elsa M.
+TI Lightweight convolutional networks in low-power assistive devices
+SO SENSORS AND WEARABLE COMPUTING
+LA English
+DT Article
+DE convolutional neural networks; object detection; deep learning
+ID COMPUTER VISION; DEEP LEARNING; TINYML
+AB This study investigates how compact vision models can run within the power and memory envelope of wearable hardware. We train a family of quantized detectors and profile them on microcontroller-class boards, and assess the approach through latency, energy draw and detection accuracy on an indoor scene benchmark. Findings indicate that 8-bit quantization preserves most of the accuracy while cutting inference time by roughly half. We discuss the implications for  continuous scene understanding.
+PY 2023
+VL 14
+IS 2
+BP 33
+EP 49
+DI 10.5555/swc.2023.0010
+TC 19
+Z9 20
+CR Vasconcelos LM, 2016, TECHNOL ASSESS Q, V28, P31, DOI 10.5555/taq.2016.0001
+   Silva JM, 2016, SENSOR WEARABLE COMPUT, V25, P103, DOI 10.5555/swc.2016.0002
+   Nogueira DR, 2019, J INNOV PUBLIC POLICY, V13, P62, DOI 10.5555/jipp.2019.0004
+   Almeida LF, 2019, SENSOR WEARABLE COMPUT, V12, P57, DOI 10.5555/swc.2019.0007
+   Nakamura T, 2020, SENSOR WEARABLE COMPUT, V19, P93, DOI 10.5555/swc.2020.0008
+   Almeida LF, 2020, J EMBED VIS SYST, V3, P167, DOI 10.5555/jevs.2020.0005
+   Duarte MS, 2022, ASSIST TECHNOL LETT, V6, P202, DOI 10.5555/atl.2022.0004
+NR 7
+UT WOS:900000000000071
+ER
+
+PT J
+AU Okonkwo, C
+   Ferreira, GB
+   Duarte, MS
+   Ramalho, JP
+   Bergstrom, K
+AF Okonkwo, Chidi
+   Ferreira, Gabriel B.
+   Duarte, Marina S.
+   Ramalho, Julio P.
+   Bergstrom, Karin
+TI User-centred design in rehabilitation centres
+SO FRONTIERS IN ACCESSIBLE COMPUTING
+LA English
+DT Article
+DE rehabilitation; independent living; usability; visual impairment; model quantization
+ID ASSISTIVE TECHNOLOGY; VISUAL IMPAIRMENT; ASSISTED NAVIGATION
+AB This study investigates how assistive navigation devices are actually adopted outside the laboratory. We follow a cohort of participants through a structured orientation and mobility programme, and assess the approach through task completion, perceived autonomy and abandonment rates over six months. Findings indicate that sustained use depends far more on training and fit than on sensor accuracy. We discuss the implications for indoor environments.
+PY 2023
+VL 15
+IS 3
+BP 99
+EP 109
+DI 10.5555/fac.2023.0009
+TC 8
+Z9 10
+CR Moreira RC, 2015, FRONT ACCESS COMPUT, V18, P84, DOI 10.5555/fac.2015.0001
+   Ferreira GB, 2018, SENSOR WEARABLE COMPUT, V3, P96, DOI 10.5555/swc.2018.0005
+   Lindqvist EM, 2019, REV BRAS TECNOL INCL, V13, P192, DOI 10.5555/rbti.2019.0009
+   Haddad N, 2020, J MULTIMODAL INTERFACES, V24, P100, DOI 10.5555/jmi.2020.0006
+   Pereira AC, 2020, REV BRAS TECNOL INCL, V6, P139, DOI 10.5555/rbti.2020.0010
+   Okonkwo C, 2022, FRONT ACCESS COMPUT, V26, P56, DOI 10.5555/fac.2022.0006
+   Haddad N, 2022, J MULTIMODAL INTERFACES, V26, P60, DOI 10.5555/jmi.2022.0010
+NR 7
+UT WOS:900000000000072
+ER
+
+PT J
+AU Oliveira, PH
+   Bergstrom, K
+   Silva, JM
+   Prado, CE
+   Okonkwo, C
+AF Oliveira, Pedro H.
+   Bergstrom, Karin
+   Silva, Joao M.
+   Prado, Camila E.
+   Okonkwo, Chidi
+TI Self-supervised feature learning in embedded vision pipelines
+SO SENSORS AND WEARABLE COMPUTING
+LA English
+DT Article
+DE convolutional neural networks; deep learning; embedded systems; wearable interfaces
+ID COMPUTER VISION; DEEP LEARNING; TINYML
+AB This study investigates how compact vision models can run within the power and memory envelope of wearable hardware. We train a family of quantized detectors and profile them on microcontroller-class boards, and assess the approach through latency, energy draw and detection accuracy on an indoor scene benchmark. Findings indicate that 8-bit quantization preserves most of the accuracy while cutting inference time by roughly half. We discuss the implications for  wearable cameras.
+PY 2023
+VL 9
+IS 2
+BP 61
+EP 76
+DI 10.5555/swc.2023.0011
+TC 3
+Z9 6
+CR Silva JM, 2016, SENSOR WEARABLE COMPUT, V25, P103, DOI 10.5555/swc.2016.0002
+   Nakamura T, 2017, SENSOR WEARABLE COMPUT, V13, P206, DOI 10.5555/swc.2017.0003
+   Cardoso IS, 2017, J INNOV PUBLIC POLICY, V12, P41, DOI 10.5555/jipp.2017.0002
+   Nakamura T, 2020, SENSOR WEARABLE COMPUT, V19, P93, DOI 10.5555/swc.2020.0008
+   Haddad N, 2022, J MULTIMODAL INTERFACES, V26, P60, DOI 10.5555/jmi.2022.0010
+NR 5
+UT WOS:900000000000073
+ER
+
+PT J
+AU Ibrahim, HA
+   Pereira, AC
+   Muller, SD
+   Vasconcelos, LM
+   Cardoso, IS
+AF Ibrahim, Hana A.
+   Pereira, Alice C.
+   Muller, Stefan D.
+   Vasconcelos, Leandro M.
+   Cardoso, Isabela S.
+TI Randomised evaluation under constrained public budgets
+SO JOURNAL OF MULTIMODAL INTERFACES
+LA English
+DT Article
+DE cost-effectiveness; public policy; health economics
+ID TECHNOLOGY ASSESSMENT; COST-EFFECTIVENESS; PUBLIC POLICY
+AB This study investigates what it costs a public health system to deploy assistive wearables at scale. We build a decision-analytic model calibrated with procurement data from three regions, and assess the approach through incremental cost per quality-adjusted life year and budget impact over five years. Findings indicate that locally manufactured devices reach acceptable thresholds where imported ones do not. We discuss the implications for public health systems.
+PY 2023
+VL 24
+IS 2
+BP 89
+EP 112
+DI 10.5555/jmi.2023.0012
+TC 26
+Z9 30
+CR Vasconcelos LM, 2014, J INNOV PUBLIC POLICY, V19, P185, DOI 10.5555/jipp.2014.0001
+   Moreira RC, 2015, SENSOR WEARABLE COMPUT, V20, P61, DOI 10.5555/swc.2015.0001
+   Ibrahim HA, 2016, TECHNOL ASSESS Q, V3, P42, DOI 10.5555/taq.2016.0002
+   Lindqvist EM, 2019, REV BRAS TECNOL INCL, V13, P192, DOI 10.5555/rbti.2019.0009
+   Pereira AC, 2020, FRONT ACCESS COMPUT, V26, P232, DOI 10.5555/fac.2020.0003
+   Cardoso IS, 2022, TECHNOL ASSESS Q, V24, P109, DOI 10.5555/taq.2022.0004
+NR 6
+UT WOS:900000000000074
+ER
+
+PT J
+AU Moreira, RC
+   Barbosa, TA
+   Okonkwo, C
+   Duarte, MS
+AF Moreira, Rafael C.
+   Barbosa, Thiago A.
+   Okonkwo, Chidi
+   Duarte, Marina S.
+TI Wayfinding support for people with visual impairment
+SO FRONTIERS IN ACCESSIBLE COMPUTING
+LA English
+DT Article
+DE visual impairment; assistive technology; usability; universal design
+ID ASSISTIVE TECHNOLOGY; VISUAL IMPAIRMENT; ASSISTED NAVIGATION
+AB This study investigates how assistive navigation devices are actually adopted outside the laboratory. We follow a cohort of participants through a structured orientation and mobility programme, and assess the approach through task completion, perceived autonomy and abandonment rates over six months. Findings indicate that sustained use depends far more on training and fit than on sensor accuracy. We discuss the implications for  older adults with low vision.
+PY 2024
+VL 15
+IS 1
+BP 199
+EP 218
+DI 10.5555/fac.2024.0010
+TC 16
+Z9 16
+CR Ramalho JP, 2018, ASSIST TECHNOL LETT, V20, P125, DOI 10.5555/atl.2018.0001
+   Tanaka YU, 2018, J MULTIMODAL INTERFACES, V10, P65, DOI 10.5555/jmi.2018.0003
+   Ferreira GB, 2021, FRONT ACCESS COMPUT, V22, P68, DOI 10.5555/fac.2021.0004
+   Oliveira PH, 2023, FRONT ACCESS COMPUT, V11, P199, DOI 10.5555/fac.2023.0007
+   Lindqvist EM, 2023, REV BRAS TECNOL INCL, V11, P56, DOI 10.5555/rbti.2023.0012
+NR 5
+UT WOS:900000000000075
+ER
+
+PT J
+AU Kowalski, JZ
+   Santoro, GP
+   Tanaka, YU
+   Menezes, FR
+AF Kowalski, Jakub Z.
+   Santoro, Giulia P.
+   Tanaka, Yuki U.
+   Menezes, Fernanda R.
+TI Cognitive load assessment in wearable guidance devices
+SO INTERACTION AND PERCEPTION REVIEW
+LA English
+DT Article
+DE cognitive load; spatial audio; wearable interfaces; sensory substitution
+ID SPATIAL AUDIO; HAPTIC FEEDBACK; MULTIMODAL INTERFACES
+AB This study investigates how audio and tactile channels compete for attention when a device narrates the surroundings. We compare sonification schemes against vibrotactile encodings in a within-subject experiment, and assess the approach through reaction time, route deviation and NASA-TLX cognitive load scores. Findings indicate that sparse tactile cues outperform continuous audio once the environment gets noisy. We discuss the implications for  scene description interfaces.
+PY 2024
+VL 26
+IS 4
+BP 50
+EP 58
+DI 10.5555/ipr.2024.0005
+TC 11
+Z9 12
+CR Rezende VL, 2015, FRONT ACCESS COMPUT, V28, P6, DOI 10.5555/fac.2015.0002
+   Sousa MV, 2017, J MULTIMODAL INTERFACES, V27, P229, DOI 10.5555/jmi.2017.0002
+   Andrade BM, 2021, INTERACT PERCEPT REV, V17, P170, DOI 10.5555/ipr.2021.0002
+   Haddad N, 2022, J MULTIMODAL INTERFACES, V26, P60, DOI 10.5555/jmi.2022.0010
+   Ferreira GB, 2023, FRONT ACCESS COMPUT, V16, P27, DOI 10.5555/fac.2023.0008
+NR 5
+UT WOS:900000000000076
+ER
+
+PT J
+AU Haddad, N
+   Andrade, BM
+   Tanaka, YU
+   Kowalski, JZ
+   Santoro, GP
+   Muller, SD
+AF Haddad, Nadia
+   Andrade, Bruno M.
+   Tanaka, Yuki U.
+   Kowalski, Jakub Z.
+   Santoro, Giulia P.
+   Muller, Stefan D.
+TI Spatial audio feedback for scene description interfaces
+SO FRONTIERS IN ACCESSIBLE COMPUTING
+LA English
+DT Article
+DE cognitive load; multimodal interfaces; spatial audio; public policy
+ID SPATIAL AUDIO; HAPTIC FEEDBACK; MULTIMODAL INTERFACES
+AB This study investigates how audio and tactile channels compete for attention when a device narrates the surroundings. We compare sonification schemes against vibrotactile encodings in a within-subject experiment, and assess the approach through reaction time, route deviation and NASA-TLX cognitive load scores. Findings indicate that sparse tactile cues outperform continuous audio once the environment gets noisy. We discuss the implications for wearable guidance devices.
+PY 2024
+VL 16
+IS 2
+BP 66
+EP 79
+DI 10.5555/fac.2024.0011
+TC 16
+Z9 18
+CR Santoro GP, 2014, J MULTIMODAL INTERFACES, V6, P182, DOI 10.5555/jmi.2014.0001
+   Ferreira GB, 2021, FRONT ACCESS COMPUT, V22, P68, DOI 10.5555/fac.2021.0004
+   Andrade BM, 2021, INTERACT PERCEPT REV, V17, P170, DOI 10.5555/ipr.2021.0002
+   Haddad N, 2022, J MULTIMODAL INTERFACES, V26, P60, DOI 10.5555/jmi.2022.0010
+   Pereira AC, 2023, J INNOV PUBLIC POLICY, V22, P17, DOI 10.5555/jipp.2023.0009
+   Menezes FR, 2023, INTERACT PERCEPT REV, V21, P188, DOI 10.5555/ipr.2023.0004
+NR 6
+UT WOS:900000000000077
+ER
+
+PT J
+AU Cardoso, IS
+   Muller, SD
+AF Cardoso, Isabela S.
+   Muller, Stefan D.
+TI Cost-effectiveness analysis in public health systems
+SO JOURNAL OF INNOVATION AND PUBLIC POLICY
+LA English
+DT Article
+DE public policy; innovation ecosystems; health economics; public procurement; universal design
+ID TECHNOLOGY ASSESSMENT; COST-EFFECTIVENESS; PUBLIC POLICY
+AB This study investigates what it costs a public health system to deploy assistive wearables at scale. We build a decision-analytic model calibrated with procurement data from three regions, and assess the approach through incremental cost per quality-adjusted life year and budget impact over five years. Findings indicate that locally manufactured devices reach acceptable thresholds where imported ones do not. We discuss the implications for assistive wearable devices.
+PY 2024
+VL 13
+IS 3
+BP 91
+EP 104
+DI 
+TC 26
+Z9 27
+CR Moreira RC, 2017, REV BRAS TECNOL INCL, V7, P218, DOI 10.5555/rbti.2017.0004
+   Pereira AC, 2020, FRONT ACCESS COMPUT, V26, P232, DOI 10.5555/fac.2020.0003
+   Vasconcelos LM, 2020, TECHNOL ASSESS Q, V3, P66, DOI 10.5555/taq.2020.0003
+   Nogueira DR, 2021, J MULTIMODAL INTERFACES, V14, P163, DOI 10.5555/jmi.2021.0007
+   Lindqvist EM, 2022, J MULTIMODAL INTERFACES, V14, P85, DOI 10.5555/jmi.2022.0009
+   Haddad N, 2022, INTERACT PERCEPT REV, V16, P111, DOI 10.5555/ipr.2022.0003
+   Pereira AC, 2023, J INNOV PUBLIC POLICY, V22, P17, DOI 10.5555/jipp.2023.0009
+   Cardoso IS, 2023, J INNOV PUBLIC POLICY, V3, P92, DOI 10.5555/jipp.2023.0011
+NR 8
+UT WOS:900000000900001
+ER
+
+PT J
+AU Muller, SD
+   Nogueira, DR
+   Tanaka, YU
+AF Muller, Stefan D.
+   Nogueira, Diego R.
+   Tanaka, Yuki U.
+TI Intellectual property strategies of assistive wearable devices
+SO TECHNOLOGY ASSESSMENT QUARTERLY
+LA English
+DT Article
+DE cost-effectiveness; technology assessment; intellectual property; orientation and mobility
+ID TECHNOLOGY ASSESSMENT; COST-EFFECTIVENESS; PUBLIC POLICY
+AB This study investigates what it costs a public health system to deploy assistive wearables at scale. We build a decision-analytic model calibrated with procurement data from three regions, and assess the approach through incremental cost per quality-adjusted life year and budget impact over five years. Findings indicate that locally manufactured devices reach acceptable thresholds where imported ones do not. We discuss the implications for er constrained public budgets.
+PY 2024
+VL 25
+IS 4
+BP 37
+EP 53
+DI 10.5555/taq.2024.0005
+TC 4
+Z9 8
+CR Nogueira DR, 2019, J INNOV PUBLIC POLICY, V13, P62, DOI 10.5555/jipp.2019.0004
+   Haddad N, 2020, J MULTIMODAL INTERFACES, V24, P100, DOI 10.5555/jmi.2020.0006
+   Pereira AC, 2020, REV BRAS TECNOL INCL, V6, P139, DOI 10.5555/rbti.2020.0010
+   Lindqvist EM, 2023, REV BRAS TECNOL INCL, V11, P56, DOI 10.5555/rbti.2023.0012
+NR 4
+UT WOS:900000000000079
+ER
+
+PT J
+AU Almeida, LF
+   Bergstrom, K
+   Costa, AR
+   Silva, JM
+   Muller, SD
+AF Almeida, Luiza F.
+   Bergstrom, Karin
+   Costa, Ana R.
+   Silva, Joao M.
+   Muller, Stefan D.
+TI Self-supervised feature learning in low-power assistive devices
+SO JOURNAL OF EMBEDDED VISION SYSTEMS
+LA English
+DT Article
+DE convolutional neural networks; TinyML; edge inference; orientation and mobility
+ID COMPUTER VISION; DEEP LEARNING; TINYML
+AB This study investigates how compact vision models can run within the power and memory envelope of wearable hardware. We train a family of quantized detectors and profile them on microcontroller-class boards, and assess the approach through latency, energy draw and detection accuracy on an indoor scene benchmark. Findings indicate that 8-bit quantization preserves most of the accuracy while cutting inference time by roughly half. We discuss the implications for low-power assistive devices.
+PY 2024
+VL 11
+IS 3
+BP 150
+EP 161
+DI 10.5555/jevs.2024.0008
+TC 29
+Z9 29
+CR Santoro GP, 2014, J MULTIMODAL INTERFACES, V6, P182, DOI 10.5555/jmi.2014.0001
+   Nakamura T, 2017, SENSOR WEARABLE COMPUT, V13, P206, DOI 10.5555/swc.2017.0003
+   Sousa MV, 2017, J MULTIMODAL INTERFACES, V27, P229, DOI 10.5555/jmi.2017.0002
+   Bergstrom K, 2018, J EMBED VIS SYST, V26, P140, DOI 10.5555/jevs.2018.0002
+   Almeida LF, 2019, SENSOR WEARABLE COMPUT, V12, P57, DOI 10.5555/swc.2019.0007
+   Silva JM, 2020, SENSOR WEARABLE COMPUT, V22, P216, DOI 10.5555/swc.2020.0009
+   Kowalski JZ, 2022, J MULTIMODAL INTERFACES, V20, P130, DOI 10.5555/jmi.2022.0011
+NR 7
+UT WOS:900000000000080
+ER
+
+PT J
+AU Rezende, VL
+   Duarte, MS
+   Pereira, AC
+AF Rezende, Vitoria L.
+   Duarte, Marina S.
+   Pereira, Alice C.
+TI Assistive navigation systems for independent living
+SO JOURNAL OF EMBEDDED VISION SYSTEMS
+LA English
+DT Article
+DE assisted navigation; independent living; assistive technology; rehabilitation
+ID ASSISTIVE TECHNOLOGY; VISUAL IMPAIRMENT; ASSISTED NAVIGATION
+AB This study investigates how assistive navigation devices are actually adopted outside the laboratory. We follow a cohort of participants through a structured orientation and mobility programme, and assess the approach through task completion, perceived autonomy and abandonment rates over six months. Findings indicate that sustained use depends far more on training and fit than on sensor accuracy. We discuss the implications for indoor environments.
+PY 2024
+VL 19
+IS 1
+BP 43
+EP 51
+DI 10.5555/jevs.2024.0009
+TC 13
+Z9 14
+CR Barbosa TA, 2018, REV BRAS TECNOL INCL, V11, P94, DOI 10.5555/rbti.2018.0006
+   Kowalski JZ, 2022, J MULTIMODAL INTERFACES, V20, P130, DOI 10.5555/jmi.2022.0011
+   Duarte MS, 2022, ASSIST TECHNOL LETT, V6, P202, DOI 10.5555/atl.2022.0004
+   Oliveira PH, 2023, FRONT ACCESS COMPUT, V11, P199, DOI 10.5555/fac.2023.0007
+NR 4
+UT WOS:900000000000081
+ER
+
+PT J
+AU Nogueira, DR
+   Pereira, AC
+   Muller, SD
+AF Nogueira, Diego R.
+   Pereira, Alice C.
+   Muller, Stefan D.
+TI Regulatory frameworks under constrained public budgets
+SO JOURNAL OF INNOVATION AND PUBLIC POLICY
+LA English
+DT Article
+DE innovation ecosystems; intellectual property; public policy
+ID TECHNOLOGY ASSESSMENT; COST-EFFECTIVENESS; PUBLIC POLICY
+AB This study investigates what it costs a public health system to deploy assistive wearables at scale. We build a decision-analytic model calibrated with procurement data from three regions, and assess the approach through incremental cost per quality-adjusted life year and budget impact over five years. Findings indicate that locally manufactured devices reach acceptable thresholds where imported ones do not. We discuss the implications for  low-cost assistive technology.
+PY 2024
+VL 20
+IS 1
+BP 68
+EP 91
+DI 10.5555/jipp.2024.0013
+TC 5
+Z9 7
+CR Ibrahim HA, 2016, TECHNOL ASSESS Q, V3, P42, DOI 10.5555/taq.2016.0002
+   Sousa MV, 2017, J MULTIMODAL INTERFACES, V27, P229, DOI 10.5555/jmi.2017.0002
+   Nakamura T, 2020, J EMBED VIS SYST, V24, P143, DOI 10.5555/jevs.2020.0004
+   Ibrahim HA, 2021, J INNOV PUBLIC POLICY, V26, P43, DOI 10.5555/jipp.2021.0008
+   Ramalho JP, 2022, REV BRAS TECNOL INCL, V20, P52, DOI 10.5555/rbti.2022.0011
+   Cardoso IS, 2022, TECHNOL ASSESS Q, V24, P109, DOI 10.5555/taq.2022.0004
+   Ibrahim HA, 2023, J MULTIMODAL INTERFACES, V24, P89, DOI 10.5555/jmi.2023.0012
+NR 7
+UT WOS:900000000000082
+ER
+
+PT J
+AU Costa, AR
+   Bergstrom, K
+AF Costa, Ana R.
+   Bergstrom, Karin
+TI Quantized object detectors in embedded vision pipelines
+SO JOURNAL OF EMBEDDED VISION SYSTEMS
+LA English
+DT Article
+DE model quantization; deep learning; computer vision; embedded systems; assistive technology
+ID COMPUTER VISION; DEEP LEARNING; TINYML
+AB This study investigates how compact vision models can run within the power and memory envelope of wearable hardware. We train a family of quantized detectors and profile them on microcontroller-class boards, and assess the approach through latency, energy draw and detection accuracy on an indoor scene benchmark. Findings indicate that 8-bit quantization preserves most of the accuracy while cutting inference time by roughly half. We discuss the implications for microcontroller-class hardware.
+PY 2024
+VL 23
+IS 1
+BP 204
+EP 220
+DI 10.5555/jevs.2024.0010
+TC 19
+Z9 22
+CR Nakamura T, 2017, SENSOR WEARABLE COMPUT, V13, P206, DOI 10.5555/swc.2017.0003
+   Ramalho JP, 2018, ASSIST TECHNOL LETT, V20, P125, DOI 10.5555/atl.2018.0001
+   Bergstrom K, 2018, J EMBED VIS SYST, V26, P140, DOI 10.5555/jevs.2018.0002
+   Almeida LF, 2019, SENSOR WEARABLE COMPUT, V12, P57, DOI 10.5555/swc.2019.0007
+   Duarte MS, 2022, ASSIST TECHNOL LETT, V6, P202, DOI 10.5555/atl.2022.0004
+   Oliveira PH, 2023, FRONT ACCESS COMPUT, V11, P199, DOI 10.5555/fac.2023.0007
+   Oliveira PH, 2023, J INNOV PUBLIC POLICY, V13, P208, DOI 10.5555/jipp.2023.0010
+   Cardoso IS, 2023, J INNOV PUBLIC POLICY, V3, P92, DOI 10.5555/jipp.2023.0011
+NR 8
+UT WOS:900000000000083
+ER
+
+PT J
+AU Andrade, BM
+   Sousa, MV
+   Santoro, GP
+   Duarte, MS
+AF Andrade, Bruno M.
+   Sousa, Mateus V.
+   Santoro, Giulia P.
+   Duarte, Marina S.
+TI Haptic vibrotactile cues for real-time obstacle alerts
+SO INTERACTION AND PERCEPTION REVIEW
+LA English
+DT Article
+DE cognitive load; wearable interfaces; sonification; sensory substitution; public policy
+ID SPATIAL AUDIO; HAPTIC FEEDBACK; MULTIMODAL INTERFACES
+AB This study investigates how audio and tactile channels compete for attention when a device narrates the surroundings. We compare sonification schemes against vibrotactile encodings in a within-subject experiment, and assess the approach through reaction time, route deviation and NASA-TLX cognitive load scores. Findings indicate that sparse tactile cues outperform continuous audio once the environment gets noisy. We discuss the implications for head-mounted assistive systems.
+PY 2024
+VL 4
+IS 4
+BP 209
+EP 231
+DI 10.5555/ipr.2024.0006
+TC 16
+Z9 20
+CR Santoro GP, 2014, J MULTIMODAL INTERFACES, V6, P182, DOI 10.5555/jmi.2014.0001
+   Vasconcelos LM, 2014, J INNOV PUBLIC POLICY, V19, P185, DOI 10.5555/jipp.2014.0001
+   Santoro GP, 2017, REV BRAS TECNOL INCL, V28, P171, DOI 10.5555/rbti.2017.0005
+   Tanaka YU, 2019, J MULTIMODAL INTERFACES, V4, P41, DOI 10.5555/jmi.2019.0005
+   Almeida LF, 2020, J EMBED VIS SYST, V3, P167, DOI 10.5555/jevs.2020.0005
+   Andrade BM, 2021, INTERACT PERCEPT REV, V14, P214, DOI 10.5555/ipr.2021.0001
+   Andrade BM, 2021, INTERACT PERCEPT REV, V17, P170, DOI 10.5555/ipr.2021.0002
+   Ibrahim HA, 2023, J MULTIMODAL INTERFACES, V24, P89, DOI 10.5555/jmi.2023.0012
+NR 8
+UT WOS:900000000000084
+ER
+
+PT J
+AU Muller, SD
+   Pereira, AC
+   Cardoso, IS
+   Ibrahim, HA
+   Vasconcelos, LM
+AF Muller, Stefan D.
+   Pereira, Alice C.
+   Cardoso, Isabela S.
+   Ibrahim, Hana A.
+   Vasconcelos, Leandro M.
+TI Technology transfer pathways for low-cost assistive technology
+SO JOURNAL OF INNOVATION AND PUBLIC POLICY
+LA English
+DT Article
+DE intellectual property; innovation ecosystems; technology assessment; health economics
+ID TECHNOLOGY ASSESSMENT; COST-EFFECTIVENESS; PUBLIC POLICY
+AB This study investigates what it costs a public health system to deploy assistive wearables at scale. We build a decision-analytic model calibrated with procurement data from three regions, and assess the approach through incremental cost per quality-adjusted life year and budget impact over five years. Findings indicate that locally manufactured devices reach acceptable thresholds where imported ones do not. We discuss the implications for public health systems.
+PY 2024
+VL 14
+IS 3
+BP 150
+EP 170
+DI 10.5555/jipp.2024.0014
+TC 24
+Z9 24
+CR Cardoso IS, 2019, J INNOV PUBLIC POLICY, V17, P138, DOI 10.5555/jipp.2019.0003
+   Almeida LF, 2019, SENSOR WEARABLE COMPUT, V12, P57, DOI 10.5555/swc.2019.0007
+   Almeida LF, 2020, J EMBED VIS SYST, V3, P167, DOI 10.5555/jevs.2020.0005
+   Pereira AC, 2020, REV BRAS TECNOL INCL, V6, P139, DOI 10.5555/rbti.2020.0010
+   Cardoso IS, 2021, J INNOV PUBLIC POLICY, V26, P230, DOI 10.5555/jipp.2021.0007
+   Pereira AC, 2023, J INNOV PUBLIC POLICY, V22, P17, DOI 10.5555/jipp.2023.0009
+NR 6
+UT WOS:900000000000085
+ER
+
+PT J
+AU Nogueira, DR
+   Muller, SD
+   Ibrahim, HA
+   Vasconcelos, LM
+   Sousa, MV
+AF Nogueira, Diego R.
+   Muller, Stefan D.
+   Ibrahim, Hana A.
+   Vasconcelos, Leandro M.
+   Sousa, Mateus V.
+TI Health technology assessment under constrained public budgets
+SO JOURNAL OF INNOVATION AND PUBLIC POLICY
+LA English
+DT Article
+DE public procurement; health economics; technology assessment; haptic feedback
+ID TECHNOLOGY ASSESSMENT; COST-EFFECTIVENESS; PUBLIC POLICY
+AB This study investigates what it costs a public health system to deploy assistive wearables at scale. We build a decision-analytic model calibrated with procurement data from three regions, and assess the approach through incremental cost per quality-adjusted life year and budget impact over five years. Findings indicate that locally manufactured devices reach acceptable thresholds where imported ones do not. We discuss the implications for public health systems.
+PY 2025
+VL 5
+IS 1
+BP 209
+EP 228
+DI 10.5555/jipp.2025.0015
+TC 7
+Z9 8
+CR Rezende VL, 2015, FRONT ACCESS COMPUT, V28, P6, DOI 10.5555/fac.2015.0002
+   Silva JM, 2016, SENSOR WEARABLE COMPUT, V25, P103, DOI 10.5555/swc.2016.0002
+   Nogueira DR, 2019, J INNOV PUBLIC POLICY, V13, P62, DOI 10.5555/jipp.2019.0004
+   Vasconcelos LM, 2020, TECHNOL ASSESS Q, V3, P66, DOI 10.5555/taq.2020.0003
+   Pereira AC, 2023, J INNOV PUBLIC POLICY, V22, P17, DOI 10.5555/jipp.2023.0009
+NR 5
+UT WOS:900000000000086
+ER
+
+PT J
+AU Nakamura, T
+   Oliveira, PH
+   Almeida, LF
+   Bergstrom, K
+   Silva, JM
+AF Nakamura, Takeshi
+   Oliveira, Pedro H.
+   Almeida, Luiza F.
+   Bergstrom, Karin
+   Silva, Joao M.
+TI Edge-cloud offloading strategies for continuous scene understanding
+SO JOURNAL OF EMBEDDED VISION SYSTEMS
+LA English
+DT Article
+DE edge inference; object detection; convolutional neural networks; haptic feedback
+ID COMPUTER VISION; DEEP LEARNING; TINYML
+AB This study investigates how compact vision models can run within the power and memory envelope of wearable hardware. We train a family of quantized detectors and profile them on microcontroller-class boards, and assess the approach through latency, energy draw and detection accuracy on an indoor scene benchmark. Findings indicate that 8-bit quantization preserves most of the accuracy while cutting inference time by roughly half. We discuss the implications for er constrained memory budgets.
+PY 2025
+VL 27
+IS 4
+BP 194
+EP 215
+DI 10.5555/jevs.2025.0011
+TC 5
+Z9 7
+CR Oliveira PH, 2019, SENSOR WEARABLE COMPUT, V21, P48, DOI 10.5555/swc.2019.0006
+   Barbosa TA, 2019, ASSIST TECHNOL LETT, V27, P40, DOI 10.5555/atl.2019.0002
+   Lindqvist EM, 2019, REV BRAS TECNOL INCL, V13, P192, DOI 10.5555/rbti.2019.0009
+   Almeida LF, 2019, SENSOR WEARABLE COMPUT, V12, P57, DOI 10.5555/swc.2019.0007
+   Oliveira PH, 2023, J INNOV PUBLIC POLICY, V13, P208, DOI 10.5555/jipp.2023.0010
+   Ibrahim HA, 2023, J MULTIMODAL INTERFACES, V24, P89, DOI 10.5555/jmi.2023.0012
+   Almeida LF, 2024, J EMBED VIS SYST, V11, P150, DOI 10.5555/jevs.2024.0008
+   Costa AR, 2024, J EMBED VIS SYST, V23, P204, DOI 10.5555/jevs.2024.0010
+NR 8
+UT WOS:900000000000087
+ER
+
+PT J
+AU Almeida, LF
+   Prado, CE
+   Ramalho, JP
+AF Almeida, Luiza F.
+   Prado, Camila E.
+   Ramalho, Julio P.
+TI Self-supervised feature learning under constrained memory budgets
+SO JOURNAL OF EMBEDDED VISION SYSTEMS
+LA English
+DT Article
+DE convolutional neural networks; embedded systems; edge inference; assisted navigation
+ID COMPUTER VISION; DEEP LEARNING; TINYML
+AB This study investigates how compact vision models can run within the power and memory envelope of wearable hardware. We train a family of quantized detectors and profile them on microcontroller-class boards, and assess the approach through latency, energy draw and detection accuracy on an indoor scene benchmark. Findings indicate that 8-bit quantization preserves most of the accuracy while cutting inference time by roughly half. We discuss the implications for er constrained memory budgets.
+PY 2025
+VL 25
+IS 1
+BP 61
+EP 75
+DI 10.5555/jevs.2025.0012
+TC 4
+Z9 7
+CR Silva JM, 2016, SENSOR WEARABLE COMPUT, V25, P103, DOI 10.5555/swc.2016.0002
+   Barbosa TA, 2018, REV BRAS TECNOL INCL, V11, P94, DOI 10.5555/rbti.2018.0006
+   Bergstrom K, 2018, J EMBED VIS SYST, V26, P140, DOI 10.5555/jevs.2018.0002
+   Silva JM, 2020, SENSOR WEARABLE COMPUT, V22, P216, DOI 10.5555/swc.2020.0009
+   Duarte MS, 2021, FRONT ACCESS COMPUT, V13, P231, DOI 10.5555/fac.2021.0005
+   Ramalho JP, 2022, REV BRAS TECNOL INCL, V20, P52, DOI 10.5555/rbti.2022.0011
+   Almeida LF, 2024, J EMBED VIS SYST, V11, P150, DOI 10.5555/jevs.2024.0008
+NR 7
+UT WOS:900000000000088
+ER
+
+PT J
+AU Ramalho, JP
+   Lindqvist, EM
+   Almeida, LF
+AF Ramalho, Julio P.
+   Lindqvist, Elsa M.
+   Almeida, Luiza F.
+TI Obstacle detection aids for independent living
+SO REVISTA BRASILEIRA DE TECNOLOGIA INCLUSIVA
+LA English
+DT Article
+DE assistive technology; independent living; assisted navigation
+ID ASSISTIVE TECHNOLOGY; VISUAL IMPAIRMENT; ASSISTED NAVIGATION
+AB This study investigates how assistive navigation devices are actually adopted outside the laboratory. We follow a cohort of participants through a structured orientation and mobility programme, and assess the approach through task completion, perceived autonomy and abandonment rates over six months. Findings indicate that sustained use depends far more on training and fit than on sensor accuracy. We discuss the implications for rehabilitation centres.
+PY 2025
+VL 6
+IS 3
+BP 113
+EP 137
+DI 10.5555/rbti.2025.0013
+TC 11
+Z9 15
+CR Rezende VL, 2015, FRONT ACCESS COMPUT, V28, P6, DOI 10.5555/fac.2015.0002
+   Kowalski JZ, 2022, J MULTIMODAL INTERFACES, V20, P130, DOI 10.5555/jmi.2022.0011
+   Lindqvist EM, 2023, REV BRAS TECNOL INCL, V11, P56, DOI 10.5555/rbti.2023.0012
+NR 3
+UT WOS:900000000000089
+ER
+
+PT J
+AU Lindqvist, EM
+   Moreira, RC
+AF Lindqvist, Elsa M.
+   Moreira, Rafael C.
+TI Participatory design practices for independent living
+SO SENSORS AND WEARABLE COMPUTING
+LA English
+DT Article
+DE usability; orientation and mobility; assistive technology; deep learning
+ID ASSISTIVE TECHNOLOGY; VISUAL IMPAIRMENT; ASSISTED NAVIGATION
+AB This study investigates how assistive navigation devices are actually adopted outside the laboratory. We follow a cohort of participants through a structured orientation and mobility programme, and assess the approach through task completion, perceived autonomy and abandonment rates over six months. Findings indicate that sustained use depends far more on training and fit than on sensor accuracy. We discuss the implications for indoor environments.
+PY 2025
+VL 23
+IS 2
+BP 132
+EP 150
+DI 10.5555/swc.2025.0012
+TC 10
+Z9 10
+CR Ferreira GB, 2017, SENSOR WEARABLE COMPUT, V18, P123, DOI 10.5555/swc.2017.0004
+   Barbosa TA, 2018, REV BRAS TECNOL INCL, V11, P94, DOI 10.5555/rbti.2018.0006
+   Cardoso IS, 2019, J INNOV PUBLIC POLICY, V17, P138, DOI 10.5555/jipp.2019.0003
+   Lindqvist EM, 2022, J MULTIMODAL INTERFACES, V14, P85, DOI 10.5555/jmi.2022.0009
+   Okonkwo C, 2022, ASSIST TECHNOL LETT, V10, P42, DOI 10.5555/atl.2022.0003
+   Oliveira PH, 2023, FRONT ACCESS COMPUT, V11, P199, DOI 10.5555/fac.2023.0007
+NR 6
+UT WOS:900000000000090
+ER
+
+PT J
+AU Haddad, N
+   Kowalski, JZ
+AF Haddad, Nadia
+   Kowalski, Jakub Z.
+TI Cross-modal attention studies under divided-attention conditions
+SO JOURNAL OF MULTIMODAL INTERFACES
+LA English
+DT Article
+DE wearable interfaces; human-computer interaction; multimodal interfaces; object detection
+ID SPATIAL AUDIO; HAPTIC FEEDBACK; MULTIMODAL INTERFACES
+AB This study investigates how audio and tactile channels compete for attention when a device narrates the surroundings. We compare sonification schemes against vibrotactile encodings in a within-subject experiment, and assess the approach through reaction time, route deviation and NASA-TLX cognitive load scores. Findings indicate that sparse tactile cues outperform continuous audio once the environment gets noisy. We discuss the implications for  scene description interfaces.
+PY 2025
+VL 16
+IS 1
+BP 130
+EP 145
+DI 10.5555/jmi.2025.0013
+TC 4
+Z9 5
+CR Tanaka YU, 2018, J MULTIMODAL INTERFACES, V10, P65, DOI 10.5555/jmi.2018.0003
+   Barbosa TA, 2019, ASSIST TECHNOL LETT, V27, P40, DOI 10.5555/atl.2019.0002
+   Andrade BM, 2021, INTERACT PERCEPT REV, V14, P214, DOI 10.5555/ipr.2021.0001
+   Andrade BM, 2021, INTERACT PERCEPT REV, V17, P170, DOI 10.5555/ipr.2021.0002
+   Haddad N, 2022, J MULTIMODAL INTERFACES, V26, P60, DOI 10.5555/jmi.2022.0010
+   Kowalski JZ, 2022, J MULTIMODAL INTERFACES, V20, P130, DOI 10.5555/jmi.2022.0011
+   Lindqvist EM, 2023, REV BRAS TECNOL INCL, V11, P56, DOI 10.5555/rbti.2023.0012
+   Muller SD, 2024, J INNOV PUBLIC POLICY, V14, P150, DOI 10.5555/jipp.2024.0014
+NR 8
+UT WOS:900000000000091
+ER
+
+PT J
+AU Silva, JM
+   Oliveira, PH
+   Almeida, LF
+   Bergstrom, K
+   Barbosa, TA
+AF Silva, Joao M.
+   Oliveira, Pedro H.
+   Almeida, Luiza F.
+   Bergstrom, Karin
+   Barbosa, Thiago A.
+TI Quantized object detectors for continuous scene understanding
+SO JOURNAL OF EMBEDDED VISION SYSTEMS
+LA English
+DT Article
+DE object detection; computer vision; deep learning; embedded systems
+ID COMPUTER VISION; DEEP LEARNING; TINYML
+AB This study investigates how compact vision models can run within the power and memory envelope of wearable hardware. We train a family of quantized detectors and profile them on microcontroller-class boards, and assess the approach through latency, energy draw and detection accuracy on an indoor scene benchmark. Findings indicate that 8-bit quantization preserves most of the accuracy while cutting inference time by roughly half. We discuss the implications for  wearable cameras.
+PY 2025
+VL 17
+IS 1
+BP 50
+EP 74
+DI 10.5555/jevs.2025.0013
+TC 11
+Z9 13
+CR Moreira RC, 2016, REV BRAS TECNOL INCL, V22, P228, DOI 10.5555/rbti.2016.0003
+   Silva JM, 2016, SENSOR WEARABLE COMPUT, V25, P103, DOI 10.5555/swc.2016.0002
+   Nakamura T, 2020, J EMBED VIS SYST, V24, P143, DOI 10.5555/jevs.2020.0004
+   Almeida LF, 2020, J EMBED VIS SYST, V3, P167, DOI 10.5555/jevs.2020.0005
+   Silva JM, 2020, SENSOR WEARABLE COMPUT, V22, P216, DOI 10.5555/swc.2020.0009
+   Nogueira DR, 2021, J MULTIMODAL INTERFACES, V14, P163, DOI 10.5555/jmi.2021.0007
+   Oliveira PH, 2023, J INNOV PUBLIC POLICY, V13, P208, DOI 10.5555/jipp.2023.0010
+   Cardoso IS, 2024, J INNOV PUBLIC POLICY, V13, P91, DOI 10.5555/jipp.2024.0012
+NR 8
+UT WOS:900000000000092
+ER
+
+PT J
+AU Almeida, LF
+   Prado, CE
+   Silva, JM
+   Costa, AR
+   Nakamura, T
+AF Almeida, Luiza F.
+   Prado, Camila E.
+   Silva, Joao M.
+   Costa, Ana R.
+   Nakamura, Takeshi
+TI TinyML architectures under constrained memory budgets
+SO ASSISTIVE TECHNOLOGY LETTERS
+LA English
+DT Article
+DE computer vision; edge inference; embedded systems
+ID COMPUTER VISION; DEEP LEARNING; TINYML
+AB This study investigates how compact vision models can run within the power and memory envelope of wearable hardware. We train a family of quantized detectors and profile them on microcontroller-class boards, and assess the approach through latency, energy draw and detection accuracy on an indoor scene benchmark. Findings indicate that 8-bit quantization preserves most of the accuracy while cutting inference time by roughly half. We discuss the implications for er constrained memory budgets.
+PY 2025
+VL 10
+IS 3
+BP 127
+EP 151
+DI 10.5555/atl.2025.0006
+TC 4
+Z9 7
+CR Moreira RC, 2015, FRONT ACCESS COMPUT, V18, P84, DOI 10.5555/fac.2015.0001
+   Nakamura T, 2017, SENSOR WEARABLE COMPUT, V13, P206, DOI 10.5555/swc.2017.0003
+   Almeida LF, 2020, J EMBED VIS SYST, V28, P155, DOI 10.5555/jevs.2020.0003
+   Nakamura T, 2020, J EMBED VIS SYST, V24, P143, DOI 10.5555/jevs.2020.0004
+   Cardoso IS, 2023, J INNOV PUBLIC POLICY, V3, P92, DOI 10.5555/jipp.2023.0011
+   Almeida LF, 2023, SENSOR WEARABLE COMPUT, V14, P33, DOI 10.5555/swc.2023.0010
+NR 6
+UT WOS:900000000000093
+ER
+
+PT J
+AU Oliveira, PH
+   Prado, CE
+   Silva, JM
+   Bergstrom, K
+   Costa, AR
+   Ramalho, JP
+AF Oliveira, Pedro H.
+   Prado, Camila E.
+   Silva, Joao M.
+   Bergstrom, Karin
+   Costa, Ana R.
+   Ramalho, Julio P.
+TI Self-supervised feature learning on microcontroller-class hardware
+SO SENSORS AND WEARABLE COMPUTING
+LA English
+DT Article
+DE TinyML; computer vision; object detection; edge inference; haptic feedback
+ID COMPUTER VISION; DEEP LEARNING; TINYML
+AB This study investigates how compact vision models can run within the power and memory envelope of wearable hardware. We train a family of quantized detectors and profile them on microcontroller-class boards, and assess the approach through latency, energy draw and detection accuracy on an indoor scene benchmark. Findings indicate that 8-bit quantization preserves most of the accuracy while cutting inference time by roughly half. We discuss the implications for low-power assistive devices.
+PY 2025
+VL 19
+IS 3
+BP 166
+EP 174
+DI 10.5555/swc.2025.0013
+TC 6
+Z9 10
+CR Ferreira GB, 2017, SENSOR WEARABLE COMPUT, V18, P123, DOI 10.5555/swc.2017.0004
+   Nogueira DR, 2019, J MULTIMODAL INTERFACES, V5, P34, DOI 10.5555/jmi.2019.0004
+   Almeida LF, 2020, J EMBED VIS SYST, V3, P167, DOI 10.5555/jevs.2020.0005
+   Oliveira PH, 2023, FRONT ACCESS COMPUT, V11, P199, DOI 10.5555/fac.2023.0007
+NR 4
+UT WOS:900000000000094
+ER
+
+PT J
+AU Tanaka, YU
+   Santoro, GP
+   Sousa, MV
+   Nogueira, DR
+AF Tanaka, Yuki U.
+   Santoro, Giulia P.
+   Sousa, Mateus V.
+   Nogueira, Diego R.
+TI Audio-tactile substitution for real-time obstacle alerts
+SO INTERACTION AND PERCEPTION REVIEW
+LA English
+DT Article
+DE sensory substitution; cognitive load; sonification
+ID SPATIAL AUDIO; HAPTIC FEEDBACK; MULTIMODAL INTERFACES
+AB This study investigates how audio and tactile channels compete for attention when a device narrates the surroundings. We compare sonification schemes against vibrotactile encodings in a within-subject experiment, and assess the approach through reaction time, route deviation and NASA-TLX cognitive load scores. Findings indicate that sparse tactile cues outperform continuous audio once the environment gets noisy. We discuss the implications for  scene description interfaces.
+PY 2025
+VL 24
+IS 4
+BP 22
+EP 30
+DI 10.5555/ipr.2025.0007
+TC 2
+Z9 2
+CR Moreira RC, 2016, REV BRAS TECNOL INCL, V22, P228, DOI 10.5555/rbti.2016.0003
+   Santoro GP, 2017, REV BRAS TECNOL INCL, V28, P171, DOI 10.5555/rbti.2017.0005
+   Haddad N, 2020, J MULTIMODAL INTERFACES, V24, P100, DOI 10.5555/jmi.2020.0006
+   Nogueira DR, 2021, J MULTIMODAL INTERFACES, V14, P163, DOI 10.5555/jmi.2021.0007
+   Andrade BM, 2021, INTERACT PERCEPT REV, V17, P170, DOI 10.5555/ipr.2021.0002
+   Haddad N, 2022, J MULTIMODAL INTERFACES, V9, P35, DOI 10.5555/jmi.2022.0008
+   Kowalski JZ, 2022, J MULTIMODAL INTERFACES, V20, P130, DOI 10.5555/jmi.2022.0011
+   Almeida LF, 2024, J EMBED VIS SYST, V11, P150, DOI 10.5555/jevs.2024.0008
+NR 8
+UT WOS:900000000000095
+ER
+
+PT J
+AU Cardoso, IS
+   Muller, SD
+AF Cardoso, Isabela S.
+   Muller, Stefan D.
+TI Cost-effectiveness analysis in public health systems: a r
+SO JOURNAL OF INNOVATION AND PUBLIC POLICY
+LA English
+DT Article
+DE public policy; innovation ecosystems; health economics; public procurement; universal design
+ID TECHNOLOGY ASSESSMENT; COST-EFFECTIVENESS; PUBLIC POLICY
+AB This study investigates what it costs a public health system to deploy assistive wearables at scale. We build a decision-analytic model calibrated with procurement data from three regions, and assess the approach through incremental cost per quality-adjusted life year and budget impact over five years. Findings indicate that locally manufactured devices reach acceptable thresholds where imported ones do not. We discuss the implications for assistive wearable devices.
+PY 2024
+VL 13
+IS 3
+BP 91
+EP 104
+DI 
+TC 26
+Z9 28
+CR Moreira RC, 2017, REV BRAS TECNOL INCL, V7, P218, DOI 10.5555/rbti.2017.0004
+   Pereira AC, 2020, FRONT ACCESS COMPUT, V26, P232, DOI 10.5555/fac.2020.0003
+   Vasconcelos LM, 2020, TECHNOL ASSESS Q, V3, P66, DOI 10.5555/taq.2020.0003
+   Nogueira DR, 2021, J MULTIMODAL INTERFACES, V14, P163, DOI 10.5555/jmi.2021.0007
+   Lindqvist EM, 2022, J MULTIMODAL INTERFACES, V14, P85, DOI 10.5555/jmi.2022.0009
+   Haddad N, 2022, INTERACT PERCEPT REV, V16, P111, DOI 10.5555/ipr.2022.0003
+   Pereira AC, 2023, J INNOV PUBLIC POLICY, V22, P17, DOI 10.5555/jipp.2023.0009
+   Cardoso IS, 2023, J INNOV PUBLIC POLICY, V3, P92, DOI 10.5555/jipp.2023.0011
+NR 8
+UT WOS:900000000900002
+ER
+
+PT J
+AU Tanaka, YU
+   Santoro, GP
+   Sousa, MV
+   Nogueira, DR
+AF Tanaka, Yuki U.
+   Santoro, Giulia P.
+   Sousa, Mateus V.
+   Nogueira, Diego R.
+TI Audio-tactile substitution for real-time obstacle alerts: a replication and exten
+SO INTERACTION AND PERCEPTION REVIEW
+LA English
+DT Article
+DE sensory substitution; cognitive load; sonification
+ID SPATIAL AUDIO; HAPTIC FEEDBACK; MULTIMODAL INTERFACES
+AB This study investigates how audio and tactile channels compete for attention when a device narrates the surroundings. We compare sonification schemes against vibrotactile encodings in a within-subject experiment, and assess the approach through reaction time, route deviation and NASA-TLX cognitive load scores. Findings indicate that sparse tactile cues outperform continuous audio once the environment gets noisy. We discuss the implications for  scene description interfaces.
+PY 2025
+VL 24
+IS 4
+BP 22
+EP 30
+DI 10.5555/ipr.2025.9007
+TC 2
+Z9 5
+CR Moreira RC, 2016, REV BRAS TECNOL INCL, V22, P228, DOI 10.5555/rbti.2016.0003
+   Santoro GP, 2017, REV BRAS TECNOL INCL, V28, P171, DOI 10.5555/rbti.2017.0005
+   Haddad N, 2020, J MULTIMODAL INTERFACES, V24, P100, DOI 10.5555/jmi.2020.0006
+   Nogueira DR, 2021, J MULTIMODAL INTERFACES, V14, P163, DOI 10.5555/jmi.2021.0007
+   Andrade BM, 2021, INTERACT PERCEPT REV, V17, P170, DOI 10.5555/ipr.2021.0002
+   Haddad N, 2022, J MULTIMODAL INTERFACES, V9, P35, DOI 10.5555/jmi.2022.0008
+   Kowalski JZ, 2022, J MULTIMODAL INTERFACES, V20, P130, DOI 10.5555/jmi.2022.0011
+   Almeida LF, 2024, J EMBED VIS SYST, V11, P150, DOI 10.5555/jevs.2024.0008
+NR 8
+UT WOS:900000000900003
+ER
+
+EF

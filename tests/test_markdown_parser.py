@@ -144,11 +144,75 @@ def test_entrada_adversarial_nao_levanta(caixa, markdown):
 
 
 def test_marcacao_desconhecida_sai_literal_em_vez_de_sumir(caixa):
-    """`__x__` e `[texto](url)` não são suportados — e a resposta certa é mostrá-los como
-    vieram. Apagar o que não se entende é o defeito nº 3 outra vez."""
-    texto, _ = _render(caixa, "__forte__ e [texto](http://x)")
-    assert "__forte__" in texto
-    assert "[texto](http://x)" in texto
+    """O que o parser NÃO entende sai como veio. Apagar é o defeito nº 3 outra vez.
+
+    `_itálico_` de underscore único ficou fora de propósito: casaria `nome_de_variavel`,
+    que aparece em toda conversa sobre dados. Então ele tem de sair intacto.
+    """
+    texto, _ = _render(caixa, "campo_de_busca e ![img](http://x) e ~~riscado~~")
+    assert "campo_de_busca" in texto
+    assert "~~riscado~~" in texto
+
+
+# ── O que o modelo devolve e não era renderizado ─────────────────────────────────
+
+def test_negrito_com_underscore(caixa):
+    """`__x__` saía com os underscores à mostra — e o modelo o produz o tempo todo."""
+    texto, marcas = _render(caixa, "__forte__")
+    assert texto.strip() == "forte"
+    assert "forte" in marcas.get("bold", [])
+
+
+def test_link_mostra_o_texto_e_preserva_a_url(caixa):
+    """Num Textbox desabilitado o link não é clicável: esconder a URL apagaria a referência.
+
+    O que sai é o texto sublinhado seguido da URL — e a URL costuma ser um DOI, que é o
+    dado que o pesquisador foi buscar.
+    """
+    texto, _ = _render(caixa, "veja [o artigo](https://doi.org/10.1234/x)")
+    assert "[" not in texto and "](" not in texto, "a pontuação do link ficou na tela"
+    assert "o artigo" in texto
+    assert "https://doi.org/10.1234/x" in texto, "a URL foi apagada"
+
+
+def test_tabela_sai_alinhada_em_vez_de_canos_crus(caixa):
+    """Tabela é como o modelo devolve comparação de métricas, e saía como um amontoado."""
+    texto, _ = _render(caixa, "| Autor | Citações |\n|---|---|\n| Silva | 12 |\n| Sá | 340 |")
+
+    assert "|" not in texto, "os canos do markdown ficaram na tela"
+    assert "---" not in texto, "a linha separadora saiu como conteúdo"
+    linhas = [l for l in texto.split("\n") if l.strip()]
+    # Cabeçalho, régua e as duas linhas de dados.
+    assert len(linhas) == 4
+    # Alinhamento: a coluna de citações começa na mesma coluna nas duas linhas de dados.
+    assert linhas[2].index("12") == linhas[3].index("340")
+
+
+def test_tabela_sem_separadora_nao_perde_linha(caixa):
+    """Adversarial: o modelo trunca a tabela antes da linha `|---|`."""
+    texto, _ = _render(caixa, "| a | b |")
+    assert "a" in texto and "b" in texto
+
+
+def test_lista_aninhada_nao_vira_lista_chapada(caixa):
+    """Sem o recuo, critério e subcritério saíam no mesmo nível."""
+    texto, _ = _render(caixa, "- topo\n  - dentro")
+    assert "• topo" in texto
+    assert "◦ dentro" in texto, "o nível aninhado virou o mesmo marcador do topo"
+
+
+@pytest.mark.parametrize("marcador", ["- ", "* ", "+ "])
+def test_os_tres_marcadores_de_lista(caixa, marcador):
+    """Só `- ` era tratado; `* ` caía no itálico e `+ ` saía cru."""
+    texto, _ = _render(caixa, marcador + "item")
+    assert "• item" in texto
+
+
+def test_citacao_e_regua(caixa):
+    texto, _ = _render(caixa, "> citado\n---")
+    assert "citado" in texto
+    assert ">" not in texto
+    assert "─" in texto, "a régua saiu como três hifens"
 
 
 def test_bloco_sem_fechamento_nao_engole_o_resto(caixa):

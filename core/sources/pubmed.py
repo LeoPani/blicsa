@@ -4,6 +4,7 @@ import logging
 import re
 from typing import Iterator, Dict, Any, Optional, Callable
 from core.sources.base import SearchProvider, PaginationLimitError
+from core.document_types import normalize_document_type
 
 logger = logging.getLogger("PubMedProvider")
 
@@ -170,6 +171,7 @@ class PubMedProvider(SearchProvider):
             "title": r.get("TI", ""),
             "year": int(m_ano.group()) if m_ano else 0,
             "source": r.get("JT", r.get("TA", "")),
+            "document_type": normalize_document_type(r.get("PT", "")),
             "keywords": kw,
             "abstract": r.get("AB", ""),
             "citations": 0,

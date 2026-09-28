@@ -4,7 +4,7 @@ Um projeto é o trabalho do usuário. Perder uma coluna, um rótulo de cluster o
 na gravação é pior do que um crash: o crash aparece, a perda silenciosa só é descoberta
 quando alguém vai usar o dado e ele não está lá.
 
-O teste grava um projeto com **tudo** preenchido — dataset com as 13 colunas do schema, grafo
+O teste grava um projeto com **tudo** preenchido — dataset com as 14 colunas do schema, grafo
 com atributos em nós e arestas, posições do layout, rótulos de cluster, histórico de buscas e
 os parâmetros de configuração — reabre e compara valor a valor.
 """
@@ -32,17 +32,20 @@ def projeto_completo():
     df = pd.DataFrame([
         {"authors": "Silva A; Costa B", "title": "Mapeamento bibliométrico da inovação",
          "year": 2019, "source": "Revista de Inovação", "keywords": "inovação; patentes",
+         "document_type": "article",
          "abstract": "Resumo com acentuação e ponto e vírgula; segunda parte.",
          "citations": 142, "doi": "10.1234/abc.2019/xyz", "references": "W1; W2; W3",
          "origin": "OpenAlex", "language": "pt", "is_oa": True,
          "oa_url": "https://exemplo.org/a.pdf"},
         {"authors": "Pereira C", "title": "Co-word analysis in regional studies",
          "year": 2021, "source": "Journal of Scientometrics", "keywords": "co-word; clusters",
+         "document_type": "review",
          "abstract": "", "citations": 0, "doi": "10.5678/def",
          "references": "", "origin": "Crossref", "language": "en", "is_oa": False,
          "oa_url": ""},
         {"authors": "Nakamura T; Öztürk M", "title": "Bibliometrics of emerging fields",
          "year": 2024, "source": "Scientometrics", "keywords": "bibliometrics",
+         "document_type": "conference-paper",
          "abstract": "Third abstract.", "citations": 7, "doi": "10.9999/ghi",
          "references": "W9", "origin": "PubMed", "language": "en", "is_oa": True,
          "oa_url": "https://exemplo.org/c.pdf"},
@@ -222,7 +225,7 @@ def test_arquivo_contem_todas_as_entradas_esperadas(tmp_path, projeto_completo):
             "network.json", "clusters.json", "searches.json"} <= entradas, entradas
 
 
-def test_dataset_gravado_tem_as_13_colunas_no_disco(tmp_path, projeto_completo):
+def test_dataset_gravado_tem_as_14_colunas_no_disco(tmp_path, projeto_completo):
     """Olha o BYTE gravado, não o objeto recarregado: se a normalização da carga estivesse
     mascarando uma perda na gravação, este é o teste que veria."""
     destino, _ = _salva_e_recarrega(tmp_path, projeto_completo)

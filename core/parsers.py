@@ -4,6 +4,7 @@ import pandas as pd
 from pathlib import Path
 
 from core.i18n import t
+from core.document_types import normalize_document_type
 
 
 # ── Deduplication helpers ───────────────────────────────────────────────────
@@ -121,6 +122,8 @@ class BibliometricParser:
         df["title"]      = raw.get("Title",          _EMPTY.copy()).fillna("")
         df["year"]       = raw.get("Year",           _EMPTY_INT.copy()).fillna(0).astype(int)
         df["source"]     = raw.get("Source title",   _EMPTY.copy()).fillna("")
+        df["document_type"] = raw.get(
+            "Document Type", pd.Series("", index=raw.index)).fillna("").map(normalize_document_type)
         df["keywords"]   = raw.get("Author Keywords",_EMPTY.copy()).fillna("")
         df["abstract"]   = raw.get("Abstract",       _EMPTY.copy()).fillna("")
         df["citations"]  = raw.get("Cited by",       _EMPTY_INT.copy()).fillna(0).astype(int)
@@ -186,7 +189,7 @@ class BibliometricParser:
         if atual:                      # arquivo sem `ER` no último registro
             registros.append(atual)
 
-        campos = ["AU", "TI", "PY", "SO", "DE", "AB", "TC", "DI", "CR"]
+        campos = ["AU", "TI", "PY", "SO", "DT", "DE", "AB", "TC", "DI", "CR"]
         return pd.DataFrame(
             [{c: r.get(c, "") for c in campos} for r in registros],
             columns=campos,
@@ -202,6 +205,8 @@ class BibliometricParser:
         df["title"]      = raw.get("TI", _EMPTY.copy()).fillna("")
         df["year"]       = raw.get("PY", _EMPTY_INT.copy()).fillna(0).astype(int)
         df["source"]     = raw.get("SO", _EMPTY.copy()).fillna("")
+        df["document_type"] = raw.get(
+            "DT", pd.Series("", index=raw.index)).fillna("").map(normalize_document_type)
         df["keywords"]   = raw.get("DE", _EMPTY.copy()).fillna("")
         df["abstract"]   = raw.get("AB", _EMPTY.copy()).fillna("")
         df["citations"]  = raw.get("TC", _EMPTY_INT.copy()).fillna(0).astype(int)
@@ -225,6 +230,7 @@ class BibliometricParser:
                 "title":      entry.get("title", ""),
                 "year":       int(entry.get("year", 0) or 0),
                 "source":     entry.get("journal", entry.get("booktitle", "")),
+                "document_type": normalize_document_type(entry.get("ENTRYTYPE", "")),
                 "keywords":   entry.get("keywords", ""),
                 "abstract":   entry.get("abstract", ""),
                 "citations":  0,
@@ -275,6 +281,7 @@ class BibliometricParser:
                 "title":      r.get("TI", ""),
                 "year":       self._extract_year(r.get("DP", r.get("DA", "0"))),
                 "source":     r.get("JT", r.get("TA", "")),
+                "document_type": normalize_document_type(r.get("PT", "")),
                 "keywords":   kw,
                 "abstract":   r.get("AB", ""),
                 "citations":  0,
@@ -311,7 +318,8 @@ class BibliometricParser:
                 for a in w.get("authorships", [])
             )
             kws = "; ".join(
-                c.get("display_name", "") for c in w.get("concepts", [])
+                c.get("display_name", "") for c in (w.get("keywords") or w.get("concepts") or [])
+                if isinstance(c, dict) and c.get("display_name")
             )
             abstract = w.get("abstract", "") or ""
             if not abstract and w.get("abstract_inverted_index"):
@@ -332,6 +340,7 @@ class BibliometricParser:
                 "title":      w.get("title", "") or "",
                 "year":       int(w.get("publication_year") or 0),
                 "source":     src,
+                "document_type": normalize_document_type(w.get("type")),
                 "keywords":   kws,
                 "abstract":   abstract,
                 "citations":  int(w.get("cited_by_count") or 0),
@@ -383,6 +392,7 @@ class BibliometricParser:
                 "title":      title,
                 "year":       int(year or 0),
                 "source":     source,
+                "document_type": normalize_document_type(w.get("type")),
                 "keywords":   kws,
                 "abstract":   abstract,
                 "citations":  int(w.get("is-referenced-by-count", 0)),

@@ -143,3 +143,122 @@ def test_load_backlog_skips_corrupted_line(tmp_path):
     entries = cp.load_backlog(slug, tmp_path)
     assert [e["action"] for e in entries] == ["search", "import", "export"], \
         "linha corrompida deve ser pulada sem derrubar as demais"
+
+
+# ── A busca feita pelo modo navegação também vai para o backlog ─────────────────
+
+class TestBuscaDaNavegacao:
+    """O botão Buscar NÃO colhe: abre a navegação com a primeira página de 25.
+
+    Quem confere essa página e importa o que está nela nunca passava por
+    `search_to_dataset` — e era ele o único lugar que gravava a linha `search`. A Cadeia de
+    Busca do relatório (a seção do PRISMA-S, a que existe para o leitor refazer a coleta)
+    saía VAZIA no fluxo mais comum do app, com "0 encontrados" para um corpus cheio.
+
+    Medido antes da correção, com colheita real no OpenAlex: importar os 25 da navegação
+    deixava `buscas registradas: 0` e `fluxo: encontrados 0, baixados 0`.
+    """
+
+    @staticmethod
+    def _app(monkeypatch, tmp_path):
+        import main as blicsa
+        from core import project
+
+        monkeypatch.setattr(project, "PROJECTS_DIR", tmp_path)
+        monkeypatch.setenv("AI_API_KEY", "gsk_" + "T3st3Fals4" * 5)
+        # `showinfo` é modal: dentro da suíte ele trava a espera de um clique que não vem.
+        monkeypatch.setattr(blicsa.messagebox, "showinfo", lambda *a, **k: None)
+        try:
+            app = blicsa.BlicsaApp()
+        except Exception:
+            pytest.skip("sem display para inicializar Tk")
+        app.withdraw()
+        app._dispensa_boas_vindas()
+        app._active_project = project.create_project("Navegação", projects_dir=tmp_path)
+        app._active_project_name = "Navegação"
+        return app
+
+    @staticmethod
+    def _sessao_falsa(query="ml AND biblio", total=14170):
+        """Duble da `BrowseSession`: o teste é do REGISTRO, não da rede."""
+        class _Provider:
+            pass
+        _Provider.__name__ = "OpenAlexProvider"
+
+        class _Sessao:
+            def __init__(self):
+                self.query = query
+                self.total = total
+                self.provider = _Provider()
+
+            def current_filters(self):
+                return {"year_start": "2022", "year_end": "2023", "sort": "relevance"}
+        return _Sessao()
+
+    @staticmethod
+    def _registros(n):
+        return [{"title": f"t{i}", "year": 2022, "doi": f"10.1/{i}", "abstract": "a",
+                 "authors": "A", "source": "S", "origin": "OpenAlex"} for i in range(n)]
+
+    def test_importar_da_navegacao_grava_a_busca(self, monkeypatch, tmp_path):
+        from core.project import load_backlog
+
+        app = self._app(monkeypatch, tmp_path)
+        try:
+            app._browse_session = self._sessao_falsa()
+            app._feed_origem = "navegacao"
+            app._on_feed_import(self._registros(25))
+
+            buscas = [e for e in load_backlog(app._active_project, projects_dir=tmp_path)
+                      if e["action"] == "search"]
+            assert len(buscas) == 1, "a busca da navegação não foi registrada"
+            d = buscas[0]["detail"]
+            assert d["provider"] == "openalex"
+            assert d["encontrados"] == 14170
+            assert d["filters"]["year_start"] == "2022"
+        finally:
+            app.destroy()
+
+    def test_o_baixado_e_o_que_foi_selecionado_e_nao_a_pagina_inteira(self, monkeypatch,
+                                                                      tmp_path):
+        """Quem marca cinco dos vinte e cinco importou cinco — o relatório tem de dizer 5."""
+        from core.project import load_backlog
+
+        app = self._app(monkeypatch, tmp_path)
+        try:
+            app._browse_session = self._sessao_falsa()
+            app._feed_origem = "navegacao"
+            app._on_feed_import(self._registros(25)[:5])
+
+            busca = [e for e in load_backlog(app._active_project, projects_dir=tmp_path)
+                     if e["action"] == "search"][0]
+            assert busca["detail"]["baixados"] == 5
+        finally:
+            app.destroy()
+
+    def test_a_colheita_nao_grava_a_busca_duas_vezes(self, monkeypatch, tmp_path):
+        """`search_to_dataset` já grava a sua. Uma segunda linha somaria os `encontrados`
+        duas vezes no fluxograma do relatório."""
+        from core.project import load_backlog
+
+        app = self._app(monkeypatch, tmp_path)
+        try:
+            app._browse_session = self._sessao_falsa()
+            app._feed_origem = "colheita"      # o feed veio da colheita, não da navegação
+            app._on_feed_import(self._registros(120))
+
+            buscas = [e for e in load_backlog(app._active_project, projects_dir=tmp_path)
+                      if e["action"] == "search"]
+            assert buscas == [], "a colheita gravou a busca duas vezes"
+        finally:
+            app.destroy()
+
+    def test_sem_sessao_de_navegacao_a_importacao_nao_levanta(self, monkeypatch, tmp_path):
+        """Importar arquivo local não tem sessão de navegação nenhuma por trás."""
+        app = self._app(monkeypatch, tmp_path)
+        try:
+            app._feed_origem = "navegacao"
+            app._browse_session = None
+            app._on_feed_import(self._registros(3))   # não pode levantar
+        finally:
+            app.destroy()

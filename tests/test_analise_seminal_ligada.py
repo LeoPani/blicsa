@@ -113,6 +113,15 @@ def test_o_texto_entregue_carrega_a_marcacao_de_ia(app, monkeypatch, sem_thread)
     assert "[IA]" in _texto_do_painel(app), "texto gerado por IA entregue sem marcação"
 
 
+def test_selo_de_ia_preserva_formatacao_do_cabecalho(app):
+    app._show_seminal_insights("# Obras mais citadas\n\n**BERT**")
+
+    texto = _texto_do_painel(app)
+    assert texto.startswith("[IA]\n\nObras mais citadas")
+    assert app._seminal_box._textbox.tag_ranges("h1")
+    assert app._seminal_box._textbox.tag_ranges("bold")
+
+
 def test_o_painel_nao_promete_mais_o_que_nao_entrega(app):
     """O texto de espera dizia 'após gerar o mapa' e nada acontecia ao gerar o mapa."""
     assert "após gerar o mapa" not in _texto_do_painel(app)

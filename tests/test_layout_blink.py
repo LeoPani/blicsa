@@ -1,4 +1,4 @@
-"""O layout da aba Blink: rodapé embaixo, sugestões que somem, contexto que recolhe.
+"""O layout da aba Blink: rodapé embaixo, sugestões que ficam, contexto que recolhe.
 
 O defeito de ordem não era visível na montagem inicial e sim DEPOIS de configurar a chave.
 `_build_tab_home` empacota histórico → entrada → sugestões, nessa ordem, o que põe a entrada
@@ -112,41 +112,171 @@ def test_o_x_nao_muda_entre_conversa_vazia_e_conversa_com_mensagens(app):
     assert antes == depois, f"o x mudou com o conteúdo: {antes} -> {depois}"
 
 
-# ── As sugestões somem na primeira mensagem ─────────────────────────────────────
+# ── As sugestões ficam a conversa inteira ───────────────────────────────────────
 
 def test_as_sugestoes_aparecem_na_conversa_vazia(app):
     assert app._blink_sug_frame.winfo_manager(), (
         "sem sugestões, quem não sabe o que perguntar fica sem convite")
 
 
-def test_as_sugestoes_somem_depois_da_primeira_mensagem(app):
-    app._research_chat_input_main.insert(0, "primeira pergunta")
-    app._ocultar_sugestoes()
-    app.update()
+def test_as_sugestoes_continuam_depois_da_primeira_mensagem(app):
+    """Elas sumiam na primeira mensagem, para devolver altura à conversa.
 
-    assert not app._blink_sug_frame.winfo_manager(), (
-        "as sugestões continuaram ocupando altura depois da primeira mensagem")
-
-
-def test_esconder_as_sugestoes_duas_vezes_nao_quebra(app):
-    """Adversarial: `_ocultar_sugestoes` roda a cada envio, não só no primeiro."""
-    app._ocultar_sugestoes()
-    app._ocultar_sugestoes()
-    app.update()
-
-    assert not app._blink_sug_frame.winfo_manager()
-
-
-def test_esconder_as_sugestoes_nao_mexe_na_entrada(app):
-    """O campo não pode subir nem sumir junto."""
-    y_antes = _y(app._research_chat_input_main)
-
-    app._ocultar_sugestoes()
+    O clique numa sugestão é a única forma de mandar uma pergunta pronta sem digitá-la:
+    sumindo, o atalho deixava de existir a partir da segunda pergunta — o usuário relatou
+    exatamente isso, como "não tem mais a opção".
+    """
+    app._add_blink_message("user", "primeira pergunta")
     app.update()
     app.update_idletasks()
 
-    assert app._research_chat_input_main.winfo_manager(), "a entrada sumiu junto"
-    assert _y(app._research_chat_input_main) >= y_antes - 4
+    assert app._blink_sug_frame.winfo_manager(), (
+        "as sugestões sumiram depois da primeira mensagem")
+    assert all(b.winfo_manager() for b in app._blink_sug_btns), (
+        "o rodapé ficou, mas os botões saíram dele")
+
+
+def test_as_sugestoes_continuam_depois_de_varias_mensagens(app):
+    """Adversarial: o defeito aparecia na SEGUNDA pergunta, não na primeira."""
+    for i in range(4):
+        app._add_blink_message("user", f"pergunta {i}")
+        app._add_blink_message("assistant", f"resposta {i}")
+    app.update()
+    app.update_idletasks()
+
+    assert app._blink_sug_frame.winfo_manager()
+
+
+def test_a_entrada_continua_abaixo_das_sugestoes(app):
+    """O rodapé não pode se reordenar com o conteúdo da conversa."""
+    y_sug = _y(app._blink_sug_frame)
+
+    app._add_blink_message("assistant", "resposta longa\n" * 20)
+    app.update()
+    app.update_idletasks()
+
+    assert app._research_chat_input_main.winfo_manager(), "a entrada sumiu"
+    assert _y(app._research_chat_input_main) > y_sug, (
+        "a entrada subiu para cima das sugestões")
+
+
+# ── A string proposta pelo Blink vai para a busca num clique ────────────────────
+
+def _botoes_por_base(app):
+    """Os botões do cartão de sugestão, indexados pela base. `{}` quando não há cartão.
+
+    Procurados pelo RÓTULO, que é o que o usuário lê — um teste que descesse pela árvore de
+    widgets passaria com o botão presente e ilegível.
+    """
+    import customtkinter as ctk
+    from core.i18n import t
+    from core.strings_por_base import BASES, ROTULOS
+
+    esperados = {t("blink.usar_na_base", base=ROTULOS[b]): b for b in BASES}
+    achados = {}
+
+    def _varrer(widget):
+        for filho in widget.winfo_children():
+            if isinstance(filho, ctk.CTkButton):
+                base = esperados.get(filho.cget("text"))
+                if base:
+                    achados[base] = filho
+            _varrer(filho)
+
+    _varrer(app._research_chat_history_main)
+    return achados
+
+
+def _botao_usar_string(app, base="openalex"):
+    return _botoes_por_base(app).get(base)
+
+
+def test_a_string_proposta_vai_para_o_campo_de_busca(app):
+    """Sem o botão, a string "pronta para copiar e colar" exigia copiar e colar À MÃO.
+
+    E de dentro de um `CTkTextbox` desabilitado, atravessando para outra aba.
+    """
+    string = '("machine learning" OR "deep learning") AND bibliometrics'
+    app._oferecer_string_de_busca(f"Sugiro:\n```\n{string}\n```")
+    app.update()
+    app.update_idletasks()
+
+    botao = _botao_usar_string(app)
+    assert botao is not None, "a string proposta ficou só para copiar e colar"
+
+    botao.invoke()
+    app.update()
+    app.update_idletasks()
+
+    assert app._search_query_entry.get() == string
+
+
+def test_ha_um_botao_para_cada_uma_das_tres_bases(app):
+    """Um botão só mandava a MESMA string para qualquer base — a origem do "não dá resultado".
+
+    O que cada base entende está medido em `core/strings_por_base.py`; aqui o que se guarda
+    é que as três chegam à tela, cada uma com o seu botão.
+    """
+    from core.strings_por_base import BASES
+
+    app._oferecer_string_de_busca('```\n("machine learning" OR "deep learning") AND bibliometrics\n```')
+    app.update()
+
+    assert set(_botoes_por_base(app)) == set(BASES)
+
+
+def test_o_botao_troca_a_base_junto_com_a_string(app):
+    """Preencher o campo sem trocar a base mandaria a string do PubMed para o OpenAlex.
+
+    E a tela continuaria mostrando "OpenAlex" no seletor — mentindo sobre onde a busca vai
+    sair, que é pior do que não trocar nada.
+    """
+    app._oferecer_string_de_busca('```\n(bibliometric* OR scientometric*) AND "machine learning"\n```')
+    app.update()
+
+    _botoes_por_base(app)["pubmed"].invoke()
+    app.update()
+
+    assert app._search_provider_var.get() == "pubmed"
+    assert app._provider_seg.get() == "PubMed"
+    # O PubMed é a única das três que entende curinga: a dele sai intacta.
+    assert "*" in app._search_query_entry.get()
+
+
+def test_a_string_do_openalex_perde_o_curinga_que_derruba_a_busca(app):
+    """`bibliometric*` no `filter=default.search:` do OpenAlex devolve HTTP 400 — zero.
+
+    É o caso literal do relato "a string sugerida não dá resultado": não é que a busca
+    devolva pouco, é que ela FALHA. O botão do OpenAlex entrega a string já sem o curinga.
+    """
+    app._oferecer_string_de_busca('```\n(bibliometric* OR scientometric*) AND "machine learning"\n```')
+    app.update()
+
+    _botoes_por_base(app)["openalex"].invoke()
+    app.update()
+
+    assert "*" not in app._search_query_entry.get()
+    assert app._search_provider_var.get() == "openalex"
+
+
+def test_a_string_nova_substitui_a_antiga_em_vez_de_concatenar(app):
+    """Adversarial: o campo quase nunca está vazio — é a string que o Blink acabou de analisar."""
+    app._search_query_entry.insert(0, "string antiga AND obsoleta")
+    app._oferecer_string_de_busca('```\n("a" OR "b") AND c\n```')
+    app.update()
+
+    _botao_usar_string(app).invoke()
+    app.update()
+
+    assert app._search_query_entry.get() == '("a" OR "b") AND c'
+
+
+def test_resposta_sem_string_nao_deixa_botao_inerte(app):
+    """O Blink também responde pergunta que não é sobre busca."""
+    app._oferecer_string_de_busca("Os clusters temáticos indicam três frentes.")
+    app.update()
+
+    assert _botoes_por_base(app) == {}, "cartão inerte sob uma resposta sem string"
 
 
 # ── Contexto de pesquisa recolhível ─────────────────────────────────────────────
@@ -351,3 +481,155 @@ def test_rolar_depois_do_historico_destruido_nao_quebra(app):
     app._research_chat_history_main.destroy()
 
     app._rolar_conversa_para_o_fim()   # não pode levantar
+
+
+# ── O streaming da resposta, contra um CTkTextbox de verdade ────────────────────
+
+def _bombear(app, fluxo, quadros=4):
+    """Deixa o fluxo desenhar alguns quadros.
+
+    Dois detalhes que um `app.update()` solto não cobre: o quadro é agendado com
+    `after(70, ...)` e só vence depois desse tempo, e enquanto o stream está ABERTO o fluxo
+    se reagenda de propósito (é o batimento que faz o texto aparecer). Ou seja, esperar
+    `_agendado` virar falso no meio do stream esperaria para sempre — só depois de
+    `concluir()` é que ele para.
+    """
+    import time
+
+    for _ in range(quadros):
+        app.update()
+        app.update_idletasks()
+        time.sleep(fluxo._intervalo / 1000 + 0.01)
+    app.update()
+    app.update_idletasks()
+
+
+def test_o_streaming_monta_a_resposta_inteira_no_balao(app):
+    """O duble de `tests/test_streaming_blink.py` não conhece os índices do Tk de verdade.
+
+    `index("end-1c")`, `delete(indice, "end")` e o `\\n` que o `Text` acrescenta sozinho no
+    fim são exatamente onde um desenho incremental erra — e o erro apareceria na tela como
+    texto duplicado ou comido, não como exceção.
+    """
+    fluxo = app._fluxo_de_resposta()
+    for pedaco in ("# Análise\n\n", "Três frentes ", "aparecem no corpus.\n",
+                   "\n- primeira\n- segunda\n"):
+        fluxo.escrever(pedaco)
+        _bombear(app, fluxo)
+    fluxo.concluir()
+    _bombear(app, fluxo)
+
+    escrito = fluxo._caixa.get("1.0", "end")
+    assert "Análise" in escrito
+    assert "Três frentes aparecem no corpus." in escrito
+    assert escrito.count("Três frentes") == 1, "trecho já desenhado foi escrito de novo"
+    assert "primeira" in escrito and "segunda" in escrito
+
+
+def test_o_streaming_nao_deixa_a_marcacao_crua_na_tela(app):
+    """A cauda provisória entra como texto simples; ao virar definitiva tem de ser reparsada.
+
+    Sem isso o `#` e os `**` do último trecho ficariam à mostra — o "formatação estranha"
+    que o parser de Markdown existe para não deixar acontecer.
+    """
+    fluxo = app._fluxo_de_resposta()
+    fluxo.escrever("**negrito** e `codigo` sem quebra no fim")
+    _bombear(app, fluxo)
+    fluxo.concluir()
+    _bombear(app, fluxo)
+
+    escrito = fluxo._caixa.get("1.0", "end")
+    assert "**" not in escrito and "`" not in escrito
+    assert "negrito" in escrito and "codigo" in escrito
+
+
+def test_um_stream_longo_nao_enche_a_fila_de_eventos_do_tk(app):
+    """A causa da janela que parava de responder: um `after(0, ...)` por token.
+
+    Contado no `after` do app real, porque é a fila dele que saturava.
+    """
+    original = app.after
+    contador = {"n": 0}
+
+    def contando(ms, *a, **kw):
+        if a:
+            contador["n"] += 1
+        return original(ms, *a, **kw)
+
+    app.after = contando
+    try:
+        fluxo = app._fluxo_de_resposta()
+        for i in range(300):
+            fluxo.escrever(f"token{i} ")
+        fluxo.concluir()
+        _bombear(app, fluxo)
+    finally:
+        app.after = original
+
+    assert contador["n"] < 30, (
+        f"{contador['n']} agendamentos para 300 tokens — voltou a ser um por token")
+
+
+def test_o_fluxo_para_de_bater_depois_de_concluir(app):
+    """O batimento existe enquanto o stream está aberto; depois dele é vazamento.
+
+    Uma resposta por pergunta, um temporizador vivo por resposta: em meia hora de conversa
+    seriam dezenas repintando um balão que ninguém mais alimenta.
+    """
+    import time
+
+    fluxo = app._fluxo_de_resposta()
+    fluxo.escrever("resposta curta\n")
+    _bombear(app, fluxo)
+    fluxo.concluir()
+
+    for _ in range(20):
+        app.update()
+        app.update_idletasks()
+        if not fluxo._agendado:
+            break
+        time.sleep(0.02)
+
+    assert not fluxo._agendado, "o fluxo continuou agendando quadros depois de concluir"
+
+
+# ── O pedido ao modelo não é o que a conversa mostra ────────────────────────────
+
+def test_a_bolha_mostra_a_pergunta_e_nao_o_paredao_de_instrucoes(app):
+    """A bolha do usuário exibia o pedido inteiro, regras de sintaxe inclusive.
+
+    Apresentado como se fosse a frase que a pessoa acabou de escrever — e ela não escreveu
+    nada, clicou num botão. O modelo continua recebendo tudo; a conversa mostra a pergunta.
+    """
+    app._search_query_entry.insert(0, '"machine learning" AND bibliometrics')
+
+    pedido, bolha, _ = app._pedido_de_analise_de_busca()
+
+    assert '"machine learning" AND bibliometrics' in bolha
+    assert len(bolha) < 120, f"a bolha voltou a ser um paredão: {len(bolha)} caracteres"
+    assert "PROIBIDO" not in bolha and "INTERDIT" not in bolha and "FORBIDDEN" not in bolha
+    assert len(pedido) > len(bolha), "o pedido ao modelo encolheu junto com a bolha"
+
+
+def test_o_pedido_proibe_o_que_derruba_cada_base(app):
+    """Cada proibição corresponde a uma falha medida, não a preferência de estilo.
+
+    O tradutor conserta de qualquer forma; a proibição existe para o usuário LER uma string
+    que já é a boa, em vez de ver o aviso de conserto embaixo de toda sugestão.
+    """
+    pedido, _, _ = app._pedido_de_analise_de_busca()
+
+    for proibido in ("TITLE-ABS-KEY", "[tiab]", "TS="):
+        assert proibido in pedido, f"o pedido deixou de proibir {proibido}"
+    assert "OpenAlex" in pedido and "Crossref" in pedido and "PubMed" in pedido
+
+
+def test_o_contexto_carrega_a_busca_configurada(app):
+    """O modelo precisa ver os filtros da tela para não repeti-los dentro da string."""
+    app._search_query_entry.insert(0, "bibliometria")
+    app._search_year_start.insert(0, "2018")
+
+    _, _, contexto = app._pedido_de_analise_de_busca()
+
+    assert "bibliometria" in contexto
+    assert "2018" in contexto

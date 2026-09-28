@@ -46,6 +46,10 @@ def _root(ctk):
     # Fora da tela em vez de withdraw(): janela retirada não realiza geometria e todo
     # winfo_width() volta 1px — foi assim que uma medição anterior saiu inteira errada.
     r.geometry("1000x700+3000+3000")
+    # O `conftest.py` faz toda janela da suíte nascer escondida, para a suíte não tomar a
+    # tela de quem a roda. Este módulo é a exceção justificada acima, então reexibe a sua —
+    # e ela continua INVISÍVEL, porque o mesmo conftest a deixa com alfa 0.
+    r.deiconify()
     return r
 
 

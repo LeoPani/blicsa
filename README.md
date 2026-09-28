@@ -10,7 +10,7 @@ Maps scientific literature into interactive networks to reveal research fronts, 
 ![Platform](https://img.shields.io/badge/Platform-macOS%20%7C%20Windows%20%7C%20Linux-lightgrey)
 [![CI](https://github.com/LeoPani/blicsa/actions/workflows/ci.yml/badge.svg)](https://github.com/LeoPani/blicsa/actions/workflows/ci.yml)
 ![Coverage](https://img.shields.io/badge/coverage-69%25-yellow)
-![Version](https://img.shields.io/badge/version-2.0.0-blue)
+![Version](https://img.shields.io/badge/version-2.1.0--beta.1-yellow)
 [![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.21866410.svg)](https://doi.org/10.5281/zenodo.21866410)
 
 ![Blicsa browsing search results](docs/evidence/v1_busca_navegacao.png)
@@ -184,7 +184,7 @@ blicsa/
 
 Use the **Cite this repository** button on GitHub, which reads `CITATION.cff`, or:
 
-> Paniago, L. (2026). *Blicsa* (version 2.0.0) [Computer software].
+> Paniago, L. (2026). *Blicsa* (version 2.1.0-beta.1) [Computer software].
 > https://github.com/LeoPani/blicsa
 
 Once the archival DOI is issued, cite the DOI instead — it is the stable identifier and

@@ -14,8 +14,8 @@ contact:
   - family-names: "Paniago"
     given-names: "Leonardo Luiz Costa"
     email: "blicsa.app@gmail.com"
-version: "2.0.0"
-date-released: "2026-08-04"
+version: "2.1.0-beta.1"
+date-released: "2026-09-25"
 license: MIT
 url: "https://github.com/LeoPani/blicsa"
 repository-code: "https://github.com/LeoPani/blicsa"
@@ -25,7 +25,8 @@ identifiers:
   - type: doi
     value: "10.5281/zenodo.21866410"
     description: "DOI de conceito — todas as versões do Blicsa no Zenodo"
-  # DOI da versão: congelado na v2.0.0. Para quem precisa citar exatamente este snapshot.
+  # DOI da versão estável anterior: congelado na v2.0.0. A beta atual ainda não possui
+  # DOI próprio; o DOI de conceito acima mantém a continuidade do projeto.
   - type: doi
     value: "10.5281/zenodo.21866411"
     description: "Snapshot permanente da v2.0.0 no Zenodo"

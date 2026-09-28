@@ -94,6 +94,96 @@ def test_env_has_precedence(isolated, monkeypatch):
     assert cs.get_api_key() == "da_env"
 
 
+# ── Um slot de chave por provedor de IA ─────────────────────────────────────────
+
+@pytest.fixture
+def cofre(isolated, monkeypatch):
+    """Keyring falso e ambiente limpo: nenhuma env de provedor vencendo o cofre."""
+    store = {}
+    monkeypatch.setattr(cs, "_keyring", lambda: _fake_keyring(store))
+    for env in ("AI_API_KEY", "GROQ_API_KEY", "OPENAI_API_KEY", "OPENROUTER_API_KEY",
+                "OLLAMA_API_KEY", "AI_PROVIDER", "AI_BASE_URL", "AI_MODEL"):
+        monkeypatch.delenv(env, raising=False)
+    return store
+
+
+def test_cada_provedor_guarda_a_propria_chave(cofre):
+    """Trocar de provedor não pode apagar a chave do anterior.
+
+    Com slot único, configurar a OpenAI sobrescrevia a do Groq: voltar ao Groq exigia
+    recolar a chave, e o usuário lia isso como o app esquecendo credencial.
+    """
+    cs.set_config_ia("groq")
+    cs.set_api_key("chave_do_groq")
+    cs.set_config_ia("openai")
+    cs.set_api_key("chave_da_openai")
+
+    assert cs.get_api_key() == "chave_da_openai"
+    cs.set_config_ia("groq")
+    assert cs.get_api_key() == "chave_do_groq", "a chave do Groq foi sobrescrita"
+
+
+def test_o_groq_reaproveita_o_slot_historico(cofre):
+    """Quem já tinha chave em `ai_api_key` a encontra sem recolar."""
+    cofre[("blicsa", "ai_api_key")] = "chave_antiga"
+    assert cs.provedor_ia() == "groq"
+    assert cs.get_api_key() == "chave_antiga"
+
+
+def test_a_env_de_um_provedor_nao_vale_para_outro(cofre, monkeypatch):
+    """`GROQ_API_KEY` esquecida no ambiente não pode virar a chave da OpenAI.
+
+    A precedência de env é do fluxo dev; aplicá-la a todos os provedores faria o app usar
+    uma credencial que o usuário não escolheu, contra um endpoint que não é o dela.
+    """
+    monkeypatch.setenv("GROQ_API_KEY", "do_ambiente")
+    cs.set_config_ia("openai")
+    cs.set_api_key("chave_da_openai")
+
+    assert cs.get_api_key() == "chave_da_openai"
+    cs.set_config_ia("groq")
+    assert cs.get_api_key() == "do_ambiente", "a env genérica de dev deixou de valer"
+
+
+def test_o_provedor_e_seus_parametros_sobrevivem_ao_reinicio(cofre):
+    """O defeito central: nada disso era gravado e tudo voltava ao Groq a cada abertura."""
+    cs.set_config_ia("openai")
+
+    prov, base, modelo = cs.config_ia()
+    assert prov == "openai"
+    assert "openai.com" in base
+    assert "groq" not in base.lower(), "a URL base seguiu no Groq com o provedor em OpenAI"
+
+
+def test_so_o_que_diverge_do_preset_e_gravado(cofre):
+    """Preset gravado no JSON congelaria correções futuras do código."""
+    _, base_preset, _ = _preset_do("openai")
+    cs.set_config_ia("openai", base_preset, "gpt-4o-mini")
+
+    s = cs.get_settings()
+    assert "ai_base_url" not in s, "a URL igual ao preset foi gravada"
+    assert s["ai_model"] == "gpt-4o-mini"
+    assert cs.config_ia() == ("openai", base_preset, "gpt-4o-mini")
+
+
+def _preset_do(provedor):
+    from core.credenciais import PROVEDORES_IA
+    return PROVEDORES_IA[provedor]
+
+
+def test_migracao_recolhe_a_chave_de_provedor_do_json(cofre):
+    """O app congelado sem keyring grava no JSON; a abertura com cofre precisa recolher.
+
+    Sem isto a chave da OpenAI ficaria legível em texto plano no settings.json para
+    sempre — a migração só olhava os três slots antigos.
+    """
+    cs.save_settings({"ai_provider": "openai", "api_key_openai": "em_texto_plano"})
+
+    assert cs.get_api_key() == "em_texto_plano"
+    assert cofre[("blicsa", "ai_api_key_openai")] == "em_texto_plano"
+    assert "api_key_openai" not in cs.get_settings()
+
+
 def test_language_fallback_without_getdefaultlocale(monkeypatch):
     from core import i18n
     monkeypatch.setattr(i18n.locale, "getlocale", lambda: (None, None))

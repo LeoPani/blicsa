@@ -45,6 +45,21 @@ class ResultadoTeste:
         return self.status == "ok"
 
 
+#: Status que PROVAM que a credencial está errada. Só eles impedem a gravação.
+#:
+#: Antes bastava o teste não dar "ok" para a chave ser descartada — e o teste falha por
+#: wi-fi caído, franquia do OpenAlex esgotada (429) ou erro passageiro do provedor, nenhum
+#: dos quais diz nada sobre a chave. O usuário colava, via a mensagem vermelha, fechava o
+#: app e a chave sumia: ela nunca havia chegado ao cofre. Era o caminho pelo qual as chaves
+#: do OpenAlex e do PubMed não chegavam ao keyring.
+STATUS_QUE_IMPEDEM_GRAVACAO = ("invalida", "vazia")
+
+
+def deve_gravar(resultado: ResultadoTeste) -> bool:
+    """Grava tudo que não foi provado inválido. 401/403 é prova; falha de rede não é."""
+    return resultado.status not in STATUS_QUE_IMPEDEM_GRAVACAO
+
+
 def mascarar(chave: str) -> str:
     """`gsk_abc...xyz9` → `gsk_…xyz9`. Nunca devolve a credencial inteira.
 
@@ -227,13 +242,25 @@ class Credencial:
     #: Só a IA tem; OpenAlex e PubMed são um provedor só.
     provedores: dict = field(default_factory=dict)
 
-    def valor(self) -> str:
-        from core.settings import get_credencial
-        return get_credencial(self.id)
+    def _slot(self, provedor: str | None = None) -> str:
+        """Id do slot no registro de `core.settings`.
 
-    def gravar(self, valor: str):
+        Só a IA tem provedor: `ai` sozinho significa "o provedor ativo", e `ai:openai`
+        significa aquele provedor em particular. A aba de Credenciais passa o provedor
+        SELECIONADO no combo, para mostrar e gravar a chave dele sem que a seleção precise
+        primeiro virar a ativa — quem folheia o combo não deve reconfigurar o app.
+        """
+        if self.provedores and provedor:
+            return f"{self.id}:{provedor}"
+        return self.id
+
+    def valor(self, provedor: str | None = None) -> str:
+        from core.settings import get_credencial
+        return get_credencial(self._slot(provedor))
+
+    def gravar(self, valor: str, provedor: str | None = None):
         from core.settings import set_credencial
-        set_credencial(self.id, valor)
+        set_credencial(self._slot(provedor), valor)
 
 
 #: Provedores de IA. O Groq vem primeiro porque é a opção gratuita — a promessa do app é

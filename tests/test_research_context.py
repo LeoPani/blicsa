@@ -347,7 +347,10 @@ def analista_espiao(monkeypatch):
     visto = {}
 
     def _falso(base_url, api_key, model, system_prompt, user_prompt,
-               temperature=0.3, timeout=30):
+               temperature=0.3, timeout=30, ao_medir=None):
+        # `ao_medir` explícito, e não `**kw`: o duble tem de acompanhar o contrato
+        # real da função. Engolir argumento desconhecido em silêncio esconderia
+        # justamente a mudança de assinatura que este parâmetro trouxe.
         visto["system"] = system_prompt
         visto["user"] = user_prompt
         return "0: Rótulo"

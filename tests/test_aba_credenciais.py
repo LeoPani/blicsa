@@ -191,23 +191,52 @@ def test_remover_a_chave_de_ia_devolve_o_blink_ao_convite(app, aba):
     assert app._blink_onboarding is not None, "o Blink continuou como se tivesse chave"
 
 
-# ── Credencial que não conecta não é gravada ────────────────────────────────────
+# ── Só a credencial PROVADA inválida deixa de ser gravada ───────────────────────
 
 @pytest.mark.parametrize("status,chave_i18n", [
     ("invalida", "openalex.key_invalid"),
-    ("limite", "openalex.key_rate_limit"),
-    ("sem_internet", "openalex.key_offline"),
-    ("erro", "openalex.key_error"),
     ("vazia", "openalex.key_empty"),
 ])
-def test_credencial_reprovada_nao_e_gravada(aba, status, chave_i18n):
-    """Adversarial sobre os cinco diagnósticos de falha, não só o caso feliz."""
+def test_credencial_provada_invalida_nao_e_gravada(aba, status, chave_i18n):
+    """401/403 e campo vazio são prova sobre a credencial: nada vai para o cofre."""
     from core.settings import get_credencial
 
     bloco = aba.blocos["openalex"]
     bloco._concluir(ResultadoTeste(status, chave_i18n), CHAVE)
 
     assert get_credencial("openalex") == "", f"{status} foi gravado"
+
+
+@pytest.mark.parametrize("status,chave_i18n", [
+    ("limite", "openalex.key_rate_limit"),
+    ("sem_internet", "openalex.key_offline"),
+    ("erro", "openalex.key_error"),
+])
+def test_falha_que_nao_acusa_a_chave_ainda_grava(aba, status, chave_i18n):
+    """Wi-fi caído, franquia esgotada e erro do provedor NÃO dizem nada sobre a chave.
+
+    Era por aqui que as chaves se perdiam: o usuário colava, o teste falhava por um
+    desses três motivos, a tela mostrava a mensagem vermelha e a chave era descartada em
+    silêncio. Ele fechava o Blicsa e ela não estava lá — nunca tinha chegado ao cofre.
+    """
+    from core.settings import get_credencial
+
+    bloco = aba.blocos["openalex"]
+    bloco._concluir(ResultadoTeste(status, chave_i18n), CHAVE)
+
+    assert get_credencial("openalex") == CHAVE, f"{status} descartou a chave"
+
+
+def test_a_chave_guardada_sem_confirmacao_diz_isso_na_tela(aba):
+    """Guardar em silêncio seria tão ruim quanto descartar: o usuário precisa saber."""
+    from core.i18n import t
+
+    bloco = aba.blocos["openalex"]
+    bloco._concluir(ResultadoTeste("sem_internet", "openalex.key_offline"), CHAVE)
+
+    texto = bloco._resultado.cget("text")
+    assert texto == t("cred.salva_sem_confirmar", motivo=t("openalex.key_offline"))
+    assert texto != t("openalex.key_offline"), "não distinguiu guardado de descartado"
 
 
 def test_o_diagnostico_da_falha_aparece_na_tela(aba):

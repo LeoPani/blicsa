@@ -14,6 +14,27 @@ from .nlp import (apply_thesaurus, extract_ngrams, neutralizar_formulas_no_df,
 CLUSTER_PALETTE = ['#DF3117', '#1E4DA0', '#F5BE00', '#141414', '#7A9E7E', '#B65CA2', '#5CB0B8', '#C97B2D']
 
 
+def parse_author_list(raw: object) -> list[str]:
+    """Read the author separators used by our importers without splitting surnames.
+
+    Scopus, WoS, PubMed and OpenAlex normalize multiple authors with semicolons;
+    BibTeX uses ``and``. A comma is part of a surname-first name (``Silva, J.``),
+    so treating it as a list separator creates fictional people and collaborations.
+    """
+    if not isinstance(raw, str) or not raw.strip():
+        return []
+    names = re.split(r"\s*;\s*|\s*\n\s*|\s+and\s+", raw.strip(), flags=re.IGNORECASE)
+    seen: set[str] = set()
+    unique: list[str] = []
+    for name in names:
+        name = " ".join(name.split())
+        key = name.casefold()
+        if name and key not in seen:
+            seen.add(key)
+            unique.append(name)
+    return unique
+
+
 def _apply_clustering(G: nx.Graph, algorithm: str = "louvain", resolution: float = 1.0) -> dict[str, int]:
     if G.number_of_nodes() == 0:
         return {}
@@ -161,9 +182,13 @@ class NetworkGenerator:
         Sem `apenas`, o custo é O(nós × documentos): 36 s para 5.000 nós. É por isso que a
         migração passa só os nós ambíguos, e não o grafo inteiro.
         """
-        import re
+        author_rows: dict[str, list[int]] = {}
+        if "authors" in self.df.columns:
+            for row_pos, raw in enumerate(self.df["authors"]):
+                for author in parse_author_list(raw):
+                    author_rows.setdefault(author.casefold(), []).append(row_pos)
         for node in (self.G.nodes if apenas is None else [n for n in self.G.nodes if n in apenas]):
-            node_lower = str(node).lower().strip()
+            node_lower = str(node).casefold().strip()
             matches = pd.DataFrame()
             
             # Match keywords
@@ -174,11 +199,8 @@ class NetworkGenerator:
                     matches = self.df[matches_kw]
             
             # Match authors
-            if len(matches) == 0 and "authors" in self.df.columns:
-                auth_series = self.df["authors"].fillna("").astype(str).str.lower()
-                matches_auth = auth_series.apply(lambda x: any(t.strip() == node_lower for t in re.split(r"[;\n,]", x)))
-                if matches_auth.any():
-                    matches = self.df[matches_auth]
+            if len(matches) == 0 and node_lower in author_rows:
+                matches = self.df.iloc[author_rows[node_lower]]
                     
             # Match title
             if len(matches) == 0:
@@ -390,15 +412,10 @@ class NetworkGenerator:
         self,
         min_publications: int = 2,
         counting_method: str = "full",
+        max_nodes: int = 0,
     ) -> nx.Graph:
         self.G.clear()
-        author_lists: list[list[str]] = []
-        for raw in self.df["authors"].dropna():
-            if not isinstance(raw, str) or not raw.strip():
-                continue
-            sep = ";" if ";" in raw else ","
-            names = [n.strip() for n in raw.split(sep) if n.strip()]
-            author_lists.append(names)
+        author_lists = [parse_author_list(raw) for raw in self.df["authors"]]
 
         all_authors = [a for lst in author_lists for a in lst]
         counts: Counter = Counter(all_authors)
@@ -408,6 +425,7 @@ class NetworkGenerator:
             self.G.add_node(
                 author,
                 size=int(10 + counts[author] * 3),
+                occurrence=int(counts[author]),
                 title=f"<b>{author}</b><br>Publicações: {counts[author]}",
                 label=author,
             )
@@ -426,6 +444,17 @@ class NetworkGenerator:
 
         for (a, b), w in colab.items():
             self.G.add_edge(a, b, weight=round(w, 4), title=f"Coautorias: {w:.2f}")
+
+        if max_nodes > 0 and self.G.number_of_nodes() > max_nodes:
+            # A própria rede define relevância em coautoria. Priorizar só nº de
+            # publicações seleciona autores prolíficos sem colaboração e corta
+            # seus parceiros, deixando dezenas de pontos soltos no mapa.
+            ranked = sorted(
+                self.G,
+                key=lambda a: (-self.G.degree(a, weight="weight"),
+                               -counts[a], a.casefold()),
+            )
+            self.G.remove_nodes_from(ranked[max_nodes:])
 
         partition = self.apply_clustering()
         self.compute_overlay_scores()
@@ -1062,12 +1091,11 @@ class NetworkGenerator:
         return Counter(all_kws).most_common(n)
 
     def get_top_authors(self, n: int = 20) -> list[tuple[str, int]]:
-        all_authors: list[str] = []
-        for raw in self.df["authors"].dropna():
-            if isinstance(raw, str):
-                sep = ";" if ";" in raw else ","
-                all_authors.extend(a.strip() for a in raw.split(sep) if a.strip())
-        return Counter(all_authors).most_common(n)
+        return self.get_author_counts().most_common(n)
+
+    def get_author_counts(self) -> Counter:
+        """Document frequencies for the same author identities used by the map."""
+        return Counter(a for raw in self.df["authors"] for a in parse_author_list(raw))
 
     def get_top_sources(self, n: int = 15) -> list[tuple[str, int]]:
         return Counter(self.df["source"].dropna()).most_common(n)

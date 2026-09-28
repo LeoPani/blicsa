@@ -4,6 +4,9 @@ All notable changes to this project will be documented in this file.
 
 ## [Não publicado]
 
+Versão de testes unificada como **Blicsa Beta 2.1.0-beta.1**. A release estável 2.0.0 e
+seu DOI permanecem como registro histórico reproduzível.
+
 ### ⚠️ Resultados podem diferir de versões anteriores
 
 Três correções mudam o que aparece na tela para um projeto criado antes delas. Nenhuma

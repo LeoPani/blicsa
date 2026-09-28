@@ -65,9 +65,8 @@ class FakeOpenAlex:
 
         inicio = 0 if cursor == "*" else int(cursor)
         fim = min(inicio + per_page, self.total)
-        # `title` e `doi` únicos por índice: `_normalize_work` descarta o `id` do OpenAlex,
-        # então a identidade do registro no teste tem que vir de campos que sobrevivem à
-        # normalização — senão "25.000 registros distintos" viraria vacuamente verdadeiro.
+        # `title` e `doi` únicos por índice: verificam a identidade também pelos campos
+        # bibliográficos, independentemente do ID OpenAlex preservado na normalização.
         results = [{"id": f"https://openalex.org/W{i}",
                     "title": f"Trabalho {i}",
                     "display_name": f"Trabalho {i}",

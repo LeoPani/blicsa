@@ -23,10 +23,10 @@ from tests.conftest import serve, load_fixture
 
 # ---------------------------------------------------------------- helpers ----
 PROVIDER_KEYS = {
-    "authors", "title", "year", "source", "keywords", "abstract",
+    "authors", "title", "year", "source", "keywords", "abstract", "document_type",
     "citations", "doi", "references", "origin", "language", "is_oa", "oa_url",
 }
-STRING_FIELDS = {"authors", "title", "source", "keywords", "abstract",
+STRING_FIELDS = {"authors", "title", "source", "keywords", "abstract", "document_type",
                  "doi", "references", "origin", "language", "oa_url"}
 
 
@@ -159,11 +159,14 @@ def test_schema_consistency_across_providers_offline():
              [load_fixture("pubmed_livak_esearch.json"),
               load_fixture("pubmed_livak_efetch.json")])[0]
 
-    # Os 3 providers emitem EXATAMENTE o mesmo conjunto de chaves.
-    assert set(oa) == set(cr) == set(pm) == PROVIDER_KEYS
+    # O contrato bibliográfico é comum; o identificador de obra é um metadado próprio
+    # do OpenAlex, preservado para verificar referências sem adivinhar por título.
+    assert set(cr) == set(pm) == PROVIDER_KEYS
+    assert set(oa) == PROVIDER_KEYS | {"openalex_id"}
+    assert oa["openalex_id"].startswith("https://openalex.org/W")
 
     # NOTA (OBS-05): 'language_source' NÃO é emitido pelos providers; é adicionado
-    # depois, na camada de enriquecimento em main.py. O contrato de provider tem 13 chaves.
+    # depois, na camada de enriquecimento em main.py. O contrato comum agora inclui tipo.
     for rec in (oa, cr, pm):
         assert "language_source" not in rec
 

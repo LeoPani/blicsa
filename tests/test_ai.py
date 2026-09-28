@@ -82,7 +82,9 @@ class TestAIClient(unittest.TestCase):
 
         log_output = mock_stdout.getvalue()
         self.assertNotIn("very_long_secret_key", log_output)
-        self.assertIn("gsk_ve...2345", log_output)
+        self.assertNotIn("gsk_", log_output)
+        self.assertNotIn("2345", log_output)
+        self.assertIn("Model: gpt-4", log_output)
 
     # ── Passo 4 item 3: erro REAL levanta AIClientError (nunca string) ──
     @patch('urllib.request.urlopen')

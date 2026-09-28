@@ -69,7 +69,8 @@ def call_openai_chat(
     system_prompt: str,
     user_prompt: str,
     temperature: float = 0.3,
-    timeout: int = 30
+    timeout: int = 30,
+    ao_medir=None,
 ) -> str:
     """Make direct HTTP POST to any OpenAI-compatible endpoint with retries and key redaction."""
     messages = [
@@ -82,8 +83,34 @@ def call_openai_chat(
         model=model,
         messages=messages,
         temperature=temperature,
-        timeout=timeout
+        timeout=timeout,
+        ao_medir=ao_medir,
     )
+
+
+def extrair_uso(resposta: dict) -> dict | None:
+    """A contagem de tokens que a resposta traz, ou `None` quando ela não traz nenhuma.
+
+    Duas formas no mesmo ecossistema: o `usage` do padrão OpenAI, e o `x_groq.usage` que o
+    Groq manda no ÚLTIMO pedaço do streaming. Como o Blicsa fala com qualquer endpoint
+    compatível, as duas são lidas.
+
+    **`None` não é zero.** Provedor que não conta, chamada cortada no meio e resposta sem o
+    campo caem todos aqui, e devolver `{}` com zeros faria o relatório de pesquisa afirmar
+    um consumo que ninguém mediu — pior do que dizer "não medido".
+    """
+    if not isinstance(resposta, dict):
+        return None
+    uso = resposta.get("usage")
+    if not uso and isinstance(resposta.get("x_groq"), dict):
+        uso = resposta["x_groq"].get("usage")
+    if not isinstance(uso, dict) or not uso.get("total_tokens"):
+        return None
+    return {
+        "prompt_tokens": uso.get("prompt_tokens", 0),
+        "completion_tokens": uso.get("completion_tokens", 0),
+        "total_tokens": uso.get("total_tokens", 0),
+    }
 
 
 def call_openai_chat_history(
@@ -92,7 +119,8 @@ def call_openai_chat_history(
     model: str,
     messages: list[dict],
     temperature: float = 0.3,
-    timeout: int = 30
+    timeout: int = 30,
+    ao_medir=None,
 ) -> str:
     payload = {
         "model": model,
@@ -100,8 +128,7 @@ def call_openai_chat_history(
         "temperature": temperature
     }
     
-    redacted_key = api_key[:6] + "..." + api_key[-4:] if len(api_key) > 10 else "***"
-    print(f"[AI Client] Requisitando {base_url}/chat/completions (Model: {model}, Key: {redacted_key})")
+    print(f"[AI Client] Requisitando {base_url}/chat/completions (Model: {model})")
     
     url = base_url.rstrip("/") + "/chat/completions"
     headers = {
@@ -120,6 +147,15 @@ def call_openai_chat_history(
         try:
             with urllib.request.urlopen(req, timeout=timeout) as resp:
                 resp_data = json.loads(resp.read().decode("utf-8"))
+                # A contagem de tokens sai por um callback, e não pelo retorno: cinco
+                # chamadores esperam a string da resposta, e mudar o contrato deles para
+                # levar uma medida que só o relatório usa espalharia desempacotamento por
+                # todo lado. Quem não passa `ao_medir` não vê diferença nenhuma.
+                if ao_medir is not None:
+                    try:
+                        ao_medir(extrair_uso(resp_data))
+                    except Exception:
+                        pass
                 return resp_data["choices"][0]["message"]["content"]
         except Exception as e:
             retries -= 1
@@ -146,6 +182,13 @@ class AIAnalyst:
         #: `label_clusters` — seis lugares para esquecer um, e a próxima análise a ser escrita
         #: nasceria sem contexto. Aqui, todas passam por `_chat` e recebem de graça.
         self.contexto_pesquisa = contexto_pesquisa or ""
+
+        #: Contagem de tokens da ÚLTIMA chamada, ou `None` quando ela não veio medida.
+        #: Fica no analista porque quem grava o evento de uso (a camada de tela) só sabe que
+        #: a chamada terminou depois de consumir a resposta inteira — no streaming, depois
+        #: do último pedaço. Um retorno a mais em cada método obrigaria os onze pontos de IA
+        #: a desempacotar uma tupla para levar um número que só o relatório lê.
+        self.ultimo_uso: dict | None = None
 
     def _system_com_contexto(self, papel: str) -> str:
         """Papel da análise + diretiva de idioma + contexto do usuário, na ordem canônica.
@@ -192,10 +235,14 @@ class AIAnalyst:
 
         return f"{user}\n\n{diretiva_idioma(self._lang())}"
 
+    def _guardar_uso(self, uso: dict | None):
+        self.ultimo_uso = uso
+
     def chat_history(self, messages: list[dict], temperature: float = 0.7) -> str:
         if not self.api_key:
             raise AIClientError("API Key não configurada nos Ajustes.")
-        return call_openai_chat_history(self.base_url, self.api_key, self.model, messages, temperature)
+        return call_openai_chat_history(self.base_url, self.api_key, self.model, messages,
+                                        temperature, ao_medir=self._guardar_uso)
 
     def _chat(self, system: str, user: str, temperature: float = 0.3) -> str:
         if not self.api_key:
@@ -209,18 +256,25 @@ class AIAnalyst:
             # seminais sem que cada um precise lembrar de repassá-lo.
             system_prompt=self._system_com_contexto(system),
             user_prompt=self._com_lembrete_de_idioma(user),
-            temperature=temperature
+            temperature=temperature,
+            ao_medir=self._guardar_uso,
         )
 
     def chat_history_stream(self, messages: list[dict], temperature: float = 0.7):
         if not self.api_key:
             raise AIClientError("API Key não configurada nos Ajustes.")
 
+        self.ultimo_uso = None
         payload = {
             "model": self.model,
             "messages": messages,
             "temperature": temperature,
-            "stream": True
+            "stream": True,
+            # Sem isto o padrão OpenAI manda `usage: null` em todo pedaço e nunca o total:
+            # o relatório de pesquisa ficaria sem consumo justamente nas chamadas mais
+            # longas, que são as do chat. O Groq já manda `x_groq.usage` no último pedaço
+            # sem precisar pedir, e ignora o parâmetro — as duas formas são lidas.
+            "stream_options": {"include_usage": True},
         }
         # Modelo de raciocínio manda o rascunho junto da resposta: o `gpt-oss` num campo
         # `reasoning` à parte, outros (qwen) num `<think>…</think>` dentro do próprio
@@ -251,6 +305,12 @@ class AIAnalyst:
                             break
                         try:
                             chunk = json.loads(data_str)
+                            # O pedaço que traz a medida vem com `choices` VAZIO, e é o
+                            # último. Ler o uso antes de olhar para `choices` é o que faz
+                            # a medida sobreviver ao `if` abaixo.
+                            medida = extrair_uso(chunk)
+                            if medida:
+                                self.ultimo_uso = medida
                             if "choices" in chunk and len(chunk["choices"]) > 0:
                                 delta = chunk["choices"][0].get("delta", {})
                                 # `.get` com teste de verdade, e não `"content" in delta`:
@@ -354,14 +414,25 @@ class AIAnalyst:
 
     def generate_seminal_insights(self, top_references: str) -> str:
         prompt = (
-            "A lista a seguir contém os trabalhos e livros mais citados (referências citadas) no conjunto de dados bibliométricos analisado:\n\n"
+            "A lista a seguir contém referências citadas por artigos do corpus, ordenadas pela frequência no próprio corpus. "
+            "Quando há um identificador OpenAlex, os metadados foram obtidos por consulta exata. "
+            "As outras linhas são transcrições das referências originais:\n\n"
             f"{top_references}\n\n"
-            "Com base nessa lista e no seu conhecimento científico geral:\n"
-            "1. Identifique os autores seminais (fundadores ou marcos da área) e suas respectivas obras/livros seminais.\n"
-            "2. Forneça uma breve descrição (2-4 frases) explicando do que se trata cada livro ou artigo seminal específico identificado, destacando sua relevância e contribuição teórica para a ciência.\n\n"
+            "Analise SOMENTE as obras desta lista. Não inclua autores, títulos, anos ou contribuições "
+            "que não constem dos metadados ou da referência fornecida. Não substitua referências "
+            "pouco conhecidas por obras famosas. A contagem significa número de artigos do corpus "
+            "que citam a obra, não citações globais da obra.\n"
+            "Se as contagens forem baixas ou houver poucas referências com metadados, "
+            "diga explicitamente que o corpus não sustenta classificar autores ou obras "
+            "como seminais; apresente apenas as referências mais recorrentes.\n"
+            "Se houver resumo disponível, descreva a contribuição em até duas frases ancoradas nele. "
+            "Sem resumo, diga apenas o tema sugerido pelo título e assinale que a contribuição "
+            "não foi verificada. Se autor ou título faltarem, declare 'metadados insuficientes'.\n"
+            "Use uma lista numerada simples, com uma entrada por obra e a contagem de artigos "
+            "citantes. Evite tabelas, que são difíceis de ler neste painel.\n\n"
             "Produza o relatório em Markdown sob a seção:\n"
             + _secoes(("ai.sec_seminais", "Autores e Obras Seminais"))
-            + f"\nEstruture por autor seminal. {ESTILO_ANALISE_SEMINAL}"
+            + f"\n{ESTILO_ANALISE_SEMINAL}"
         )
         return self._chat(
             system="Você é especialista em cientometria, história da ciência e mapeamento científico.",

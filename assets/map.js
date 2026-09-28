@@ -516,9 +516,13 @@ async function init() {
 
   let data;
   try {
-    const response = await fetch("graph.json");
-    if (!response.ok) throw new Error("Failed to fetch graph.json");
-    data = await response.json();
+    if (window.BLICSA_GRAPH) {
+      data = window.BLICSA_GRAPH;
+    } else {
+      const response = await fetch("graph.json");
+      if (!response.ok) throw new Error("Failed to fetch graph.json");
+      data = await response.json();
+    }
   } catch (err) {
     showEmpty(container);
     return;

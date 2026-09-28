@@ -1,3 +1,9 @@
-# Blicsa — extra de PDF: importação de texto completo de PDFs.
+# Blicsa — extra de PDF: leitura e escrita.
 # Instale com: pip install -r requirements-pdf.txt
+#
+# pdfplumber: importação de texto completo de PDFs.
+# reportlab:  exportação do relatório da pesquisa em PDF (aba Relatório). Sem ele o
+#             relatório continua saindo em Markdown e JSON — só o botão de PDF avisa
+#             que falta o extra.
 pdfplumber==0.11.10
+reportlab==4.4.4

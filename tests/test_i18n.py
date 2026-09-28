@@ -65,11 +65,15 @@ def test_nav_labels_are_not_hardcoded_portuguese():
     from pathlib import Path
 
     src = (Path(__file__).resolve().parent.parent / "main.py").read_text(encoding="utf-8")
-    inicio = src.index("for i, (key, icon_name, label_text) in enumerate([")
-    bloco = src[inicio:src.index("], start=1)", inicio)]
-    for literal in ('"Coletar"', '"Estatísticas"', '"Análises"', '"Galeria"', '"Exportar"'):
+    # A lista saiu de dentro do `for` para poder ser contada (as linhas do rodapé da barra
+    # lateral derivam do tamanho dela). A âncora do teste acompanha.
+    inicio = src.index("itens_de_navegacao = [")
+    bloco = src[inicio:src.index("]\n        for i, (key", inicio)]
+    for literal in ('"Coletar"', '"Estatísticas"', '"Análises"', '"Galeria"', '"Exportar"',
+                    '"Relatório"'):
         assert literal not in bloco, f"rótulo voltou a ser hardcoded na navegação: {literal}"
     assert 't("nav.collect")' in bloco and 't("nav.export")' in bloco
+    assert 't("nav.relatorio")' in bloco
 
 
 def test_welcome_screen_uses_catalog_and_zero_corner_radius():

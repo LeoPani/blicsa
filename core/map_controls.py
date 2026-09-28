@@ -57,6 +57,26 @@ def cluster_sizes(G: nx.Graph) -> dict[int, int]:
     return dict(sorted(contagem.items(), key=lambda kv: (-kv[1], kv[0])))
 
 
+def prune_network(
+    G: nx.Graph, *, remove_isolated: bool = False, largest_component: bool = False
+) -> tuple[int, int]:
+    """Apply the UI pruning choices, including the valid empty-network case.
+
+    Returns the numbers removed at each step. ``nx.is_connected`` raises on an
+    empty graph, which previously turned an overstrict filter into a generic
+    error before the user could see why the map had no nodes.
+    """
+    isolated = list(nx.isolates(G)) if remove_isolated else []
+    G.remove_nodes_from(isolated)
+    removed_component = 0
+    if largest_component and G.number_of_nodes() > 0 and not nx.is_connected(G):
+        largest = max(nx.connected_components(G), key=len)
+        removed = [node for node in G if node not in largest]
+        removed_component = len(removed)
+        G.remove_nodes_from(removed)
+    return len(isolated), removed_component
+
+
 # ────────────────────────────── parâmetros ──────────────────────────────
 
 @dataclass

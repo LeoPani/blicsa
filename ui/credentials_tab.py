@@ -6,8 +6,10 @@ Aquele último era o que de fato alimentava as chamadas, e era justamente o que 
 teste de conexão nem link de criação.
 
 Um `BlocoCredencial` por slot, todos com o mesmo contrato: explicação, link de criação,
-campo mascarado, teste de conexão real e diagnóstico específico. **Credencial que não
-conecta não é gravada** — o que já valia para a IA e agora vale para as três.
+campo mascarado, teste de conexão real e diagnóstico específico. **Só credencial provada
+inválida (401/403) deixa de ser gravada**: falha de rede, franquia esgotada ou erro
+passageiro do provedor não dizem nada sobre a chave, e descartá-la nesses casos fazia o
+app perder o que o usuário acabara de colar.
 
 Vocabulário visual neoplasticista do app: blocos chapados, canto zero, sem sombra e sem
 gradiente, cores de `ui/design_tokens.py`. Nunca amarelo, que no design system significa
@@ -22,7 +24,7 @@ from typing import Callable
 
 import customtkinter as ctk
 
-from core.credenciais import CREDENCIAIS, PROVEDORES_IA, mascarar
+from core.credenciais import CREDENCIAIS, PROVEDORES_IA, deve_gravar, mascarar
 from core.i18n import t
 from ui.design_tokens import BLUE, INK, MUTED, PAPER, RED, RED_HOV, WHITE_CARD
 
@@ -77,12 +79,19 @@ class BlocoCredencial(ctk.CTkFrame):
             linha_prov.pack(fill="x", pady=(0, 8))
             ctk.CTkLabel(linha_prov, text=t("cred.provedor"), font=ctk.CTkFont(size=12),
                          text_color=INK).pack(side="left", padx=(0, 8))
-            self._provedor_var = ctk.StringVar(value=next(iter(self.credencial.provedores)))
+            # Abre no provedor ATIVO, não no primeiro da lista. O combo sempre voltava a
+            # "groq" a cada montagem da aba: quem usava a OpenAI reabria o Blicsa vendo
+            # "groq" selecionado e a chave da OpenAI descrita como inexistente.
+            from core.settings import provedor_ia
+            inicial = provedor_ia()
+            if inicial not in self.credencial.provedores:
+                inicial = next(iter(self.credencial.provedores))
+            self._provedor_var = ctk.StringVar(value=inicial)
             ctk.CTkComboBox(linha_prov, values=list(self.credencial.provedores),
                             variable=self._provedor_var, width=170, height=30,
                             corner_radius=0, border_width=2, border_color=INK,
                             button_color=INK, fg_color=WHITE_CARD, text_color=INK,
-                            command=lambda _v: None).pack(side="left")
+                            command=self._on_provedor).pack(side="left")
 
         linha = ctk.CTkFrame(corpo, fg_color="transparent")
         linha.pack(fill="x")
@@ -133,6 +142,29 @@ class BlocoCredencial(ctk.CTkFrame):
     def _abrir_criacao(self):
         webbrowser.open(self._url_criacao())
 
+    def _provedor_selecionado(self) -> str | None:
+        """Provedor do combo, ou None nos slots que não têm provedor (OpenAlex, PubMed)."""
+        return self._provedor_var.get() if self._provedor_var is not None else None
+
+    def _on_provedor(self, escolhido: str):
+        """Trocar no combo troca o provedor ATIVO e passa a mostrar a chave DELE.
+
+        Cada provedor tem seu próprio slot no cofre, então alternar não apaga mais a chave
+        do anterior: configura-se Groq e OpenAI uma vez cada e troca-se à vontade. A troca
+        é persistida na hora porque a escolha só valia dentro da sessão — no reinício o app
+        voltava ao Groq e mandava a chave guardada para o endpoint errado.
+
+        `set_config_ia` sem URL nem modelo é deliberado: zera os dois para o preset do
+        provedor novo, senão a URL base do anterior ficaria para trás.
+        """
+        from core.settings import set_config_ia
+
+        set_config_ia(escolhido)
+        self._mostrar("", INK)
+        self._atualizar_estado()
+        if self.on_change:
+            self.on_change()
+
     def _testar_e_salvar(self):
         """Testa contra o provedor antes de gravar. Credencial que não conecta não é salva."""
         chave = (self._campo.get() or "").strip()
@@ -155,26 +187,39 @@ class BlocoCredencial(ctk.CTkFrame):
         return self.credencial.testar(chave)
 
     def _concluir(self, resultado, chave: str):
+        """Grava tudo que o teste não provou inválido, e diz em qual dos dois casos está.
+
+        A regra antiga era "credencial que não conecta não é gravada", e ela descartava a
+        chave também quando o teste falhava por wi-fi caído, franquia esgotada (429) ou
+        erro passageiro do provedor. O usuário colava a chave, via a mensagem vermelha,
+        fechava o app — e ela sumia, porque nunca havia chegado ao cofre. Só 401/403 é
+        prova de chave errada; o resto é o mundo, não a credencial.
+        """
         self._botao_salvar.configure(state="normal")
-        if not resultado.ok:
+        if not deve_gravar(resultado):
             self._mostrar(t(resultado.chave_i18n), RED)
             return
-        self.credencial.gravar(chave)
-        self._mostrar(t(resultado.chave_i18n, modelo=resultado.modelo), BLUE)
+        self.credencial.gravar(chave, self._provedor_selecionado())
+        if resultado.ok:
+            self._mostrar(t(resultado.chave_i18n, modelo=resultado.modelo), BLUE)
+        else:
+            # Guardada sem confirmação: o diagnóstico continua sendo o do teste, mas o
+            # usuário precisa saber que a chave NÃO se perdeu.
+            self._mostrar(t("cred.salva_sem_confirmar", motivo=t(resultado.chave_i18n)), INK)
         self._campo.delete(0, "end")
         self._atualizar_estado()
         if self.on_change:
             self.on_change()
 
     def _remover(self):
-        self.credencial.gravar("")
+        self.credencial.gravar("", self._provedor_selecionado())
         self._mostrar("", INK)
         self._atualizar_estado()
         if self.on_change:
             self.on_change()
 
     def _atualizar_estado(self):
-        atual = (self.credencial.valor() or "").strip()
+        atual = (self.credencial.valor(self._provedor_selecionado()) or "").strip()
         # A credencial NUNCA aparece inteira: capturas de tela dos Ajustes viram
         # documentação, e uma chave legível numa imagem é uma chave comprometida.
         self._estado.configure(text=t("cred.ativa", chave=mascarar(atual)) if atual
@@ -215,6 +260,16 @@ class CredentialsTab(ctk.CTkFrame):
             self.blocos[cred.id] = bloco
 
     def atualizar(self):
-        """Relê o cofre. Usado quando algo fora da aba muda uma credencial."""
+        """Relê o cofre. Usado quando algo fora da aba muda uma credencial.
+
+        Ressincroniza o combo de provedor antes de reler: o provedor ativo também se troca
+        pela barra de parâmetros do mapa, e um combo defasado aqui mostraria a chave de um
+        provedor com o nome de outro.
+        """
+        from core.settings import provedor_ia
+
+        ativo = provedor_ia()
         for bloco in self.blocos.values():
+            if bloco._provedor_var is not None and ativo in bloco.credencial.provedores:
+                bloco._provedor_var.set(ativo)
             bloco._atualizar_estado()

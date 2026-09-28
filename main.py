@@ -9,7 +9,7 @@ import os
 #: no rodapé e na janela Sobre, `0.9.0` no CHANGELOG e `2.0-upgrade` no CITATION.cff — e o
 #: `v3.0` não correspondia a nenhuma versão que tivesse existido. Ele aparecia nas capturas
 #: de tela da documentação.
-__version__ = "2.0.0"
+__version__ = "2.1.0-beta.1"
 
 try:
     if os.path.exists(".env"):
@@ -30,6 +30,7 @@ try:
                     os.environ.setdefault(k.strip(), v.strip().strip('"').strip("'"))
 except Exception:
     pass
+import contextlib
 import json
 import threading
 import webbrowser
@@ -172,7 +173,7 @@ class BlicsaApp(ctk.CTk):
         self._counting_var = ctk.StringVar(value="full")
         self._assoc_var = ctk.BooleanVar(value=True)
         self._min_occ_var = ctk.IntVar(value=3)
-        self._max_nodes_var = ctk.StringVar(value="0")
+        self._max_nodes_var = ctk.StringVar(value="100")
         self._max_pct_var = ctk.StringVar(value="")
         self._fa2_iter_var = ctk.IntVar(value=500)
         self._linlog_var = ctk.BooleanVar(value=False)
@@ -181,7 +182,7 @@ class BlicsaApp(ctk.CTk):
         self._year_max_var = ctk.StringVar(value="")
         self._extra_sw_var = ctk.StringVar(value="")
         self._plotly_mode_var = ctk.StringVar(value="cluster")
-        from core.settings import get_api_key, settings_path
+        from core.settings import config_ia, get_api_key, settings_path
         log.info(f"[Settings] usando {settings_path()}")
         self._api_key_var = ctk.StringVar(value=get_api_key())
         # persiste no keyring com debounce (a cada edição no campo dos Ajustes)
@@ -202,9 +203,23 @@ class BlicsaApp(ctk.CTk):
                 set_api_key(self._api_key_var.get())
             self._api_key_save_job = self.after(900, _do)
         self._api_key_var.trace_add("write", _schedule_key_save)
-        self._ai_provider_var = ctk.StringVar(value=os.environ.get("AI_PROVIDER", "groq"))
-        self._ai_base_url_var = ctk.StringVar(value=os.environ.get("AI_BASE_URL", "https://api.groq.com/openai/v1"))
-        self._ai_model_var = ctk.StringVar(value=os.environ.get("AI_MODEL", "openai/gpt-oss-120b"))
+        # Provedor, URL base e modelo VÊM DO DISCO, e voltam para ele a cada edição.
+        # Eram inicializados só a partir do ambiente, com o preset do Groq como default, e
+        # nunca gravados em lugar nenhum: quem configurava a OpenAI reabria o app apontado
+        # para o Groq, e a chave da OpenAI — íntegra no cofre — voltava 401. A tela acusava
+        # "chave inválida" sobre uma chave boa, e o efeito para o usuário era o app ter
+        # esquecido a chave.
+        _prov_ia, _base_ia, _modelo_ia = config_ia()
+        self._ai_provider_var = ctk.StringVar(value=_prov_ia)
+        self._ai_base_url_var = ctk.StringVar(value=_base_ia)
+        self._ai_model_var = ctk.StringVar(value=_modelo_ia)
+        self._config_ia_save_job = None
+        # Mesma trava do debounce da chave: `_on_ai_provider_change` e a sincronização
+        # escrevem nestas variáveis, e sem a trava a leitura seria re-persistida como se
+        # fosse digitação do usuário.
+        self._config_ia_sincronizando = False
+        for _var_ia in (self._ai_base_url_var, self._ai_model_var):
+            _var_ia.trace_add("write", lambda *_a: self._agendar_gravacao_config_ia())
         self._show_ai_modal = False
         self._prune_isolated_var = ctk.BooleanVar(value=True)
         self._prune_largest_var = ctk.BooleanVar(value=False)
@@ -625,6 +640,7 @@ class BlicsaApp(ctk.CTk):
             "credenciais": self._build_tab_credenciais(),
             "analises": self._build_tab_analises(),
             "hist":     self._build_tab_hist(),
+            "relatorio": self._build_tab_relatorio(),
             "galeria":  self._build_tab_gallery(),
             "export":  self._build_tab_export(),
         }
@@ -637,7 +653,6 @@ class BlicsaApp(ctk.CTk):
         sb.grid(row=0, column=0, sticky="nsew")
         sb.grid_propagate(False)
         sb.grid_columnconfigure(0, weight=1)
-        sb.grid_rowconfigure(11, weight=1)
 
         try:
             from PIL import Image
@@ -654,7 +669,12 @@ class BlicsaApp(ctk.CTk):
         self._nav_icons: dict[str, tuple] = {}
         
         from PIL import Image
-        for i, (key, icon_name, label_text) in enumerate([
+        #: A lista sai do `for` para poder ser CONTADA. As linhas do rodapé da barra eram
+        #: números fixos (10, 11, 12, 13, 14) escolhidos quando havia dez itens, e o badge
+        #: do corpus já dividia a linha 10 com o último botão. Acrescentar a aba de
+        #: Relatório poria o décimo primeiro botão em cima da linha que estica. Derivado da
+        #: contagem, o rodapé desce sozinho quando uma aba nova entra.
+        itens_de_navegacao = [
             # "Blink" e "Corpus" ficam literais de propósito: são iguais nos três idiomas
             # (nome do produto e termo técnico consagrado). O resto passa pelo catálogo —
             # antes 5 destes rótulos eram hardcoded em português e a barra lateral aparecia
@@ -667,9 +687,11 @@ class BlicsaApp(ctk.CTk):
             ("stats",    "chart-network", t("nav.stats")),
             ("analises", "chart-network", t("nav.analyses")),
             ("hist",     "stack",   t("history.title")),
+            ("relatorio", "stack",  t("nav.relatorio")),
             ("galeria",  "stack",   t("nav.gallery")),
             ("export",   "export-arrow", t("nav.export")),
-        ], start=1):
+        ]
+        for i, (key, icon_name, label_text) in enumerate(itens_de_navegacao, start=1):
             # Navegação em TEXTO, sem ícone, e isso é escolha.
             #
             # `assets/icons/` tem 14 arquivos e apenas DUAS imagens distintas: os sete
@@ -705,31 +727,35 @@ class BlicsaApp(ctk.CTk):
             
             self._nav_btns[key] = btn
 
-        # Corpus Badge at bottom of sidebar
+        # Rodapé da barra, ancorado ao FIM da navegação: a linha que estica vem logo depois
+        # do último botão, e o resto desce a partir dela.
+        linha = len(itens_de_navegacao) + 1
+        sb.grid_rowconfigure(linha, weight=1)
+
         self._corpus_badge = ctk.CTkLabel(sb, text=t("corpus.badge_none"), text_color=MUTED, font=ctk.CTkFont(size=11))
-        self._corpus_badge.grid(row=10, column=0, padx=16, pady=(10, 5), sticky="sw")
+        self._corpus_badge.grid(row=linha + 1, column=0, padx=16, pady=(10, 5), sticky="sw")
         
         try:
             gear_img = None   # mesmo espaço reservado dos ícones de navegação: ver acima
         except: gear_img = None
         self._settings_btn = ctk.CTkButton(sb, text=t("menu_settings"), image=gear_img, anchor="w", font=ctk.CTkFont(size=11), fg_color="transparent", hover_color="#e0e0e0", text_color=INK, corner_radius=0, height=32, border_width=1, border_color=INK, command=self._show_settings)
-        self._settings_btn.grid(row=12, column=0, padx=16, pady=(0, 10), sticky="ew")
+        self._settings_btn.grid(row=linha + 2, column=0, padx=16, pady=(0, 10), sticky="ew")
 
         self._status_square = ctk.CTkFrame(sb, width=10, height=10, fg_color=BLUE, corner_radius=0)
-        self._status_square.grid(row=13, column=0, padx=(16, 0), pady=(0, 2), sticky="sw")
+        self._status_square.grid(row=linha + 3, column=0, padx=(16, 0), pady=(0, 2), sticky="sw")
         self._status_lbl = ctk.CTkLabel(
             sb, text="", font=ctk.CTkFont(size=10),
             text_color=TEXT_MUTED, anchor="w",
         )
-        self._status_lbl.grid(row=13, column=0, padx=(32, 16), pady=(0, 2), sticky="sew")
+        self._status_lbl.grid(row=linha + 3, column=0, padx=(32, 16), pady=(0, 2), sticky="sew")
 
         # BLUE, não YELLOW: progresso é estado da aplicação, não conteúdo gerado por IA.
         self._progress_bar = ctk.CTkProgressBar(sb, mode="indeterminate", height=5, progress_color=BLUE, fg_color=PAPER, border_width=1, border_color=INK, corner_radius=0)
-        self._progress_bar.grid(row=13, column=0, padx=16, pady=(0, 8), sticky="sew")
+        self._progress_bar.grid(row=linha + 3, column=0, padx=16, pady=(0, 8), sticky="sew")
         self._progress_bar.grid_remove()
 
         self._about_btn = ctk.CTkButton(sb, text=f"v{__version__} • Blicsa Engine", font=ctk.CTkFont(size=10), text_color=TEXT_MUTED, fg_color="transparent", hover_color="#e0e0e0", corner_radius=0, command=self._show_about)
-        self._about_btn.grid(row=14, column=0, padx=22, pady=(0, 16), sticky="sw")
+        self._about_btn.grid(row=linha + 4, column=0, padx=22, pady=(0, 16), sticky="sw")
 
     # ── Drag-and-drop ──────────────────────────────────────────────────
     def _setup_dnd(self):
@@ -789,18 +815,39 @@ class BlicsaApp(ctk.CTk):
 
     
     
+    def _janela_secundaria(self, dlg):
+        """Centraliza uma janela auxiliar e a deixa se comportar como janela do sistema.
+
+        Ajustes e Sobre eram `overrideredirect(True)` + `-topmost`: sem barra de título e
+        acima de TODOS os aplicativos. Três consequências, todas relatadas como "não deixa
+        voltar para outra janela": não dava para arrastar a janela para o lado, não dava
+        para fechá-la pelo botão do sistema (só pelo OK, que nem sempre estava à vista), e
+        ela continuava flutuando por cima do navegador ou do editor depois que a pessoa
+        trocava de aplicativo. `-topmost` é para alerta que não pode ser perdido; um
+        diálogo de preferências não é isso.
+
+        `transient` no lugar: a janela acompanha a principal (minimiza junto, some junto),
+        fica acima DELA e de mais nada. `Escape` fecha, porque é o que a mão faz.
+        """
+        dlg.transient(self)
+        dlg.resizable(False, False)
+        dlg.bind("<Escape>", lambda _e: dlg.destroy())
+        try:
+            dlg.tk.eval('tk::PlaceWindow %s center' % dlg)
+        except Exception:
+            pass
+        return dlg
+
     def _show_settings(self):
         import tkinter as tk
         from PIL import Image, ImageTk
-        
+
         dlg = tk.Toplevel(self)
         dlg.title(t("menu_settings"))
         dlg.geometry("400x430")
         dlg.configure(bg="#F6F4EE")
-        dlg.overrideredirect(True)
-        dlg.attributes("-topmost", True)
-        dlg.tk.eval('tk::PlaceWindow %s center' % dlg)
-        
+        self._janela_secundaria(dlg)
+
         f = tk.Frame(dlg, bg="#141414")
         f.pack(fill="both", expand=True)
         content = tk.Frame(f, bg="#F6F4EE")
@@ -920,10 +967,8 @@ class BlicsaApp(ctk.CTk):
         dlg.title(t("menu_about"))
         dlg.geometry("400x350")
         dlg.configure(bg="#F6F4EE")
-        dlg.overrideredirect(True)
-        dlg.attributes("-topmost", True)
-        dlg.tk.eval('tk::PlaceWindow %s center' % dlg)
-        
+        self._janela_secundaria(dlg)
+
         # 3px ink border
         f = tk.Frame(dlg, bg="#141414")
         f.pack(fill="both", expand=True)
@@ -979,6 +1024,8 @@ class BlicsaApp(ctk.CTk):
                 self._refresh_corpus_tab()
             elif tab_key == "hist":
                 self._refresh_hist_tab()
+            elif tab_key == "relatorio":
+                self._refresh_relatorio_tab()
             self._tabs[tab_key].grid(row=0, column=0, sticky="nsew")
         
         for k, btn in self._nav_btns.items():
@@ -1118,17 +1165,239 @@ class BlicsaApp(ctk.CTk):
                 tb.insert("end", text)
         tb.configure(state="disabled")
         
-        def update_height():
+        def update_height(rolar: bool = True):
+            """Altura da bolha medida em PIXELS, não em linhas vezes uma constante.
+
+            `rolar=False` é para o streaming: lá quem decide se a conversa acompanha é o
+            `FluxoDeResposta`, que mede se o usuário está no fim ANTES de escrever. Rolar
+            daqui, depois de já ter inserido texto, arrastaria de volta quem tivesse subido
+            para reler — quatorze vezes por segundo, enquanto o modelo escreve.
+
+            O 22 era a altura estimada de uma linha na fonte base. Um `# título` é fonte 20
+            e desenha ~28px; uma tabela é fonte 12 e desenha ~17. Resposta com cabeçalho
+            saía CORTADA embaixo e resposta sem ele ganhava um vão — e o modelo abre quase
+            toda resposta longa com um cabeçalho. `ypixels` é a altura que o Tk de fato
+            desenhou, e não depende de fonte nenhuma.
+            """
+            altura = None
             try:
-                lines = tb._textbox.count("1.0", "end", "displaylines")
-                if lines:
-                    tb.configure(height=lines[0] * 22 + 20)
-            except:
-                tb.configure(height=(tb.get("1.0", "end").count('\n') + 1) * 22 + 20)
-            self._rolar_conversa_para_o_fim()
-            
+                tb.update_idletasks()
+                px = tb._textbox.count("1.0", "end", "ypixels")
+                # `Text.count` devolve tupla de um elemento, ou None quando a conta dá zero.
+                altura = px[0] if isinstance(px, tuple) else px
+            except Exception:
+                altura = None
+            if not altura:
+                # Fallback pela contagem de linhas, para quando o widget ainda não foi
+                # desenhado e o `ypixels` volta zero.
+                try:
+                    linhas = tb._textbox.count("1.0", "end", "displaylines")
+                    n = linhas[0] if isinstance(linhas, tuple) else linhas
+                except Exception:
+                    n = None
+                if not n:
+                    n = tb.get("1.0", "end").count('\n') + 1
+                altura = n * 22
+            tb.configure(height=altura + 16)
+            if rolar:
+                self._rolar_conversa_para_o_fim()
+
         tb.after(50, update_height)
         return tb, update_height, row
+
+    @contextlib.contextmanager
+    def _uso_de_ia(self, ponto: str, **extras):
+        """Entrega o analista e GRAVA o uso quando o bloco termina — inclusive se falhar.
+
+        Gerenciador de contexto, e não um `registrar()` chamado no fim, porque a alternativa
+        já foi tentada de fato: eram onze pontos construindo `AIAnalyst` na mão e **nenhum**
+        registrava nada. Um passo que depende de cada chamador lembrar é um passo que o
+        décimo segundo ponto vai esquecer. Aqui, quem quer o analista passa por aqui.
+
+        O `finally` cobre a chamada que estourou no meio: a tentativa que falhou também é
+        uso de IA na cadeia de decisão da pesquisa, e um relatório que só conta sucesso
+        conta menos do que houve.
+        """
+        from core.uso_de_ia import ACAO, evento, provedor_do_endereco
+
+        # `_get_ai_analyst`, e não `AIAnalyst(...)` na mão: a fábrica já existia e é onde
+        # moram provedor, URL, modelo e o contexto de pesquisa do projeto. Os quatro pontos
+        # de chat construíam o analista por fora dela, e o resultado era duas formas de
+        # montar a mesma coisa — a que o relatório precisa ler é uma só.
+        #
+        # (O `contexto_pesquisa` da fábrica alimenta `_chat`, das cinco análises. O chat
+        # não o usa por aqui: ele injeta o contexto pelo `_blink_system_prompt`. Sobra
+        # inofensivo, e evita a terceira forma de construir analista.)
+        analista = self._get_ai_analyst()
+        erro = ""
+        try:
+            yield analista
+        except BaseException as ex:
+            erro = f"{type(ex).__name__}: {ex}"
+            raise
+        finally:
+            try:
+                self._backlog(ACAO, evento(
+                    ponto,
+                    modelo=analista.model,
+                    provedor=provedor_do_endereco(analista.base_url),
+                    uso=analista.ultimo_uso,
+                    erro=erro,
+                    **extras))
+            except Exception as e:
+                log.info(f"[IA] falha ao registrar o uso de {ponto}: {e}")
+
+    def _analise_de_ia(self, ponto: str, chamar):
+        """Uma análise que NÃO passa pela conversa (Sankey, temático, historiografia,
+        obras seminais, rótulos de cluster), com o uso registrado.
+
+        `chamar` recebe o analista e devolve o resultado — `lambda a:
+        a.generate_sankey_insights(resumo)`. Um lambda em vez do nome do método em texto
+        porque o argumento de cada uma é diferente, e um `getattr` por string esconderia do
+        leitor (e de qualquer busca no código) quem chama o quê.
+        """
+        with self._uso_de_ia(ponto) as analista:
+            return chamar(analista)
+
+    def _responder_no_chat(self, ponto: str, messages: list, indicator_row=None,
+                           temperature: float = 0.7) -> str:
+        """Uma resposta do Blink: chama o modelo, escreve na conversa e registra o uso.
+
+        Os quatro pontos que respondem NA CONVERSA — chat, assistente de busca, insights do
+        corpus e insights do mapa — repetiam as mesmas seis linhas de streaming. Reunidas
+        aqui, o registro de uso entra de graça nos quatro e o próximo ponto de chat nasce
+        registrado.
+        """
+        with self._uso_de_ia(ponto) as analista:
+            fluxo = self._fluxo_de_resposta(indicator_row)
+            for pedaco in analista.chat_history_stream(messages, temperature=temperature):
+                fluxo.escrever(pedaco)
+            fluxo.concluir()
+            return fluxo.texto
+
+    def _fluxo_de_resposta(self, indicator_row=None):
+        """O canal por onde uma resposta do Blink chega à tela enquanto é escrita.
+
+        Os quatro pontos que fazem streaming — chat, insights do corpus, análise temática e
+        assistente de busca — tinham CADA UM a sua cópia do laço: `after(0, ...)` por token,
+        `delete("1.0", "end")` e reparse do texto inteiro a cada pedaço. Quatro cópias da
+        mesma peça é quatro lugares onde consertar o piscar e a travada. Agora é uma.
+
+        O porquê de cada decisão está no cabeçalho de `ui/streaming.py`.
+        """
+        from core.markdown_parser import insert_markdown
+        from ui.streaming import FluxoDeResposta, perto_do_fim
+
+        def abrir_balao():
+            # O indicador pulsante sai no MESMO quadro em que o balão entra: destruí-lo
+            # antes deixaria um vão piscando até o primeiro token chegar.
+            try:
+                if indicator_row is not None and indicator_row.winfo_exists():
+                    indicator_row.destroy()
+            except Exception:
+                pass
+            caixa, remedir, _ = self._add_blink_message("assistant", "")
+            return caixa, lambda: remedir(rolar=False)
+
+        def _canvas():
+            historico = getattr(self, "_research_chat_history_main", None)
+            if historico is None or not historico.winfo_exists():
+                return None
+            return historico._parent_canvas
+
+        def no_fim():
+            canvas = _canvas()
+            return True if canvas is None else perto_do_fim(canvas)
+
+        def rolar():
+            if _canvas() is not None:
+                self._rolar_conversa_para_o_fim()
+
+        return FluxoDeResposta(self, abrir_balao, insert_markdown, rolar, no_fim)
+
+    def aplicar_string_de_busca(self, string: str, base: str = None):
+        """Joga uma string no campo de busca, na base escolhida, e leva o usuário até lá.
+
+        Ponto único: o cartão de sugestão, os testes e qualquer atalho futuro passam por
+        aqui. Trocar a base é DUAS coisas — a variável que a busca lê e o botão segmentado
+        que o usuário vê. Mexer só na variável deixaria a tela dizendo "OpenAlex" enquanto a
+        busca sai no PubMed, que é pior do que não trocar.
+        """
+        if base:
+            self._search_provider_var.set(base)
+            rotulo = next((k for k, v in self._PROVIDER_LABELS.items() if v == base), None)
+            if rotulo and getattr(self, "_provider_seg", None) is not None:
+                self._provider_seg.set(rotulo)
+        self._search_query_entry.delete(0, "end")
+        self._search_query_entry.insert(0, string)
+        self._switch_tab("import")
+        self._search_query_entry.focus_set()
+
+    def _oferecer_string_de_busca(self, resposta: str):
+        """Sob a resposta, a string proposta JÁ TRADUZIDA para cada uma das três bases.
+
+        Antes havia um botão só, que jogava a string do Blink literalmente no campo — e a
+        mesma string ia para qualquer base que estivesse selecionada. As três não falam a
+        mesma língua, e era daí que vinha o "a string sugerida não dá resultado": um
+        `bibliometric*` faz o OpenAlex responder HTTP 400 (a busca inteira falha, sem
+        resultado nenhum), um `TITLE-ABS-KEY(...)` derruba o PubMed de 1.310 registros para
+        1, e o Crossref, que não tem booleano, ordenava a base inteira por relevância com o
+        ramo do `NOT` incluído — devolvendo em primeiro lugar exatamente as revisões que o
+        usuário tinha pedido para excluir. A tradução mora em `core/strings_por_base.py`,
+        com os números medidos contra as APIs.
+
+        Uma linha por base: a string que ela de fato entende, o que mudou em relação ao que
+        o Blink escreveu, e um botão que seleciona a base E preenche o campo.
+
+        Sai calado quando a resposta não traz string: o Blink também responde pergunta que
+        não é sobre busca, e um cartão inerte sob toda resposta seria ruído.
+        """
+        from core.string_de_busca import extrair_string_de_busca
+        from core.strings_por_base import ROTULOS, traduzir
+        from ui.design_tokens import INK, MUTED, PAPER, WHITE_CARD
+
+        string = extrair_string_de_busca(resposta)
+        historico = getattr(self, "_research_chat_history_main", None)
+        if not string or historico is None or not historico.winfo_exists():
+            return
+
+        adaptacoes = [a for a in traduzir(string) if a.string]
+        if not adaptacoes:
+            return
+
+        cartao = ctk.CTkFrame(historico, fg_color=WHITE_CARD, corner_radius=0,
+                              border_width=2, border_color=INK)
+        cartao.pack(fill="x", padx=10, pady=(0, 8))
+        cartao.grid_columnconfigure(1, weight=1)
+
+        ctk.CTkLabel(cartao, text=t("blink.usar_string"), anchor="w", text_color=INK,
+                     font=ctk.CTkFont(size=12, weight="bold")).grid(
+            row=0, column=0, columnspan=2, sticky="w", padx=12, pady=(10, 6))
+
+        for i, adaptacao in enumerate(adaptacoes, start=1):
+            rotulo = ROTULOS[adaptacao.base]
+            ctk.CTkButton(
+                cartao, text=t("blink.usar_na_base", base=rotulo), height=30, width=132,
+                corner_radius=0, fg_color=WHITE_CARD, text_color=INK, border_width=2,
+                border_color=INK, hover_color=PAPER,
+                font=ctk.CTkFont(size=12, weight="bold"),
+                command=lambda a=adaptacao: self.aplicar_string_de_busca(a.string, a.base),
+            ).grid(row=i, column=0, sticky="w", padx=(12, 10), pady=3)
+
+            # A string À VISTA antes de aplicar: sem ela o usuário não tem como saber que a
+            # versão do Crossref perdeu os operadores, e descobriria pelo resultado.
+            texto = adaptacao.string
+            previa = texto if len(texto) <= 96 else texto[:93] + "…"
+            notas = [t(f"strings_base.nota.{codigo}") for codigo in adaptacao.notas]
+            if notas:
+                previa += "\n" + " · ".join(dict.fromkeys(notas))
+            ctk.CTkLabel(cartao, text=previa, font=ctk.CTkFont(size=11), text_color=MUTED,
+                         anchor="w", justify="left").grid(row=i, column=1, sticky="ew",
+                                                          padx=(0, 12), pady=3)
+
+        ctk.CTkFrame(cartao, height=6, fg_color="transparent").grid(row=len(adaptacoes) + 1,
+                                                                    column=0, columnspan=2)
+        self._rolar_conversa_para_o_fim()
 
     # ── Tab: Importação ────────────────────────────────────────────────
     def _ia_configurada(self) -> bool:
@@ -1153,6 +1422,7 @@ class BlicsaApp(ctk.CTk):
         exista ou não. Sem isto, a aba gravaria no cofre e o resto do app continuaria com o
         estado antigo até o próximo reinício — que foi exatamente o defeito do onboarding.
         """
+        self._sincronizar_config_ia_da_sessao()
         self._sincronizar_chave_da_sessao()
         try:
             if self._ia_configurada():
@@ -1162,6 +1432,25 @@ class BlicsaApp(ctk.CTk):
                 self._mostrar_onboarding_ia()
         except Exception:
             pass
+
+    def _sincronizar_config_ia_da_sessao(self):
+        """Traz provedor, URL base e modelo do disco para as variáveis da barra de Ajustes.
+
+        A aba de Credenciais também troca o provedor ativo, e os dois combos — o dela e o
+        da barra de parâmetros do mapa — são widgets independentes. Sem esta passada, trocar
+        para OpenAI na aba deixava a barra do mapa exibindo "groq" e, pior, mandando as
+        chamadas para a URL base do Groq com a chave da OpenAI.
+        """
+        from core.settings import config_ia
+
+        prov, base, modelo = config_ia()
+        self._config_ia_sincronizando = True
+        try:
+            self._ai_provider_var.set(prov)
+            self._ai_base_url_var.set(base)
+            self._ai_model_var.set(modelo)
+        finally:
+            self._config_ia_sincronizando = False
 
     def _sincronizar_chave_da_sessao(self):
         """Traz a chave persistida para a variável que as chamadas de IA leem.
@@ -1222,16 +1511,6 @@ class BlicsaApp(ctk.CTk):
         """
         self._research_chat_history_main.pack(side="top", fill="both", expand=True,
                                               pady=(0, 10))
-
-    def _ocultar_sugestoes(self):
-        """As sugestões somem na primeira mensagem e não voltam nesta conversa.
-
-        São um convite para quem não sabe o que perguntar. Depois da primeira pergunta o
-        usuário já sabe, e três botões no rodapé passam a disputar altura com a conversa.
-        """
-        frame = getattr(self, "_blink_sug_frame", None)
-        if frame is not None and frame.winfo_exists() and frame.winfo_manager():
-            frame.pack_forget()
 
     def _definir_estado_do_chat(self, bloqueado: bool):
         """Liga e desliga a entrada do Blink conforme o onboarding esteja ou não na tela.
@@ -1389,7 +1668,6 @@ class BlicsaApp(ctk.CTk):
             msg = self._research_chat_input_main.get().strip()
             if not msg: return
             self._research_chat_input_main.delete(0, "end")
-            self._ocultar_sugestoes()
 
             self._add_blink_message("user", msg)
             
@@ -1448,32 +1726,13 @@ class BlicsaApp(ctk.CTk):
             import threading
             def worker():
                 try:
-                    from ai.client import AIAnalyst
-                    analyst = AIAnalyst(api_key=self._api_key_var.get() or None, base_url=self._ai_base_url_var.get(), model=self._ai_model_var.get())
-                    stream = analyst.chat_history_stream(self._research_messages, temperature=0.7)
-                    
-                    full_response = ""
-                    tb_ref = []
-                    
-                    for chunk in stream:
-                        full_response += chunk
-                        
-                        def update_chunk(resp=full_response):
-                            if indicator_row.winfo_exists():
-                                indicator_row.destroy()
-                            if not tb_ref:
-                                tb, upd, _ = self._add_blink_message("assistant", "")
-                                tb_ref.append((tb, upd))
-                            
-                            tb, upd = tb_ref[0]
-                            tb.configure(state="normal")
-                            tb.delete("1.0", "end")
-                            insert_markdown(tb, resp)
-                            tb.configure(state="disabled")
-                            upd()
-                        self.after(0, update_chunk)
+                    full_response = self._responder_no_chat(
+                        "blink_chat", self._research_messages, indicator_row)
                     
                     self._research_messages.append({"role": "assistant", "content": full_response})
+                    # Resposta completa: só agora dá para procurar nela a string proposta —
+                    # durante o streaming ela chega pela metade.
+                    self.after(0, lambda r=full_response: self._oferecer_string_de_busca(r))
                 except AIClientError as ex:
                     def err_ui(e=ex):
                         if indicator_row.winfo_exists(): indicator_row.destroy()
@@ -1496,8 +1755,10 @@ class BlicsaApp(ctk.CTk):
         self._blink_send_btn = ctk.CTkButton(input_f, text=t("blink.enviar"), font=ctk.CTkFont(size=14, weight="bold"), fg_color=RED, text_color="white", hover_color=RED_HOV, corner_radius=0, border_width=2, border_color=INK, height=44, width=100, command=send_main_chat)
         self._blink_send_btn.pack(side="right")
 
-        # Suggestions — acima da entrada, no rodapé. São um convite para começar: depois da
-        # primeira mensagem viram três botões ocupando altura que a conversa precisa.
+        # Suggestions — acima da entrada, no rodapé, e ficam a conversa inteira. Sumiam na
+        # primeira mensagem para devolver altura à conversa, mas o clique nelas é a única
+        # forma de mandar uma pergunta pronta sem digitá-la: sumindo, a partir da segunda
+        # pergunta o atalho deixava de existir. Custam duas linhas de rodapé; valem.
         sug_f = ctk.CTkFrame(chat_container, fg_color="transparent")
         sug_f.pack(side="bottom", fill="x", padx=6)
         self._blink_sug_frame = sug_f
@@ -1950,6 +2211,8 @@ class BlicsaApp(ctk.CTk):
             fg_color=CARD2_BG, border_color=ACCENT, border_width=1
         )
         self._seminal_box.grid(row=0, column=0, padx=8, pady=8, sticky="nsew")
+        from core.markdown_parser import configure_markdown_tags
+        configure_markdown_tags(self._seminal_box)
         # Não promete mais "após gerar o mapa": a análise agora tem botão próprio, e o texto
         # de espera anunciava uma entrega que nada disparava.
         self._seminal_box.insert("1.0", t("seminal.espera"))
@@ -2021,15 +2284,16 @@ class BlicsaApp(ctk.CTk):
         HoverTooltip(chk_assoc, "Aplica Associação Van Eck & Waltman (VOSviewer) dividindo o peso das arestas pelas frequências de ocorrência dos nós, evidenciando as relações mais raras e significativas.")
         
         # 5. Frequência Mínima
-        lbl_freq = ctk.CTkLabel(sc, text="Freq. Mínima:", font=ctk.CTkFont(size=11, weight="bold"))
+        lbl_freq = ctk.CTkLabel(sc, text=t("map.filter_min_frequency_label"),
+                                font=ctk.CTkFont(size=11, weight="bold"))
         lbl_freq.pack(anchor="w", padx=10, pady=(4, 2))
-        HoverTooltip(lbl_freq, "O número mínimo de documentos em que um termo/autor deve aparecer para ser incluído no mapa.")
+        HoverTooltip(lbl_freq, t("map.filter_min_frequency_help"))
         occ_f = ctk.CTkFrame(sc, fg_color="transparent")
         occ_f.pack(fill="x", padx=10, pady=(0, 6))
         self._occ_lbl = ctk.CTkLabel(occ_f, text="3", font=ctk.CTkFont(size=13, weight="bold"), text_color=ACCENT)
         self._occ_lbl.pack(side="left", padx=(0, 8))
         ctk.CTkSlider(
-            occ_f, from_=1, to=50, number_of_steps=49,
+            occ_f, from_=1, to=100, number_of_steps=99,
             variable=self._min_occ_var, height=14,
             button_color=ACCENT, button_hover_color=ACCENT_HOV,
             progress_color=ACCENT,
@@ -2057,14 +2321,17 @@ class BlicsaApp(ctk.CTk):
         self._excluded_lbl.pack(anchor="w", padx=10, pady=(0, 6))
         
         # 6. Filtro de Nós (Máx. nós ou Top %)
-        lbl_max = ctk.CTkLabel(sc, text="Máx. Nós (0=∞):", font=ctk.CTkFont(size=11, weight="bold"))
+        lbl_max = ctk.CTkLabel(sc, text=t("map.filter_max_nodes_label"),
+                               font=ctk.CTkFont(size=11, weight="bold"),
+                               wraplength=220, justify="left")
         lbl_max.pack(anchor="w", padx=10, pady=(4, 2))
-        HoverTooltip(lbl_max, "Limita o número total de nós no mapa filtrando pelos mais relevantes (com maior grau de conexão). Zero significa sem limites.")
+        HoverTooltip(lbl_max, t("map.filter_max_nodes_help"))
         ctk.CTkEntry(sc, textvariable=self._max_nodes_var, height=28, border_color=ACCENT).pack(fill="x", padx=10, pady=(0, 6))
         
-        lbl_top = ctk.CTkLabel(sc, text="ou Top % Relevância:", font=ctk.CTkFont(size=11, weight="bold"))
+        lbl_top = ctk.CTkLabel(sc, text=t("map.filter_top_percent_label"),
+                               font=ctk.CTkFont(size=11, weight="bold"))
         lbl_top.pack(anchor="w", padx=10, pady=(4, 2))
-        HoverTooltip(lbl_top, "Filtra apenas a porcentagem (ex: 60) de termos mais relevantes de acordo com a pontuação de densidade / tf-idf.")
+        HoverTooltip(lbl_top, t("map.filter_top_percent_help"))
         ctk.CTkEntry(sc, textvariable=self._max_pct_var, placeholder_text="ex: 60", height=28, border_color=ACCENT).pack(fill="x", padx=10, pady=(0, 6))
         
         # 7. Iterações Layout FA2
@@ -2542,6 +2809,10 @@ class BlicsaApp(ctk.CTk):
             if len(dfs) > 1:
                 log.info(f"[OK] Combinados: {len(combined)} registros únicos.\n")
             self._dataframe = combined
+            self._generator = None
+            self._graph = None
+            self._positions = {}
+            self._excluded_terms = set()
             log.info(f"[OK] Total: {len(combined)} registros.\n")
             self._refresh_candidate_counts()
             
@@ -2625,6 +2896,44 @@ class BlicsaApp(ctk.CTk):
         # pela re-consulta da sidebar, pela prévia e pela recarga offline do backlog.
         self._open_browse(query, provider, filters, max_results)
 
+    def _registrar_busca_da_navegacao(self, baixados: int):
+        """Grava a linha `search` da importação feita a partir do modo navegação.
+
+        O botão Buscar não colhe nada: ele abre a navegação com a primeira página. Quem
+        confere a página e importa o que está nela nunca passava por `search_to_dataset`, e
+        era `search_to_dataset` o único lugar que gravava a busca no backlog. Consequência:
+        a **Cadeia de busca** do relatório — a seção do PRISMA-S, a que existe para o leitor
+        poder refazer a coleta — saía VAZIA no fluxo mais comum do app, e o fluxo de
+        registros ficava com "0 encontrados" para um corpus que tinha registros dentro.
+
+        Só neste caminho: no outro a colheita já gravou a sua, e uma segunda linha somaria
+        os `encontrados` duas vezes no fluxograma.
+
+        `baixados` é quantos foram DE FATO importados, não os 25 da página: quem marca
+        cinco dos vinte e cinco importou cinco.
+        """
+        if getattr(self, "_feed_origem", None) != "navegacao":
+            return
+        sessao = getattr(self, "_browse_session", None)
+        if sessao is None:
+            return
+        try:
+            filtros = sessao.current_filters() or {}
+            provedor = sessao.provider.__class__.__name__.replace("Provider", "").lower()
+            self._backlog("search", {
+                "provider": provedor,
+                "query": getattr(self, "_last_typed_query", "") or sessao.query,
+                "query_interpretada": sessao.query,
+                "filters": {k: v for k, v in filtros.items() if k != "fields"},
+                "encontrados": int(getattr(sessao, "total", 0) or 0),
+                "baixados": int(baixados),
+                # A parada é o próprio usuário: ele viu a página e escolheu o que levar.
+                # Deixar em branco faria o relatório parecer uma colheita interrompida.
+                "stop_reason": "seleção na navegação",
+            })
+        except Exception as e:
+            log.info(f"[Backlog] falha ao registrar a busca da navegação: {e}")
+
     def _on_feed_import(self, selected_records, fuzzy_dedup=False):
         """Importa a seleção do feed para o corpus.
         DECISÃO DE PRODUTO: importar NÃO deduplica (importar 2x é permitido —
@@ -2649,6 +2958,7 @@ class BlicsaApp(ctk.CTk):
                 self._year_min_var.set(str(int(valid_years.min())))
                 self._year_max_var.set(str(int(valid_years.max())))
 
+        self._registrar_busca_da_navegacao(len(df_selected))
         self._backlog("import", {"registros": int(len(df_selected)),
                                  "total_corpus": int(len(combined))})
         self._update_stats_tab()
@@ -2730,7 +3040,7 @@ class BlicsaApp(ctk.CTk):
     #: informação da coluna e removê-lo sem substituto deixaria a linha sem tipo.
     _HIST_ICONS = {"search": "busca", "import": "import", "dedup": "dedup",
                    "corpus_add": "corpus", "analysis": "análise", "export": "export",
-                   "map": "mapa", "extension_add": "extensão"}
+                   "map": "mapa", "extension_add": "extensão", "ia": "IA"}
 
     def _build_tab_hist(self) -> ctk.CTkFrame:
         frame = self._tab()
@@ -2746,6 +3056,301 @@ class BlicsaApp(ctk.CTk):
         self._hist_frame.grid(row=1, column=0, sticky="nsew", padx=24, pady=(0, 16))
         self._hist_frame.grid_columnconfigure(0, weight=1)
         return frame
+
+    # ── Aba: Relatório da pesquisa ─────────────────────────────────────
+    def _build_tab_relatorio(self) -> ctk.CTkFrame:
+        """A aba que reúne o que o projeto registrou no formato que vai anexo ao artigo.
+
+        Não é a aba de Histórico com outro nome: aquela mostra a linha do tempo crua, uma
+        linha por evento. Esta SOMA — declaração de uso de IA, cadeia de busca, fluxo de
+        registros, consumo e cobertura —, e é a única que exporta. A montagem está em
+        `core/relatorio.py`, sem Tk; aqui só há tela.
+        """
+        frame = self._tab()
+        frame.grid_rowconfigure(1, weight=1)
+
+        hdr = ctk.CTkFrame(frame, fg_color=WHITE_CARD, corner_radius=0, border_width=2,
+                           border_color=INK, height=60)
+        hdr.grid(row=0, column=0, sticky="ew", padx=24, pady=16)
+        hdr.pack_propagate(False)
+        ctk.CTkLabel(hdr, text=t("relatorio.titulo"),
+                     font=ctk.CTkFont(size=20, weight="bold"), text_color=INK).pack(
+            side="left", padx=16)
+        self._relatorio_sub_lbl = ctk.CTkLabel(hdr, text="", font=ctk.CTkFont(size=12),
+                                               text_color=MUTED)
+        self._relatorio_sub_lbl.pack(side="left", padx=8)
+
+        for rotulo, comando in (
+                (t("relatorio.exportar_pdf"), lambda: self._exportar_relatorio("pdf")),
+                (t("relatorio.exportar_json"), lambda: self._exportar_relatorio("json")),
+                (t("relatorio.exportar_md"), lambda: self._exportar_relatorio("md")),
+                (t("relatorio.copiar_declaracao"), self._copiar_declaracao_de_ia)):
+            ctk.CTkButton(hdr, text=rotulo, height=30, width=140, corner_radius=0,
+                          fg_color=WHITE_CARD, text_color=INK, border_width=2,
+                          border_color=INK, hover_color=PAPER,
+                          font=ctk.CTkFont(size=12), command=comando).pack(
+                side="right", padx=(4, 16 if rotulo == t("relatorio.exportar_pdf") else 4))
+
+        self._relatorio_frame = ctk.CTkScrollableFrame(frame, fg_color="transparent")
+        self._relatorio_frame.grid(row=1, column=0, sticky="nsew", padx=24, pady=(0, 16))
+        self._relatorio_frame.grid_columnconfigure(0, weight=1)
+        return frame
+
+    def _relatorio_atual(self) -> dict:
+        """O relatório do projeto ativo, montado do backlog + corpus em memória.
+
+        Montado NA HORA, a cada abertura da aba, e nunca guardado: um relatório em cache
+        poderia mostrar um número que o projeto já não tem, e num documento de método isso é
+        pior do que não ter o documento.
+        """
+        from core.project import load_backlog
+        from core.relatorio import montar
+
+        slug = getattr(self, "_active_project", None)
+        backlog = load_backlog(slug) if slug else []
+        return montar(backlog,
+                      projeto=getattr(self, "_active_project_name", "") or "",
+                      versao=__version__,
+                      contexto=self._contexto_pesquisa(),
+                      df=self._dataframe)
+
+    def _refresh_relatorio_tab(self):
+        if not hasattr(self, "_relatorio_frame"):
+            return
+        for w in self._relatorio_frame.winfo_children():
+            w.destroy()
+
+        if not getattr(self, "_active_project", None):
+            # Sem projeto não há backlog, e sem backlog o relatório seria um formulário em
+            # branco com cara de documento pronto. Dizer que falta o projeto é o conteúdo.
+            self._relatorio_sub_lbl.configure(text="")
+            ctk.CTkLabel(self._relatorio_frame, text=t("project.none_warning"),
+                         font=ctk.CTkFont(size=14), text_color=MUTED).pack(pady=40)
+            return
+
+        rel = self._relatorio_atual()
+        resumo = rel["ia"]["resumo"]
+        self._relatorio_sub_lbl.configure(text=t(
+            "relatorio.subtitulo", n=resumo["chamadas"], b=len(rel["buscas"]),
+            c=rel["corpus"]["registros"]))
+
+        self._cartao_declaracao(rel)
+        self._cartao_pontos_de_ia(rel)
+        self._cartao_buscas(rel)
+        self._cartao_fluxo(rel)
+        self._cartao_cobertura(rel)
+        self._cartao_ambiente(rel)
+
+    def _cartao_de_relatorio(self, titulo: str) -> ctk.CTkFrame:
+        """Um bloco do relatório, na moldura do design system. Devolve o corpo."""
+        cartao = ctk.CTkFrame(self._relatorio_frame, fg_color=WHITE_CARD, corner_radius=0,
+                              border_width=2, border_color=INK)
+        cartao.pack(fill="x", pady=(0, 12))
+        ctk.CTkLabel(cartao, text=titulo, font=ctk.CTkFont(size=15, weight="bold"),
+                     text_color=INK, anchor="w").pack(fill="x", padx=16, pady=(12, 6))
+        corpo = ctk.CTkFrame(cartao, fg_color="transparent")
+        corpo.pack(fill="x", padx=16, pady=(0, 14))
+        corpo.grid_columnconfigure(1, weight=1)
+        return corpo
+
+    def _linhas_de_relatorio(self, corpo, linhas, cabecalho=None):
+        """Uma tabelinha em grid. Cabeçalho em negrito, uma régua embaixo dele."""
+        deslocamento = 0
+        if cabecalho:
+            for c, texto in enumerate(cabecalho):
+                ctk.CTkLabel(corpo, text=texto, font=ctk.CTkFont(size=11, weight="bold"),
+                             text_color=INK, anchor="w").grid(row=0, column=c, sticky="w",
+                                                              padx=(0, 16), pady=(0, 2))
+            ctk.CTkFrame(corpo, height=1, fg_color=INK).grid(
+                row=1, column=0, columnspan=max(len(cabecalho), 2), sticky="ew", pady=(0, 4))
+            deslocamento = 2
+        for r, linha in enumerate(linhas):
+            for c, texto in enumerate(linha):
+                ctk.CTkLabel(corpo, text=str(texto), font=ctk.CTkFont(size=12),
+                             text_color=INK if c == 0 else "#555555", anchor="w",
+                             justify="left", wraplength=560 if c else 0).grid(
+                    row=r + deslocamento, column=c, sticky="w", padx=(0, 16), pady=1)
+
+    def _cartao_declaracao(self, rel: dict):
+        from core.relatorio import declaracao_de_uso
+
+        corpo = self._cartao_de_relatorio(t("relatorio.sec_declaracao"))
+        # Numa CAIXA DE TEXTO, e não num rótulo: a declaração existe para ser copiada, e de
+        # um `CTkLabel` não se seleciona nada. O botão de copiar continua no cabeçalho,
+        # para quem não quer selecionar à mão.
+        caixa = ctk.CTkTextbox(corpo, wrap="word", font=ctk.CTkFont(size=12), height=112,
+                               fg_color=PAPER, text_color=INK, corner_radius=0,
+                               border_width=1, border_color=MUTED)
+        caixa.grid(row=0, column=0, columnspan=2, sticky="ew")
+        caixa.insert("1.0", declaracao_de_uso(rel))
+        caixa.configure(state="disabled")
+        self._relatorio_caixa_declaracao = caixa
+
+    def _cartao_pontos_de_ia(self, rel: dict):
+        from core.relatorio import _ordem_de_gravidade
+        from core.uso_de_ia import DESCREVE, PONTOS
+
+        resumo = rel["ia"]["resumo"]
+        corpo = self._cartao_de_relatorio(t("relatorio.sec_pontos"))
+        if not resumo["chamadas"]:
+            ctk.CTkLabel(corpo, text=t("relatorio.tabela_vazia"), font=ctk.CTkFont(size=12),
+                         text_color=MUTED, anchor="w").grid(row=0, column=0, sticky="w")
+            return
+
+        linhas = [[t(f"ia.ponto.{p}"), t(f"ia.natureza.{PONTOS.get(p, DESCREVE)}"), str(n)]
+                  for p, n in sorted(resumo["por_ponto"].items(), key=_ordem_de_gravidade)]
+        self._linhas_de_relatorio(
+            corpo, linhas,
+            [t("relatorio.col_ponto"), t("relatorio.col_natureza"), t("relatorio.col_chamadas")])
+
+        consumo = self._cartao_de_relatorio(t("relatorio.sec_consumo"))
+        self._linhas_de_relatorio(
+            consumo,
+            [[m, str(v["chamadas"]), str(v["entrada"]), str(v["saida"]), str(v["total"])]
+             for m, v in resumo["por_modelo"].items()],
+            [t("relatorio.col_modelo"), t("relatorio.col_chamadas"), t("relatorio.col_entrada"),
+             t("relatorio.col_saida"), t("relatorio.col_total")])
+        avisos = []
+        if resumo["sem_medida"]:
+            avisos.append(t("relatorio.sem_medida", n=resumo["sem_medida"]))
+        if resumo["falhas"]:
+            avisos.append(t("relatorio.falhas", n=resumo["falhas"]))
+        for i, aviso in enumerate(avisos):
+            ctk.CTkLabel(consumo, text=aviso, font=ctk.CTkFont(size=11), text_color=MUTED,
+                         anchor="w", justify="left", wraplength=680).grid(
+                row=100 + i, column=0, columnspan=5, sticky="w", pady=(6, 0))
+
+    def _cartao_buscas(self, rel: dict):
+        corpo = self._cartao_de_relatorio(t("relatorio.sec_buscas"))
+        if not rel["buscas"]:
+            ctk.CTkLabel(corpo, text=t("relatorio.sem_buscas"), font=ctk.CTkFont(size=12),
+                         text_color=MUTED, anchor="w").grid(row=0, column=0, sticky="w")
+            return
+        for i, b in enumerate(rel["buscas"]):
+            bloco = ctk.CTkFrame(corpo, fg_color="transparent")
+            bloco.grid(row=i, column=0, columnspan=2, sticky="ew", pady=(0, 10))
+            bloco.grid_columnconfigure(0, weight=1)
+            ctk.CTkLabel(bloco, text=f"{i + 1}. {b['base']} — {b['quando']}",
+                         font=ctk.CTkFont(size=12, weight="bold"), text_color=INK,
+                         anchor="w").grid(row=0, column=0, sticky="w")
+            # A string que FOI para a API, monoespaçada: é o que se copia para refazer a
+            # busca, e a diferença para a digitada é o que explica um número que não bate.
+            ctk.CTkLabel(bloco, text=b["string_enviada"],
+                         font=ctk.CTkFont(family="Courier", size=11), text_color=INK,
+                         anchor="w", justify="left", wraplength=680).grid(
+                row=1, column=0, sticky="w", pady=(2, 0))
+            detalhes = [t("relatorio.encontrados_baixados",
+                          e=b["encontrados"] if b["encontrados"] is not None else "—",
+                          b=b["baixados"] if b["baixados"] is not None else "—")]
+            if b["filtros"]:
+                detalhes.append(t("relatorio.filtros",
+                                  f=", ".join(f"{k}={v}" for k, v in b["filtros"].items())))
+            if b["motivo_de_parada"]:
+                detalhes.append(t("relatorio.parada", m=b["motivo_de_parada"]))
+            ctk.CTkLabel(bloco, text=" · ".join(detalhes), font=ctk.CTkFont(size=11),
+                         text_color=MUTED, anchor="w", justify="left",
+                         wraplength=680).grid(row=2, column=0, sticky="w")
+
+    def _cartao_fluxo(self, rel: dict):
+        f = rel["fluxo"]
+        corpo = self._cartao_de_relatorio(t("relatorio.sec_fluxo"))
+        self._linhas_de_relatorio(
+            corpo,
+            [[t("relatorio.fluxo_encontrados"), f["encontrados"]],
+             [t("relatorio.fluxo_baixados"), f["baixados"]],
+             [t("relatorio.fluxo_importados"), f["importados"]],
+             [t("relatorio.fluxo_duplicatas"), f["duplicatas_removidas"]],
+             [t("relatorio.fluxo_final"), f["corpus_final"]]],
+            [t("relatorio.col_etapa"), t("relatorio.col_registros")])
+
+    def _cartao_cobertura(self, rel: dict):
+        c = rel["corpus"]
+        corpo = self._cartao_de_relatorio(t("relatorio.sec_cobertura"))
+        if not c["registros"]:
+            ctk.CTkLabel(corpo, text=t("relatorio.sem_corpus"), font=ctk.CTkFont(size=12),
+                         text_color=MUTED, anchor="w").grid(row=0, column=0, sticky="w")
+            return
+        periodo = f"{c['ano_min']}–{c['ano_max']}" if c["ano_min"] else "—"
+        ctk.CTkLabel(corpo, text=t("relatorio.corpus_resumo", n=c["registros"],
+                                   periodo=periodo),
+                     font=ctk.CTkFont(size=12), text_color=INK, anchor="w").grid(
+            row=0, column=0, columnspan=2, sticky="w", pady=(0, 8))
+        grade = ctk.CTkFrame(corpo, fg_color="transparent")
+        grade.grid(row=1, column=0, columnspan=2, sticky="ew")
+        self._linhas_de_relatorio(
+            grade,
+            [[t("relatorio.campo_resumo"), f"{c['com_resumo']}%"],
+             [t("relatorio.campo_referencias"), f"{c['com_referencias']}%"],
+             [t("relatorio.campo_doi"), f"{c['com_doi']}%"],
+             [t("relatorio.campo_palavras"), f"{c['com_palavras_chave']}%"],
+             [t("relatorio.campo_oa"), f"{c['acesso_aberto']}%"]],
+            [t("relatorio.col_campo"), t("relatorio.col_preenchido")])
+        if c["bases"]:
+            ctk.CTkLabel(corpo, text=t("relatorio.bases",
+                                       b=", ".join(f"{k} ({v})" for k, v in c["bases"].items())),
+                         font=ctk.CTkFont(size=11), text_color=MUTED, anchor="w",
+                         justify="left", wraplength=680).grid(
+                row=2, column=0, columnspan=2, sticky="w", pady=(8, 0))
+
+    def _cartao_ambiente(self, rel: dict):
+        a = rel["ambiente"]
+        corpo = self._cartao_de_relatorio(t("relatorio.sec_ambiente"))
+        self._linhas_de_relatorio(corpo, [
+            ["Blicsa", f"{a['blicsa']} ({a['executavel']})"],
+            ["Python", f"{a['python']} · {a['sistema']}"],
+        ])
+
+    def _copiar_declaracao_de_ia(self):
+        from core.relatorio import declaracao_de_uso
+
+        if not getattr(self, "_active_project", None):
+            messagebox.showwarning("Blicsa", t("project.none_warning"))
+            return
+        texto = declaracao_de_uso(self._relatorio_atual())
+        self.clipboard_clear()
+        self.clipboard_append(texto)
+        self._set_idle(t("relatorio.copiado"))
+
+    def _exportar_relatorio(self, formato: str):
+        """Salva o relatório e o registra no backlog como qualquer outra exportação."""
+        from core.relatorio import para_json, para_markdown
+
+        if not getattr(self, "_active_project", None):
+            messagebox.showwarning("Blicsa", t("project.none_warning"))
+            return
+
+        if formato == "pdf":
+            from core.relatorio_pdf import disponivel
+            if not disponivel():
+                # Aviso ANTES do seletor de arquivo: pedir onde salvar e só então dizer que
+                # não dá seria fazer o usuário escolher pasta e nome à toa.
+                messagebox.showwarning("Blicsa", t("relatorio.pdf_ausente"))
+                return
+
+        extensoes = {"md": [("Markdown", "*.md")], "json": [("JSON", "*.json")],
+                     "pdf": [("PDF", "*.pdf")]}
+        caminho = filedialog.asksaveasfilename(
+            defaultextension=f".{formato}", filetypes=extensoes[formato],
+            initialfile=f"relatorio_{self._active_project}.{formato}")
+        if not caminho:
+            return
+
+        rel = self._relatorio_atual()
+        try:
+            if formato == "pdf":
+                from core.relatorio_pdf import gerar
+                gerar(rel, caminho)
+            else:
+                texto = para_markdown(rel) if formato == "md" else para_json(rel)
+                with open(caminho, "w", encoding="utf-8") as f:
+                    f.write(texto)
+        except Exception as exc:
+            log.info(f"[Relatório] falha ao exportar {formato}: {exc}")
+            messagebox.showerror("Blicsa", str(exc))
+            return
+
+        self._record_export(f"relatorio_{formato}", caminho)
+        self._set_idle(t("relatorio.exportado", caminho=caminho))
 
     def _hist_entry_summary(self, entry) -> str:
         d = entry.get("detail", {}) or {}
@@ -2765,6 +3370,19 @@ class BlicsaApp(ctk.CTk):
                     f'{d.get("arestas", "?")} arestas · {d.get("clusters", "?")} clusters')
         if a in ("export", "map"):
             return f'{d.get("formato", "?")} → {d.get("caminho_relativo", "")}'
+        if a == "ia":
+            # A linha do histórico nomeia o PONTO e a natureza, não só "usou IA": é a
+            # diferença entre um rótulo que foi para a figura publicada e uma pergunta no
+            # chat, e ela não pode depender de abrir o relatório para aparecer.
+            partes = [t(f'ia.ponto.{d.get("ponto", "")}'),
+                      t(f'ia.natureza.{d.get("natureza", "descreve")}'),
+                      d.get("modelo", "")]
+            tokens = d.get("tokens") or {}
+            if tokens.get("total"):
+                partes.append(f'{tokens["total"]} tokens')
+            if d.get("erro"):
+                partes.append(d["erro"])
+            return " · ".join(p for p in partes if p)
         return json.dumps(d, ensure_ascii=False)[:120]
 
     def _refresh_hist_tab(self):
@@ -3163,6 +3781,12 @@ class BlicsaApp(ctk.CTk):
         )
         fv.pack(fill="both", expand=True)
         self.search_feed_view = fv
+        #: De ONDE vieram os registros que estão no feed. O `_on_feed_import` precisa saber:
+        #: a colheita (`search_to_dataset`) já grava a linha `search` no backlog, a
+        #: navegação não gravava nenhuma — e quem buscava, olhava a página e importava o que
+        #: estava nela ficava com a Cadeia de Busca do relatório VAZIA. Sem esta marca, a
+        #: correção ou perderia o registro ou o contaria duas vezes.
+        self._feed_origem = "navegacao"
         fv.on_goto_page = lambda p: self._browse_goto(p)
         fv.on_retry = lambda: self._browse_goto(sessao.page, force=True)
         fv.on_import_all = lambda s, total: self._browse_import_all(s, total)
@@ -3368,6 +3992,7 @@ class BlicsaApp(ctk.CTk):
                 )
                 self.search_feed_view.pack(fill="both", expand=True)
                 self.search_feed_view.begin_stream(max_results)
+                self._feed_origem = "colheita"   # esta grava a própria linha `search`
                 self._switch_tab("review")
             self.after(0, begin_feed)
 
@@ -3581,12 +4206,12 @@ class BlicsaApp(ctk.CTk):
                 import threading
                 def _stream_worker_ai():
                     try:
-                        from ai.client import AIAnalyst
-                        analyst = AIAnalyst(api_key=self._api_key_var.get() or None, base_url=self._ai_base_url_var.get(), model=self._ai_model_var.get())
-                        full_response = ""
-                        for chunk in analyst.chat_history_stream(messages, temperature=0.7):
-                            full_response += chunk
-                            self.after(0, lambda r=full_response: _set_out(r))
+                        with self._uso_de_ia("revisao_de_resultados") as analista:
+                            full_response = ""
+                            for chunk in analista.chat_history_stream(messages,
+                                                                     temperature=0.7):
+                                full_response += chunk
+                                self.after(0, lambda r=full_response: _set_out(r))
                     except Exception as ex:
                         def _set_err(e=ex):
                             if out.winfo_exists():
@@ -3702,11 +4327,26 @@ class BlicsaApp(ctk.CTk):
         depois = cluster_sizes(G)
         log.info(f"[Mapa] resolução {self._cluster_res_var.get():.2f}: "
                  f"{antes} → {len(depois)} clusters (posições intactas)")
-        # Redesenha com as MESMAS posições — self._positions não é tocado.
-        try:
-            self._render_current_map()
-        except Exception:
-            self._draw_map()
+        # Publica as novas cores com as MESMAS posições; o mapa Sigma é servido
+        # pelo navegador, não por um canvas Tk interno.
+        self._publish_sigma_map()
+        if not getattr(self, "_demo_no_browser", False):
+            import webbrowser
+            webbrowser.open(
+                f"http://127.0.0.1:{self._local_server_port}/assets/map_template.html"
+                f"?revision={int(time.time() * 1000)}"
+            )
+
+    def _publish_sigma_map(self):
+        """Escreve a versão atual do grafo para o mapa Sigma local."""
+        from core.sigma_exporter import export_sigma_json
+        from core.i18n import get_map_i18n
+
+        sigma_path = self._serve_dir / "assets" / "graph.json"
+        export_sigma_json(self._generator.G, self._positions, str(sigma_path))
+        i18n_path = self._serve_dir / "assets" / "i18n.json"
+        with open(i18n_path, "w", encoding="utf-8") as f:
+            json.dump(get_map_i18n(), f, ensure_ascii=False)
 
     def _open_term_review(self):
         """Tabela de termos revisável antes de gerar (passo 13 do guia do VOSviewer)."""
@@ -3865,7 +4505,8 @@ class BlicsaApp(ctk.CTk):
         # Exclusões da lista revisável (passo 13 do guia): valem SEMPRE, inclusive quando o
         # chamador não passou uma seleção própria. Sem isso o botão "Revisar termos" seria
         # decorativo — o mapa sairia com os termos que o usuário acabou de descartar.
-        if getattr(self, "_excluded_terms", None):
+        map_type = self._map_type_var.get()
+        if map_type == MAP_TYPES[0] and getattr(self, "_excluded_terms", None):
             from core.map_controls import allowed_terms_from
             if allowed_terms is None:
                 from core.term_extraction import extract_terms
@@ -3912,13 +4553,17 @@ class BlicsaApp(ctk.CTk):
             # Compute max_nodes from top%
             max_nodes = int(self._max_nodes_var.get() or 0)
             pct_str   = self._max_pct_var.get().strip()
-            if pct_str and not max_nodes:
+            if pct_str and map_type in (MAP_TYPES[0], MAP_TYPES[1]):
                 try:
                     pct = float(pct_str)
-                    _, counts, _, _ = NetworkGenerator(df).get_candidate_terms(
-                        field=self._field_var.get(), thesaurus=self._thesaurus,
-                        extra_stop_words=extra_sw,
-                    )
+                    preview = NetworkGenerator(df)
+                    if map_type == MAP_TYPES[1]:
+                        counts = preview.get_author_counts()
+                    else:
+                        _, counts, _, _ = preview.get_candidate_terms(
+                            field=self._field_var.get(), thesaurus=self._thesaurus,
+                            extra_stop_words=extra_sw,
+                        )
                     passing = sum(1 for n in counts.values() if n >= self._min_occ_var.get())
                     max_nodes = max(1, int(passing * pct / 100))
                     log.info(f"[Top {pct}%] → {max_nodes} nós selecionados\n")
@@ -3928,7 +4573,6 @@ class BlicsaApp(ctk.CTk):
             gen      = NetworkGenerator(df)
             gen.clustering_algorithm = self._cluster_alg_var.get()
             gen.clustering_resolution = self._cluster_res_var.get()
-            map_type = self._map_type_var.get()
             min_occ  = self._min_occ_var.get()
             field    = self._field_var.get()
             counting = self._counting_var.get()
@@ -3949,6 +4593,7 @@ class BlicsaApp(ctk.CTk):
                 gen.build_coauthorship_network(
                     min_publications=min_occ,
                     counting_method=counting,
+                    max_nodes=max_nodes,
                 )
             elif map_type == MAP_TYPES[2]:
                 gen.build_cocitation_network(min_cocitations=min_occ)
@@ -3959,19 +4604,30 @@ class BlicsaApp(ctk.CTk):
             else:
                 gen.build_ipc_cooccurrence(min_occurrence=min_occ)
 
-            self._generator = gen
-
             # Network pruning
-            if self._prune_isolated_var.get():
-                isolated = list(nx.isolates(gen.G))
-                if isolated:
-                    gen.G.remove_nodes_from(isolated)
-                    log.info(f"[Pruning] {len(isolated)} nó(s) isolado(s) removido(s)\n")
-            if self._prune_largest_var.get() and not nx.is_connected(gen.G):
-                largest = max(nx.connected_components(gen.G), key=len)
-                remove  = [n for n in gen.G.nodes() if n not in largest]
-                gen.G.remove_nodes_from(remove)
-                log.info(f"[Pruning] Mantendo maior componente: {len(largest)} nós\n")
+            from core.map_controls import prune_network
+            n_isolated, n_component = prune_network(
+                gen.G,
+                remove_isolated=self._prune_isolated_var.get(),
+                largest_component=self._prune_largest_var.get(),
+            )
+            if n_isolated:
+                log.info(f"[Pruning] {n_isolated} nó(s) isolado(s) removido(s)\n")
+            if n_component:
+                log.info(f"[Pruning] Mantendo maior componente: "
+                         f"{gen.G.number_of_nodes()} nós\n")
+
+            if gen.G.number_of_nodes() == 0:
+                key = "map.warn_empty_coauth" if map_type == MAP_TYPES[1] else "map.warn_empty_network"
+                detail = t(key, minimum=min_occ)
+                log.info(f"[Mapa] {detail}\n")
+                self.after(0, self._set_idle, t("map.warn_empty_title"))
+                self.after(0, lambda msg=detail: messagebox.showwarning(
+                    t("map.warn_empty_title"), msg))
+                return
+
+            self._generator = gen
+            self._graph = gen.G
 
             log.info("[FA2] Calculando layout ForceAtlas2...")
             iters   = self._fa2_iter_var.get()
@@ -3993,19 +4649,13 @@ class BlicsaApp(ctk.CTk):
                 "clusters": stats.get("num_clusters", 0)})
             plotly_color = self._plotly_mode_var.get()
 
-            gen.export_to_html(MAP_PATH)
-            
-            from core.sigma_exporter import export_sigma_json
-            # graph.json vai para o diretório SERVIDO (nunca a raiz do repo).
-            sigma_path = str(self._serve_dir / "assets" / "graph.json")
-            export_sigma_json(gen.G, self._positions, sigma_path)
-
-            # i18n.json ao lado: strings do mapa no idioma ativo (map.js lê com
-            # fallback en). Assim nada de texto PT fica hardcoded no JS.
-            from core.i18n import get_map_i18n
-            i18n_path = self._serve_dir / "assets" / "i18n.json"
-            with open(i18n_path, "w", encoding="utf-8") as f:
-                json.dump(get_map_i18n(), f, ensure_ascii=False)
+            # O Sigma é a saída principal. A exportação PyVis legada é opcional:
+            # uma falha nela não pode impedir o mapa interativo de abrir.
+            self._publish_sigma_map()
+            try:
+                gen.export_to_html(MAP_PATH)
+            except Exception as legacy_exc:
+                log.warning("[Mapa] HTML legado indisponível: %s", legacy_exc)
 
             import webbrowser
             url = f"http://127.0.0.1:{self._local_server_port}/assets/map_template.html"
@@ -4329,8 +4979,8 @@ class BlicsaApp(ctk.CTk):
             for (a, k), count in auths_kws.most_common(15):
                 summary += f"  - Autor {a} estuda {k} ({count} vezes)\n"
                 
-            analyst = self._get_ai_analyst()
-            result = analyst.generate_sankey_insights(summary)
+            result = self._analise_de_ia(
+                "insights_sankey", lambda a: a.generate_sankey_insights(summary))
             self.after(0, self._show_insights, result)
             self.after(0, self._set_idle, "Insights Sankey prontos")
         except AIClientError as exc:
@@ -4358,8 +5008,8 @@ class BlicsaApp(ctk.CTk):
                 dens = sum(G[u][v].get("weight", 1.0) for u in nodes for v in G.neighbors(u) if v in nodes) / (2.0 * len(nodes))
                 summary += f"  - Cluster {c} ({len(nodes)} nós, Centralidade: {cent:.1f}, Densidade: {dens:.3f}): {', '.join(top_nodes)}\n"
                 
-            analyst = self._get_ai_analyst()
-            result = analyst.generate_thematic_insights(summary)
+            result = self._analise_de_ia(
+                "insights_tematico", lambda a: a.generate_thematic_insights(summary))
             self.after(0, self._show_insights, result)
             self.after(0, self._set_idle, "Insights Temáticos prontos")
         except AIClientError as exc:
@@ -4385,8 +5035,9 @@ class BlicsaApp(ctk.CTk):
                 title = str(row.get("title", ""))[:60]
                 summary += f"  - {first} ({year}) com {cit} citações: \"{title}...\"\n"
                 
-            analyst = self._get_ai_analyst()
-            result = analyst.generate_historiograph_insights(summary)
+            result = self._analise_de_ia(
+                "insights_historiografico",
+                lambda a: a.generate_historiograph_insights(summary))
             self.after(0, self._show_insights, result)
             self.after(0, self._set_idle, "Insights Historiografia prontos")
         except AIClientError as exc:
@@ -4483,29 +5134,8 @@ class BlicsaApp(ctk.CTk):
                 import threading
                 def _stream_worker():
                     try:
-                        from ai.client import AIAnalyst
-                        analyst = AIAnalyst(api_key=self._api_key_var.get() or None, base_url=self._ai_base_url_var.get(), model=self._ai_model_var.get())
-                        stream = analyst.chat_history_stream(messages, temperature=0.7)
-                        
-                        full_response = ""
-                        tb_ref = []
-                        from core.markdown_parser import insert_markdown
-                        
-                        for chunk in stream:
-                            full_response += chunk
-                            def update_chunk(resp=full_response):
-                                if indicator_row.winfo_exists():
-                                    indicator_row.destroy()
-                                if not tb_ref:
-                                    tb, upd, _ = self._add_blink_message("assistant", "")
-                                    tb_ref.append((tb, upd))
-                                tb, upd = tb_ref[0]
-                                tb.configure(state="normal")
-                                tb.delete("1.0", "end")
-                                insert_markdown(tb, resp)
-                                tb.configure(state="disabled")
-                                upd()
-                            self.after(0, update_chunk)
+                        full_response = self._responder_no_chat(
+                            "insights_do_mapa", messages, indicator_row)
                         
                         self._research_messages.append({"role": "assistant", "content": full_response})
                     except Exception as ex:
@@ -4595,29 +5225,8 @@ class BlicsaApp(ctk.CTk):
                 import threading
                 def _stream_worker():
                     try:
-                        from ai.client import AIAnalyst
-                        analyst = AIAnalyst(api_key=self._api_key_var.get() or None, base_url=self._ai_base_url_var.get(), model=self._ai_model_var.get())
-                        stream = analyst.chat_history_stream(messages, temperature=0.7)
-                        
-                        full_response = ""
-                        tb_ref = []
-                        from core.markdown_parser import insert_markdown
-                        
-                        for chunk in stream:
-                            full_response += chunk
-                            def update_chunk(resp=full_response):
-                                if indicator_row.winfo_exists():
-                                    indicator_row.destroy()
-                                if not tb_ref:
-                                    tb, upd, _ = self._add_blink_message("assistant", "")
-                                    tb_ref.append((tb, upd))
-                                tb, upd = tb_ref[0]
-                                tb.configure(state="normal")
-                                tb.delete("1.0", "end")
-                                insert_markdown(tb, resp)
-                                tb.configure(state="disabled")
-                                upd()
-                            self.after(0, update_chunk)
+                        full_response = self._responder_no_chat(
+                            "insights_do_corpus", messages, indicator_row)
                         
                         self._research_messages.append({"role": "assistant", "content": full_response})
                     except Exception as ex:
@@ -4634,36 +5243,70 @@ class BlicsaApp(ctk.CTk):
         except Exception as exc:
             log.info(f"[ERRO IA Corpus] {exc}\n")
 
+    def _pedido_de_analise_de_busca(self):
+        """`(pedido ao modelo, bolha na conversa, contexto)` a partir da busca em tela.
+
+        **O que o modelo lê e o que o usuário lê são coisas diferentes.** A bolha mostrava o
+        pedido INTEIRO — regras de sintaxe, lista de proibições, formato de saída —, um
+        paredão de instrução apresentado como se fosse a frase que a pessoa acabou de
+        escrever. Ela não escreveu aquilo: ela clicou num botão. O modelo continua recebendo
+        o pedido completo; a conversa mostra a pergunta.
+
+        Fora do `_trigger_import_ai_assistant` porque é a única parte com decisão dentro, e
+        aqui ela se testa sem thread, sem rede e sem chave de IA.
+        """
+        #: Regras que valem para os dois pedidos. Num lugar só porque divergir foi como o
+        #: pedido "sem string" acabou sem a proibição de tipo de documento.
+        regras = t("busca_ia.regras")
+
+        query = self._search_query_entry.get().strip()
+        if not query:
+            return (t("busca_ia.prompt_sem_string", regras=regras),
+                    t("busca_ia.bolha_sem_string"),
+                    t("busca_ia.contexto_vazio"))
+
+        provider = self._search_provider_var.get()
+        start_yr = self._search_year_start.get().strip() or "Qualquer"
+        end_yr = self._search_year_end.get().strip() or "Qualquer"
+        doc_type = self._search_type_var.get()
+        lang = self._search_lang_var.get()
+        oa = "Sim" if self._search_oa_var.get() else "Não exigido"
+
+        context = (f"**Parâmetros de Busca Configurados:**\n"
+                   f"- Base: {provider.upper()}\n"
+                   f"- String: `{query}`\n"
+                   f"- Período: {start_yr} a {end_yr}\n"
+                   f"- Tipo de Documento: {doc_type}\n"
+                   f"- Idioma: {lang}\n"
+                   f"- Open Access: {oa}\n")
+
+        return (t("busca_ia.prompt_com_string", regras=regras),
+                t("busca_ia.bolha_com_string", query=query),
+                context)
+
     def _trigger_import_ai_assistant(self):
+        """O Blink analisando a busca em configuração e propondo uma string.
+
+        O pedido ao modelo é de UMA string conceitual, não de três. A adaptação para cada
+        base é determinística e mora em `core/strings_por_base.py` — pedir três ao modelo
+        seria três vezes a chance de ele inventar sintaxe, e as regras de cada API são
+        fixas, não são questão de julgamento.
+
+        As proibições do pedido não são estilo: cada uma corresponde a uma falha MEDIDA
+        contra as APIs (curinga = HTTP 400 no OpenAlex, vírgula = HTTP 400, sintaxe de
+        Scopus = 1 resultado no PubMed). O tradutor conserta tudo isso de qualquer forma; a
+        proibição existe para o usuário LER uma string que já é a boa, em vez de ver o
+        aviso de conserto embaixo de toda sugestão.
+        """
         try:
             log.info("[IA] Analisando os parâmetros de busca...")
-            
-            query = self._search_query_entry.get().strip()
-            if not query:
-                prompt_msg = "Preciso de ajuda para criar uma string de busca bibliométrica. Quais dicas e operadores booleanos você sugere para uma pesquisa eficiente? OBRIGATÓRIO 1: No final da sua resposta, forneça pelo menos um exemplo de string de busca completa e pronta para copiar e colar. OBRIGATÓRIO 2: A string DEVE CONTER APENAS termos de pesquisa e booleanos. NUNCA INCLUA filtros de ano ou idioma DENTRO DA STRING, pois o software já possui filtros visuais para isso."
-                context = "**Nenhuma string de busca informada.**"
-            else:
-                provider = self._search_provider_var.get()
-                start_yr = self._search_year_start.get().strip() or "Qualquer"
-                end_yr = self._search_year_end.get().strip() or "Qualquer"
-                doc_type = self._search_type_var.get()
-                lang = self._search_lang_var.get()
-                oa = "Sim" if self._search_oa_var.get() else "Não exigido"
-                
-                context = f"**Parâmetros de Busca Configurados:**\n"
-                context += f"- Base: {provider.upper()}\n"
-                context += f"- String: `{query}`\n"
-                context += f"- Período: {start_yr} a {end_yr}\n"
-                context += f"- Tipo de Documento: {doc_type}\n"
-                context += f"- Idioma: {lang}\n"
-                context += f"- Open Access: {oa}\n"
-                
-                prompt_msg = f"Eu configurei esta busca bibliométrica. Justifique as escolhas dessa string (prós e contras) e me dê sugestões de refinamento. OBRIGATÓRIO 1: No final da resposta, forneça pelo menos uma nova string de busca completa e pronta para copiar e colar. OBRIGATÓRIO 2: A nova string DEVE CONTER APENAS termos temáticos e booleanos. NUNCA INCLUA idioma, anos ou tipos de documento (ex: 2020:*, English, etc) DENTRO DA STRING. O software tem filtros nativos para isso, instrua o usuário a usar os botões do Blicsa para essas restrições adicionais."
+
+            prompt_msg, bolha, context = self._pedido_de_analise_de_busca()
 
             def _start_streaming():
                 self._switch_tab("home")
-                self._add_blink_message("user", prompt_msg)
-                
+                self._add_blink_message("user", bolha)
+
                 system_prompt = self._blink_system_prompt(
                     dados_corpus=f"Busca em configuração:\n{context}")
 
@@ -4688,31 +5331,13 @@ class BlicsaApp(ctk.CTk):
                 import threading
                 def _stream_worker():
                     try:
-                        from ai.client import AIAnalyst
-                        analyst = AIAnalyst(api_key=self._api_key_var.get() or None, base_url=self._ai_base_url_var.get(), model=self._ai_model_var.get())
-                        stream = analyst.chat_history_stream(messages, temperature=0.7)
-                        
-                        full_response = ""
-                        tb_ref = []
-                        from core.markdown_parser import insert_markdown
-                        
-                        for chunk in stream:
-                            full_response += chunk
-                            def update_chunk(resp=full_response):
-                                if indicator_row.winfo_exists():
-                                    indicator_row.destroy()
-                                if not tb_ref:
-                                    tb, upd, _ = self._add_blink_message("assistant", "")
-                                    tb_ref.append((tb, upd))
-                                tb, upd = tb_ref[0]
-                                tb.configure(state="normal")
-                                tb.delete("1.0", "end")
-                                insert_markdown(tb, resp)
-                                tb.configure(state="disabled")
-                                upd()
-                            self.after(0, update_chunk)
+                        full_response = self._responder_no_chat(
+                            "assistente_de_busca", messages, indicator_row)
                         
                         self._research_messages.append({"role": "assistant", "content": full_response})
+                        # Resposta completa: só agora dá para procurar nela a string proposta —
+                        # durante o streaming ela chega pela metade.
+                        self.after(0, lambda r=full_response: self._oferecer_string_de_busca(r))
                     except Exception as ex:
                         def _err_row(e=ex):
                             if indicator_row.winfo_exists(): indicator_row.destroy()
@@ -4737,24 +5362,25 @@ class BlicsaApp(ctk.CTk):
         impressão P&B e a copiar-e-colar, que é o que a convenção exige de fato — ver a mesma
         decisão na Treeview de clusters.
 
-        Sem chamador hoje: `generate_seminal_insights` existe no cliente mas nenhuma tela a
-        dispara. A marcação fica pronta para quando for ligada, porque é aqui que ela seria
-        esquecida. Registrado em docs/inventario-ia.md.
+        Usa o mesmo parser completo da conversa do Blink: tabelas, listas e links são
+        legíveis também na aba seminal.
         """
         from ui.ai_marking import marcar_texto_export
-        from ui.components import insert_markdown
+        from core.markdown_parser import insert_markdown
 
         self._seminal_box.configure(state="normal")
         self._seminal_box.delete("1.0", "end")
-        insert_markdown(self._seminal_box, f"{marcar_texto_export('')} {text}".strip())
+        # O selo precisa ocupar sua própria linha: na mesma linha que "# Título"
+        # ele impede o parser de reconhecer o cabeçalho Markdown.
+        insert_markdown(self._seminal_box, f"{marcar_texto_export('')}\n\n{text}".strip())
         self._seminal_box.configure(state="disabled")
 
     #: Colunas onde as referências citadas podem estar, por origem do export.
     COLUNAS_REFERENCIAS = ("CR", "References", "Cited References", "references")
 
     def _coluna_de_referencias(self) -> str | None:
-        return next((c for c in self.COLUNAS_REFERENCIAS
-                     if self._dataframe is not None and c in self._dataframe.columns), None)
+        from core.seminal import reference_column
+        return reference_column(self._dataframe)
 
     def _top_referencias(self, n: int = 20) -> list[tuple[str, int]]:
         """As `n` referências mais citadas do corpus, com a contagem.
@@ -4762,18 +5388,8 @@ class BlicsaApp(ctk.CTk):
         Ponto único: a biblioteca de PDFs e a análise seminal partem da MESMA lista. Contar de
         dois jeitos faria o relatório falar de obras que a pasta não baixou.
         """
-        import re
-        from collections import Counter
-
-        coluna = self._coluna_de_referencias()
-        if not coluna:
-            return []
-        contagem: Counter = Counter()
-        for valor in self._dataframe[coluna].dropna():
-            for ref in re.split(r"[;\n]", str(valor)):
-                if ref.strip():
-                    contagem[ref.strip()] += 1
-        return contagem.most_common(n)
+        from core.seminal import top_references
+        return top_references(self._dataframe, limit=n)
 
     def _trigger_seminal_insights(self):
         """Análise de autores e obras seminais — o botão que faltava.
@@ -4799,11 +5415,65 @@ class BlicsaApp(ctk.CTk):
         threading.Thread(target=self._seminal_insights_worker, args=(top,),
                          daemon=True).start()
 
+    @staticmethod
+    def _preparar_referencias_seminais(top_refs: list[tuple[str, int]]) -> tuple[str, int]:
+        """Metadados exatos para IDs OpenAlex; nunca manda um W... opaco como obra à IA."""
+        from core.seminal import OPENALEX_WORK_ID, reference_metadata_consistent
+        from core.sources.openalex import OpenAlexProvider
+        from core.sources.crossref import CrossrefProvider
+        from core.sources.datacite import get_by_doi as get_datacite_by_doi
+
+        provider = None
+        crossref = None
+        linhas = []
+        nao_resolvidas = 0
+        for ref, count in top_refs:
+            if OPENALEX_WORK_ID.fullmatch(ref.strip()):
+                if provider is None:
+                    provider = OpenAlexProvider()
+                record = provider.get_by_id(ref)
+                if not record or not record.get("title"):
+                    nao_resolvidas += 1
+                    continue
+                if record.get("doi"):
+                    if crossref is None:
+                        crossref = CrossrefProvider()
+                    try:
+                        registered = crossref.get_by_doi(record["doi"])
+                    except Exception as exc:
+                        log.warning("[Seminais] conferência do DOI indisponível: %s", exc)
+                        registered = None
+                    if registered is None:
+                        try:
+                            registered = get_datacite_by_doi(record["doi"])
+                        except Exception as exc:
+                            log.warning("[Seminais] DataCite indisponível: %s", exc)
+                    if not registered or not reference_metadata_consistent(record, registered):
+                        log.warning("[Seminais] DOI sem metadados conferíveis ou contraditórios em %s", ref)
+                        nao_resolvidas += 1
+                        continue
+                authors = record.get("authors") or t("seminal.autor_nao_identificado")
+                year = record.get("year") or t("seminal.ano_nao_identificado")
+                title = record["title"]
+                abstract = str(record.get("abstract") or "").strip()[:800]
+                linhas.append(f"{len(linhas) + 1}. {title} ({year}); {authors}; "
+                              f"{count} {t('seminal.citacoes_corpus')}; "
+                              f"OpenAlex: {ref}; "
+                              f"{t('seminal.resumo_metadados')}: {abstract or t('seminal.resumo_ausente')}")
+            else:
+                linhas.append(f"{len(linhas) + 1}. {ref}; {count} {t('seminal.citacoes_corpus')} "
+                              f"({t('seminal.referencia_original')})")
+        return "\n".join(linhas), nao_resolvidas
+
     def _seminal_insights_worker(self, top_refs: list[tuple[str, int]]):
         try:
-            analyst = self._get_ai_analyst()
-            resumo = "\n".join(f"{ref} (citada {n}x)" for ref, n in top_refs)
-            texto = analyst.generate_seminal_insights(resumo)
+            resumo, nao_resolvidas = self._preparar_referencias_seminais(top_refs)
+            if not resumo:
+                raise AIClientError(t("seminal.nao_resolvidas"))
+            texto = self._analise_de_ia(
+                "obras_seminais", lambda a: a.generate_seminal_insights(resumo))
+            if nao_resolvidas:
+                texto = (t("seminal.refs_ignoradas", count=nao_resolvidas) + "\n\n" + texto)
         except AIClientError as e:
             # Falta de chave é o estado do usuário novo: recusa clara, nunca traceback.
             #
@@ -5632,6 +6302,7 @@ class BlicsaApp(ctk.CTk):
         if G is not None:
             self._generator = NetworkGenerator(self._dataframe)
             self._generator.G = G
+            self._graph = G
             self._generator.clustering_algorithm = self._cluster_alg_var.get()
             self._generator.clustering_resolution = self._cluster_res_var.get()
             
@@ -5649,17 +6320,52 @@ class BlicsaApp(ctk.CTk):
             contexto_pesquisa=self._contexto_pesquisa(),
         )
 
+    def _agendar_gravacao_config_ia(self):
+        """Persiste provedor, URL base e modelo com o mesmo debounce da chave.
+
+        Debounce porque a trace dispara a CADA TECLA nos campos de texto dos Ajustes:
+        gravar o settings.json por caractere é uma escrita de disco por tecla.
+        """
+        if self._config_ia_sincronizando:
+            return
+        if self._config_ia_save_job:
+            self.after_cancel(self._config_ia_save_job)
+
+        def _gravar():
+            from core.settings import set_config_ia
+            set_config_ia(self._ai_provider_var.get(),
+                          self._ai_base_url_var.get(),
+                          self._ai_model_var.get())
+
+        self._config_ia_save_job = self.after(900, _gravar)
+
     def _on_ai_provider_change(self, provider):
-        presets = {
-            "groq": ("https://api.groq.com/openai/v1", "openai/gpt-oss-120b"),
-            "openai": ("https://api.openai.com/v1", "gpt-4o"),
-            "openrouter": ("https://openrouter.ai/api/v1", "meta-llama/llama-3-70b-instruct"),
-            "ollama": ("http://localhost:11434/v1", "llama3"),
-        }
-        if provider in presets:
-            base, model = presets[provider]
-            self._ai_base_url_var.set(base)
-            self._ai_model_var.set(model)
+        """Troca de provedor: preset da tabela única, gravação em disco e a chave DELE.
+
+        Os presets estavam copiados em três lugares — aqui, em `core.credenciais.
+        PROVEDORES_IA` e nos defaults do `ai/client.py`. Três cópias da mesma tabela é como
+        o provedor passa a dizer "openai" com a URL base ainda apontando para o Groq.
+
+        A resincronização da chave fecha o ciclo dos slots por provedor: cada um tem o seu
+        no cofre, e `_api_key_var` — que alimenta as sete chamadas de IA — precisa passar a
+        apontar para o do provedor recém-escolhido.
+        """
+        from core.credenciais import PROVEDORES_IA
+        from core.settings import set_config_ia
+
+        entrada = PROVEDORES_IA.get(provider)
+        if entrada is not None:
+            self._ai_base_url_var.set(entrada[1])
+            self._ai_model_var.set(entrada[2])
+        # "custom" não tem preset: preserva o que estiver nos campos e grava só o provedor.
+        set_config_ia(provider, self._ai_base_url_var.get(), self._ai_model_var.get())
+        self._sincronizar_chave_da_sessao()
+        vista = getattr(self, "_credenciais_view", None)
+        if vista is not None:
+            try:
+                vista.atualizar()
+            except Exception:
+                pass
 
     # ── Tab: Estatísticas ──────────────────────────────────────────────
     # ── Deduplication ──────────────────────────────────────────────────
@@ -5717,6 +6423,8 @@ class BlicsaApp(ctk.CTk):
                                 "aplicado": True})
         log.info(f"[Dedup] {msg} Base: {len(self._dataframe)} registros.\n")
         self._generator = None
+        self._graph = None
+        self._positions = {}
         self.after(0, self._update_stats_tab)
         self.after(0, self._refresh_corpus_tab)
         messagebox.showinfo("Blicsa", msg)
@@ -5856,9 +6564,13 @@ class BlicsaApp(ctk.CTk):
         try:
             self.after(0, self._set_busy, "IA nomeando clusters…")
             log.info("[IA] Nomeando clusters com IA...")
-            analyst = self._get_ai_analyst()
             report = self._generator.get_cluster_report()
-            labels = analyst.label_clusters(report, context=self._field_var.get())
+            # `interpreta`: o rótulo que sai daqui vira o nome do cluster NA FIGURA que o
+            # artigo publica. `n_clusters` no evento porque é quantos nomes do mapa foram
+            # escritos por um modelo — o número que a declaração de uso precisa dizer.
+            labels = self._analise_de_ia(
+                "rotulos_de_cluster",
+                lambda a: a.label_clusters(report, context=self._field_var.get()))
             self._cluster_labels = labels
             self._cluster_label_origins = {cid: "ia" for cid in labels}
 
@@ -5971,6 +6683,18 @@ class BlicsaApp(ctk.CTk):
         lines.append("═" * 60)
         lines.append(f"  Total de registros : {len(df)}")
 
+        from core.document_types import document_type_counts
+        type_counts = document_type_counts(df)
+        if type_counts:
+            lines.extend(("", "─" * 60, f"  {t('stats.types_header')}", "─" * 60))
+            journal_total = type_counts.get("article", 0) + type_counts.get("review", 0)
+            if journal_total:
+                lines.append(f"  {t('stats.journal_total', n=journal_total)}")
+            for kind, count in type_counts.items():
+                label = t(f"stats.type.{kind}")
+                lines.append(f"  {label:<38} {count:>6}  ({count / len(df):.1%})")
+            lines.append("")
+
         if "year" in df.columns:
             yr = df["year"].replace(0, None).dropna()
             if not yr.empty:
@@ -5991,7 +6715,8 @@ class BlicsaApp(ctk.CTk):
             lines.append("─" * 60)
             top_sources = Counter(df["source"].dropna()).most_common(15)
             for i, (src, n) in enumerate(top_sources, 1):
-                lines.append(f"  {i:>2}. {src[:48]:<48} {n:>5}")
+                source_label = str(src).strip() or t("stats.source_unknown")
+                lines.append(f"  {i:>2}. {source_label[:48]:<48} {n:>5}")
 
         if "year" in df.columns:
             lines.append("")
@@ -6277,9 +7002,9 @@ class BlicsaApp(ctk.CTk):
             import threading
             def worker():
                 try:
-                    from ai.client import AIAnalyst
-                    analyst = AIAnalyst(api_key=self._api_key_var.get() or None, base_url=self._ai_base_url_var.get(), model=self._ai_model_var.get())
-                    resp = analyst.chat_history(self._gallery_messages, temperature=0.7)
+                    resp = self._analise_de_ia(
+                        "chat_da_galeria",
+                        lambda a: a.chat_history(self._gallery_messages, temperature=0.7))
                     self._gallery_messages.append({"role": "assistant", "content": resp})
                 except Exception as ex:
                     resp = f"Erro: {ex}"
