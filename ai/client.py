@@ -47,6 +47,59 @@ def _t(chave: str, padrao: str) -> str:
     return padrao if not valor or valor == chave else valor
 
 
+# ── Falhas de IA em linguagem de gente (auditoria 2026-09, IA1) ─────────────────────
+# Antes, toda falha chegava à tela como "Falha na requisição de IA após 3 tentativas:
+# HTTP Error 401: Unauthorized" — inglês técnico, sem dizer o que fazer. E a chave errada
+# era tentada 3 vezes (com espera) antes de avisar. O detalhe técnico vai para o log.
+_NAO_REPETIR = {400, 401, 403, 404, 422}
+
+
+def _codigo_http(e: BaseException) -> int | None:
+    import urllib.error
+    while e is not None:
+        if isinstance(e, urllib.error.HTTPError):
+            return e.code
+        e = e.__cause__ or e.__context__
+    return None
+
+
+def mensagem_de_falha(e: BaseException) -> str:
+    """Frase para o usuário explicando a falha de IA e o que fazer."""
+    import socket
+    import urllib.error
+    codigo = _codigo_http(e)
+    if codigo in (401, 403):
+        return _t("ai.falha_chave", "A chave de IA foi recusada. Confira na aba Credenciais se ela "
+                  "foi colada inteira (a do Groq começa com gsk_) ou crie uma nova em "
+                  "console.groq.com.")
+    if codigo == 429:
+        return _t("ai.falha_limite", "O limite gratuito da IA foi atingido. Espere um minuto e "
+                  "tente de novo.")
+    if codigo == 404:
+        return _t("ai.falha_modelo", "O modelo de IA configurado não está disponível no provedor. "
+                  "Troque o modelo em Configurações.")
+    if codigo in (400, 413, 422):
+        return _t("ai.falha_pedido", "O serviço de IA recusou o pedido, provavelmente por ser "
+                  "grande demais. Tente com um corpus ou mapa menor.")
+    if codigo is not None and codigo >= 500:
+        return _t("ai.falha_servidor", "O serviço de IA está fora do ar no momento. Tente de novo "
+                  "em alguns minutos.")
+    atual = e
+    while atual is not None:
+        if isinstance(atual, (urllib.error.URLError, socket.timeout, TimeoutError,
+                              ConnectionError)):
+            return _t("ai.falha_rede", "Sem conexão com o serviço de IA. Verifique a internet e "
+                      "tente de novo.")
+        atual = atual.__cause__ or atual.__context__
+    return _t("ai.falha_resposta", "O serviço de IA respondeu de um jeito inesperado. Tente de "
+              "novo; se continuar, veja o detalhe no log do programa.")
+
+
+def _sem_chave() -> str:
+    return _t("ai.falha_sem_chave", "Nenhuma chave de IA configurada. Cole sua chave (por exemplo, "
+              "do Groq) na aba Credenciais.")
+
+
 def _secoes(*pares: tuple[str, str]) -> str:
     """As seções que a análise deve produzir, já no idioma da interface.
 
@@ -159,8 +212,10 @@ def call_openai_chat_history(
                 return resp_data["choices"][0]["message"]["content"]
         except Exception as e:
             retries -= 1
-            if retries == 0:
-                raise AIClientError(f"Falha na requisição de IA após 3 tentativas: {e}") from e
+            print(f"[AI Client] falha: {type(e).__name__}: {e}")
+            # Chave errada, modelo inexistente, pedido inválido: repetir não adianta.
+            if retries == 0 or _codigo_http(e) in _NAO_REPETIR:
+                raise AIClientError(mensagem_de_falha(e)) from e
             time.sleep(delay)
             delay *= 2
 
@@ -240,13 +295,13 @@ class AIAnalyst:
 
     def chat_history(self, messages: list[dict], temperature: float = 0.7) -> str:
         if not self.api_key:
-            raise AIClientError("API Key não configurada nos Ajustes.")
+            raise AIClientError(_sem_chave())
         return call_openai_chat_history(self.base_url, self.api_key, self.model, messages,
                                         temperature, ao_medir=self._guardar_uso)
 
     def _chat(self, system: str, user: str, temperature: float = 0.3) -> str:
         if not self.api_key:
-            raise AIClientError("API Key não configurada nos Ajustes.")
+            raise AIClientError(_sem_chave())
         return call_openai_chat(
             base_url=self.base_url,
             api_key=self.api_key,
@@ -262,7 +317,7 @@ class AIAnalyst:
 
     def chat_history_stream(self, messages: list[dict], temperature: float = 0.7):
         if not self.api_key:
-            raise AIClientError("API Key não configurada nos Ajustes.")
+            raise AIClientError(_sem_chave())
 
         self.ultimo_uso = None
         payload = {
@@ -326,7 +381,8 @@ class AIAnalyst:
         except Exception as e:
             # Erro no MEIO do stream também levanta; o chamador decide o que
             # fazer com o parcial já recebido.
-            raise AIClientError(f"Falha no streaming de IA: {e}") from e
+            print(f"[AI Client] falha no streaming: {type(e).__name__}: {e}")
+            raise AIClientError(mensagem_de_falha(e)) from e
 
     def label_clusters(
         self,

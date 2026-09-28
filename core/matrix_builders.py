@@ -83,6 +83,20 @@ def _apply_clustering(G: nx.Graph, algorithm: str = "louvain", resolution: float
     return partition
 
 
+def _ceder():
+    """Cede a vez à janela quando o cálculo roda numa thread de trabalho.
+
+    Contar termos de milhares de resumos é Python puro: numa thread, sem pausas, ele
+    monopoliza o interpretador e a janela para de responder — abrir um projeto de 6 mil
+    registros congelava a tela por ~3 s (auditoria 2026-09, T4). A pausa de 1 ms só entrega o
+    turno; não muda nenhum resultado. Na thread principal não faz nada.
+    """
+    import threading
+    import time
+    if threading.current_thread() is not threading.main_thread():
+        time.sleep(0.001)   # 1 ms: tempo de verdade para a janela redesenhar
+
+
 def _color_nodes(G: nx.Graph, partition: dict[str, int]):
     for node, grp in partition.items():
         if node in G.nodes:
@@ -96,7 +110,9 @@ def _relevance_scores(
 ) -> dict[str, float]:
     """TF-IDF-style: freq × log(N / df). Higher = more specific to a cluster."""
     scores: dict[str, float] = {}
-    for term, freq in term_counts.items():
+    for i, (term, freq) in enumerate(term_counts.items()):
+        if i % 5000 == 0:
+            _ceder()
         df = term_doc_freq.get(term, 1)
         scores[term] = freq * math.log((total_docs + 1) / (df + 1))
     return scores
@@ -132,7 +148,9 @@ def _extract_term_lists(
         # termo excluído continuava no mapa (auditoria 2026-09, D3). Compara antes e depois do
         # tesauro, para excluir tanto a forma original quanto a harmonizada.
         sw = {normalizar_termo(w).lower() for w in (extra_stop_words or ()) if w.strip()}
-        for kw_str in df["keywords"].dropna():
+        for i, kw_str in enumerate(df["keywords"].dropna()):
+            if i % 50 == 0:
+                _ceder()
             if isinstance(kw_str, str) and kw_str.strip():
                 sep = ";" if ";" in kw_str else ","
                 kws = []
@@ -152,7 +170,9 @@ def _extract_term_lists(
             "titles_abstracts": ["title", "abstract"],
         }
         cols = col_map.get(field, ["title"])
-        for _, row in df.iterrows():
+        for i, (_, row) in enumerate(df.iterrows()):
+            if i % 25 == 0:
+                _ceder()
             text = " ".join(str(row.get(c, "") or "") for c in cols).strip()
             if text:
                 grams = extract_ngrams(text, extra_stop_words=extra_stop_words)
@@ -271,12 +291,15 @@ class NetworkGenerator:
         """
         th = thesaurus or {}
         term_lists = _extract_term_lists(self.df, field, th, extra_stop_words)
-        all_terms = [t for lst in term_lists for t in lst]
-        counts: Counter = Counter(all_terms)
+        # Contagem por documento (e não um Counter de uma lista achatada de ~2 milhões de
+        # termos): o resultado é o mesmo, mas dá para ceder a vez à janela no caminho (T4).
+        counts: Counter = Counter()
         doc_freq: Counter = Counter()
-        for lst in term_lists:
-            for t in set(lst):
-                doc_freq[t] += 1
+        for i, lst in enumerate(term_lists):
+            if i % 100 == 0:
+                _ceder()
+            counts.update(lst)
+            doc_freq.update(set(lst))
         scores = _relevance_scores(counts, doc_freq, len(term_lists))
         return len(self.df), counts, doc_freq, scores
 
@@ -311,12 +334,15 @@ class NetworkGenerator:
         th = thesaurus or {}
         term_lists = _extract_term_lists(self.df, field, th, extra_stop_words)
 
-        all_terms = [t for lst in term_lists for t in lst]
-        counts: Counter = Counter(all_terms)
+        # Contagem por documento (e não um Counter de uma lista achatada de ~2 milhões de
+        # termos): o resultado é o mesmo, mas dá para ceder a vez à janela no caminho (T4).
+        counts: Counter = Counter()
         doc_freq: Counter = Counter()
-        for lst in term_lists:
-            for t in set(lst):
-                doc_freq[t] += 1
+        for i, lst in enumerate(term_lists):
+            if i % 100 == 0:
+                _ceder()
+            counts.update(lst)
+            doc_freq.update(set(lst))
 
         self._term_counts = counts
         self._term_doc_freq = doc_freq

@@ -67,8 +67,13 @@ def ambiente(monkeypatch, tmp_path):
     monkeypatch.setattr(M, "REPORTS_DIR", tmp_path / "reports", raising=False)
 
     antigo_hook = threading.excepthook
-    threading.excepthook = lambda args: reg.excecoes.append(
-        f"thread: {args.exc_type.__name__}: {args.exc_value}")
+    def _hook(args):
+        # Artefato do teste: sem mainloop, uma thread de trabalho não consegue agendar a
+        # atualização da tela. No app real o mainloop sempre existe.
+        if "main thread is not in main loop" in str(args.exc_value):
+            return
+        reg.excecoes.append(f"thread: {args.exc_type.__name__}: {args.exc_value}")
+    threading.excepthook = _hook
     try:
         app = M.BlicsaApp()
     except Exception as exc:
@@ -199,18 +204,25 @@ def test_arquivo_apagado_entre_adicionar_e_carregar(ambiente):
 
 
 def test_scopus_salvo_pelo_excel_brasileiro(ambiente):
-    """Excel em pt-BR grava CSV com ';' e em Windows-1252 (acentos)."""
+    """Excel em pt-BR grava CSV com ';' e em Windows-1252 (acentos). Tem de importar."""
+    import csv
+    import io
     M, app, reg, tmp = ambiente
+    linhas = [["Authors", "Title", "Year", "Source title", "Author Keywords", "Cited by", "DOI"],
+              ["Conceição, M.", "Gestão da inovação", "2021", "Revista Ação", "inovação; gestão",
+               "3", "10.1/a"],
+              ["Araújo, J.", "Educação, empreendedorismo", "2022", "Revista Ação",
+               "empreendedorismo", "1", "10.1/b"]]
+    buf = io.StringIO()
+    csv.writer(buf, delimiter=";").writerows(linhas)
     p = tmp / "scopus_excel.csv"
-    linhas = ["Authors;Title;Year;Source title;Author Keywords;Cited by;DOI",
-              "Conceição, M.;Gestão da inovação;2021;Revista Ação;inovação; gestão;3;10.1/a",
-              "Araújo, J.;Educação empreendedora;2022;Revista Ação;empreendedorismo;1;10.1/b"]
-    p.write_bytes("\n".join(linhas).encode("cp1252"))
+    p.write_bytes(buf.getvalue().encode("cp1252"))
     importar(app, p)
     sem_quebra(reg)
-    if not reg.erros():
-        assert len(app._dataframe) == 2
-        assert "Conceição, M." in set(app._dataframe["authors"])
+    assert not reg.erros(), reg.texto()
+    assert len(app._dataframe) == 2
+    assert "Conceição, M." in set(app._dataframe["authors"])
+    assert "inovação; gestão" in set(app._dataframe["keywords"])
 
 
 def test_mesmo_arquivo_duas_vezes_nao_duplica(ambiente):
@@ -541,3 +553,122 @@ def test_filtro_de_periodo_realmente_filtra(ambiente):
     sem_quebra(reg)
     assert "velho" not in app._graph.nodes
     assert app._graph.nodes["comum"]["occurrence"] == 4
+
+
+# ── 6. IA e internet falhando ───────────────────────────────────────────────────
+
+import io
+import urllib.error
+
+
+def _http(codigo):
+    def f(*a, **k):
+        raise urllib.error.HTTPError("https://api.groq.com/x", codigo, "erro", {},
+                                     io.BytesIO(b'{"error":{"message":"x"}}'))
+    return f
+
+
+def _offline(*a, **k):
+    raise urllib.error.URLError(OSError(8, "nodename nor servname provided, or not known"))
+
+
+FALHAS = {"chave_errada": _http(401), "limite": _http(429), "modelo_sumiu": _http(404),
+          "servidor_fora": _http(503), "sem_internet": _offline}
+
+
+@pytest.mark.parametrize("falha", FALHAS)
+def test_ia_falha_com_mensagem_clara_e_sem_repetir_a_toa(monkeypatch, falha):
+    import ai.client as C
+    chamadas = []
+
+    def urlopen(*a, **k):
+        chamadas.append(1)
+        return FALHAS[falha](*a, **k)
+    monkeypatch.setattr(C.urllib.request, "urlopen", urlopen)
+    monkeypatch.setattr(C.time, "sleep", lambda s: None)
+    analista = C.GroqBibliometricAnalyst(api_key="gsk_teste_invalida")
+    with pytest.raises(C.AIClientError) as exc:
+        analista.chat_history([{"role": "user", "content": "oi"}])
+    msg = str(exc.value)
+    assert not JARGAO.search(msg) and "HTTP" not in msg and "Error" not in msg, msg
+    if falha in ("chave_errada", "modelo_sumiu"):
+        assert len(chamadas) == 1, "erro que não melhora com insistência foi repetido"
+    if falha == "chave_errada":
+        assert "Credenciais" in msg
+
+
+@pytest.mark.parametrize("falha", FALHAS)
+def test_ia_streaming_do_blink_falha_com_mensagem_clara(monkeypatch, falha):
+    import ai.client as C
+    monkeypatch.setattr(C.urllib.request, "urlopen", FALHAS[falha])
+    analista = C.GroqBibliometricAnalyst(api_key="gsk_teste_invalida")
+    with pytest.raises(C.AIClientError) as exc:
+        list(analista.chat_history_stream([{"role": "user", "content": "oi"}]))
+    assert not JARGAO.search(str(exc.value)) and "HTTP" not in str(exc.value)
+
+
+def test_ia_sem_chave_explica_onde_colar():
+    import ai.client as C
+    with pytest.raises(C.AIClientError) as exc:
+        C.GroqBibliometricAnalyst(api_key="").chat_history([{"role": "user", "content": "x"}])
+    assert "Credenciais" in str(exc.value)
+
+
+@pytest.mark.parametrize("falha", ["chave_errada", "sem_internet"])
+def test_nomear_clusters_com_ia_falhando(ambiente, monkeypatch, falha):
+    import ai.client as C
+    M, app, reg, tmp = ambiente
+    importar(app, SAMPLE)
+    gerar_mapa(app)
+    monkeypatch.setattr(C.urllib.request, "urlopen", FALHAS[falha])
+    monkeypatch.setattr(C.time, "sleep", lambda s: None)
+    app._api_key_var.set("gsk_teste_invalida")
+    detalhes = []
+    monkeypatch.setattr(app, "_show_ai_error_dialog",
+                        lambda detail="", retry_cb=None: detalhes.append(detail))
+    chamar(app, reg, "_label_clusters_worker")     # o worker, direto na thread do teste
+    bombear(app, 0.5)
+    sem_quebra(reg)
+    textos = detalhes + [c[2] for c in reg.caixas]
+    assert textos, "IA falhou e o usuário não foi avisado"
+    assert all(not JARGAO.search(x) and "HTTP" not in x for x in textos), textos
+
+
+def test_chat_da_galeria_com_ia_fora(ambiente, monkeypatch):
+    import ai.client as C
+    M, app, reg, tmp = ambiente
+    monkeypatch.setattr(C.urllib.request, "urlopen", _offline)
+    monkeypatch.setattr(C.time, "sleep", lambda s: None)
+    app._api_key_var.set("gsk_teste")
+    app._gallery_chat_input.insert(0, "o que este mapa mostra?")
+    import customtkinter as ctk
+    pilha, enviar = [app._gallery_drawer], None
+    while pilha:
+        w = pilha.pop()
+        if isinstance(w, ctk.CTkButton) and w.cget("text") == "➤":
+            enviar = w
+        pilha.extend(w.winfo_children())
+    enviar._command()
+    fim = time.time() + 10
+    texto = ""
+    while time.time() < fim and "Blink:" not in texto:
+        bombear(app, 0.2)
+        texto = app._gallery_chat_history.get("1.0", "end")
+    sem_quebra(reg)
+    assert "Blink:" in texto
+    assert not JARGAO.search(texto) and "URLError" not in texto and "urlopen" not in texto, texto
+
+
+def test_busca_sem_internet_explica_e_nao_quebra(ambiente, monkeypatch):
+    import threading as _th
+    import urllib.request as U
+    M, app, reg, tmp = ambiente
+    monkeypatch.setattr(U, "urlopen", _offline)
+    monkeypatch.setattr("core.sources.base.time.sleep", lambda s: None)
+    try:
+        app._search_worker("bibliometrics", "openalex", 50, {}, _th.Event())
+    except Exception as exc:
+        reg.excecoes.append(f"_search_worker: {type(exc).__name__}: {exc}")
+    bombear(app, 0.5)
+    sem_quebra(reg)
+    assert reg.avisos(), "busca sem internet não avisou nada"

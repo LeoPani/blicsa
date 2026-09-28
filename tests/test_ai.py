@@ -95,8 +95,11 @@ class TestAIClient(unittest.TestCase):
                 call_openai_chat(base_url="https://api.openai.com/v1", api_key="sk-key",
                                  model="gpt-4o", system_prompt="s", user_prompt="u")
         self.assertNotIsInstance(cm.exception.args[0], bytes)
-        # PROIBIDO: nenhum retorno-string de erro
-        self.assertIn("3 tentativas", str(cm.exception))
+        # PROIBIDO: nenhum retorno-string de erro. Falha de rede é tentada 3 vezes e a
+        # mensagem final é para gente (auditoria 2026-09): nada de "URLError" cru.
+        self.assertEqual(mock_urlopen.call_count, 3)
+        self.assertIn("internet", str(cm.exception))
+        self.assertNotIn("URLError", str(cm.exception))
 
     @patch('urllib.request.urlopen')
     def test_stream_raises_aiclienterror_on_request_failure(self, mock_urlopen):

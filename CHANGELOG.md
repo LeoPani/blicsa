@@ -2,7 +2,29 @@
 
 All notable changes to this project will be documented in this file.
 
-## [Não publicado]
+## [2.1.0-beta.2] - 2026-09-28
+
+Auditoria de setembro de 2026 — só correções, nenhuma funcionalidade nova ou alterada.
+Detalhes, medições e evidências em [`docs/AUDITORIA-2026-09.md`](docs/AUDITORIA-2026-09.md).
+
+### Corrigido
+- CSV no formato do Blicsa (incluindo `docs/sample_dataset.csv`) importava 0 registros; importação vazia fingia sucesso.
+- CSV do Scopus salvo pelo Excel em português (`;`, Windows-1252) não importava.
+- Erro de importação dizia "Não foi possível abrir o projeto".
+- Salvar na Galeria, aba Galeria, Exportação em Lote e exportar PNG/SVG/PDF/Plotly HTML quebrados.
+- Stopwords extras ignoradas no campo de palavras-chave (resultado incorreto); lista de revisão mostrava como "manter" termos que o mapa removia.
+- Texto em campos numéricos mostrava erro cru; "50%" e anos por extenso eram ignorados em silêncio.
+- Clique duplo em Gerar Mapa rodava dois cálculos simultâneos; reclusterizar quebrava sempre.
+- Exportações que falhavam (ex.: arquivo aberto no Excel) não avisavam nada.
+- Falhas de IA chegavam em inglês técnico; chave errada era tentada 3 vezes.
+- Congelamentos: abrir projeto (até 4,9 s), Revisar termos (até 5,4 s), projeto de 6 mil registros (2,9 s).
+- Executável gravava saídas na pasta do programa; "Agrupamento Semântico" gerava mapa de IPC sem aviso.
+
+### Adicionado (desenvolvimento)
+- `tests/test_usuario_desastrado.py` (93 cenários), `tests/test_auditoria_2026_09.py`,
+  `scripts/smoke_app.py` e `scripts/medir_travadas.py`.
+
+## [2.1.0-beta.1]
 
 Versão de testes unificada como **Blicsa Beta 2.1.0-beta.1**. A release estável 2.0.0 e
 seu DOI permanecem como registro histórico reproduzível.

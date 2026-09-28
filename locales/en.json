@@ -530,5 +530,13 @@
   "export.erro_permissao": "The system refused to write the file. It may be open in another program (for example, Excel) or the folder may not allow writing. Close the file or choose another location.",
   "export.erro_pasta": "The chosen folder no longer exists. Choose another location.",
   "export.erro_disco": "The file could not be written. Check that there is free disk space and that the location allows writing.",
-  "export.erro_generico": "The export failed. The technical detail was written to the log."
+  "export.erro_generico": "The export failed. The technical detail was written to the log.",
+  "ai.falha_chave": "The AI key was rejected. Check in the Credentials tab that it was pasted in full (Groq keys start with gsk_) or create a new one at console.groq.com.",
+  "ai.falha_limite": "The free AI quota was reached. Wait a minute and try again.",
+  "ai.falha_modelo": "The configured AI model is not available from the provider. Change the model in Settings.",
+  "ai.falha_pedido": "The AI service rejected the request, probably because it is too large. Try a smaller corpus or map.",
+  "ai.falha_servidor": "The AI service is down right now. Try again in a few minutes.",
+  "ai.falha_rede": "No connection to the AI service. Check your internet and try again.",
+  "ai.falha_resposta": "The AI service answered in an unexpected way. Try again; if it persists, see the detail in the program log.",
+  "ai.falha_sem_chave": "No AI key configured. Paste your key (for example, from Groq) in the Credentials tab."
 }

@@ -531,5 +531,13 @@
   "export.erro_permissao": "Le système a refusé l’écriture. Le fichier est peut-être ouvert dans un autre programme (par exemple Excel) ou le dossier n’autorise pas l’écriture. Fermez le fichier ou choisissez un autre emplacement.",
   "export.erro_pasta": "Le dossier choisi n’existe plus. Choisissez un autre emplacement.",
   "export.erro_disco": "Le fichier n’a pas pu être écrit. Vérifiez l’espace disque et que l’emplacement autorise l’écriture.",
-  "export.erro_generico": "L’exportation a échoué. Le détail technique a été enregistré dans le journal."
+  "export.erro_generico": "L’exportation a échoué. Le détail technique a été enregistré dans le journal.",
+  "ai.falha_chave": "La clé d’IA a été refusée. Vérifiez dans l’onglet Identifiants qu’elle a été collée en entier (celle de Groq commence par gsk_) ou créez-en une sur console.groq.com.",
+  "ai.falha_limite": "Le quota gratuit de l’IA est atteint. Attendez une minute et réessayez.",
+  "ai.falha_modelo": "Le modèle d’IA configuré n’est pas disponible chez le fournisseur. Changez de modèle dans les Paramètres.",
+  "ai.falha_pedido": "Le service d’IA a refusé la demande, sans doute trop volumineuse. Essayez avec un corpus ou une carte plus petits.",
+  "ai.falha_servidor": "Le service d’IA est indisponible pour le moment. Réessayez dans quelques minutes.",
+  "ai.falha_rede": "Pas de connexion au service d’IA. Vérifiez Internet et réessayez.",
+  "ai.falha_resposta": "Le service d’IA a répondu de façon inattendue. Réessayez ; si cela persiste, consultez le détail dans le journal du programme.",
+  "ai.falha_sem_chave": "Aucune clé d’IA configurée. Collez votre clé (par exemple Groq) dans l’onglet Identifiants."
 }

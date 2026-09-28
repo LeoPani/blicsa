@@ -127,3 +127,18 @@ próprio pacote; ao gerar o mapa buscou o exportador num arquivo já substituíd
 descompressão falhou. Conferido: o mapa foi calculado (registrado no histórico às 09:24:10)
 e o mesmo projeto gera o mapa sem erro fora do app antigo. **Regra: feche o Blicsa antes de
 recompilar.**
+
+## Parte 4 — IA, projetos reais, caminhos de Windows e Excel (28/09, manhã)
+
+| # | Bateria | Achado | Correção |
+|---|---|---|---|
+| IA1 | IA falhando (chave errada, limite, modelo inexistente, servidor fora, sem internet; chat, Blink, Nomear clusters, galeria) | Toda falha chegava como *"Falha na requisição de IA após 3 tentativas: HTTP Error 401: Unauthorized"*; chave errada era tentada 3 vezes | `ai/client.py` traduz cada falha numa frase que diz o que fazer (pt/en/fr); não repete erro que não melhora com insistência. 13 cenários falhavam antes, todos passam |
+| — | Busca sem internet | Já tratada por auditoria anterior (mensagem própria) | — |
+| P1 | Os 9 projetos reais de `~/Blicsa` + 4 versões antigas em `searches/` | Todos abrem, geram mapa, salvam e reabrem com o mesmo mapa | — |
+| T4 | Abrir "seminario-qualificacao-consolidado-local-blicsa-2" (6.098 registros) | Janela congelada por **2,9 s**: a contagem de termos em segundo plano disputava o interpretador com o redesenho da tela | Contagem começa depois do redesenho e cede 1 ms a cada lote → **0,6 s**. Contagens, rede e clusters conferidos idênticos antes/depois |
+| W1 | Caminhos estilo Windows (`João da Silva/OneDrive - UFOP`, projeto "Pesquisa Ação & Gestão: “Inovação” (2026) / v2", arquivos com acento) | Tudo funciona | — |
+| W2 | CSV do Scopus aberto e salvo no Excel em português (`;` + Windows-1252) | **Não importava** (erro de codificação) | Leitor tolerante: separador pelo cabeçalho, UTF-8 ou Windows-1252 |
+| W3 | Arquivos abertos sem `encoding` (quebram no Windows) | Só no `--selfcheck` | `encoding="utf-8"` |
+
+Suíte completa: **1.358 passam**; as 5 falhas restantes são as de janela no Linux sem tela,
+presentes antes da auditoria.

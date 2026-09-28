@@ -530,5 +530,13 @@
   "export.erro_permissao": "O sistema negou a gravação. O arquivo pode estar aberto em outro programa (por exemplo, o Excel) ou a pasta não permite gravar. Feche o arquivo ou escolha outro local.",
   "export.erro_pasta": "A pasta escolhida não existe mais. Escolha outro local para salvar.",
   "export.erro_disco": "O arquivo não pôde ser gravado. Verifique se há espaço em disco e se o local permite gravação.",
-  "export.erro_generico": "A exportação falhou. O detalhe técnico foi registrado no log do programa."
+  "export.erro_generico": "A exportação falhou. O detalhe técnico foi registrado no log do programa.",
+  "ai.falha_chave": "A chave de IA foi recusada. Confira na aba Credenciais se ela foi colada inteira (a do Groq começa com gsk_) ou crie uma nova em console.groq.com.",
+  "ai.falha_limite": "O limite gratuito da IA foi atingido. Espere um minuto e tente de novo.",
+  "ai.falha_modelo": "O modelo de IA configurado não está disponível no provedor. Troque o modelo em Configurações.",
+  "ai.falha_pedido": "O serviço de IA recusou o pedido, provavelmente por ser grande demais. Tente com um corpus ou mapa menor.",
+  "ai.falha_servidor": "O serviço de IA está fora do ar no momento. Tente de novo em alguns minutos.",
+  "ai.falha_rede": "Sem conexão com o serviço de IA. Verifique a internet e tente de novo.",
+  "ai.falha_resposta": "O serviço de IA respondeu de um jeito inesperado. Tente de novo; se continuar, veja o detalhe no log do programa.",
+  "ai.falha_sem_chave": "Nenhuma chave de IA configurada. Cole sua chave (por exemplo, do Groq) na aba Credenciais."
 }

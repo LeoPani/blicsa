@@ -107,6 +107,30 @@ _EMPTY = pd.Series(dtype=str)
 _EMPTY_INT = pd.Series(dtype=float)
 
 
+def ler_csv_tolerante(caminho, **kwargs) -> pd.DataFrame:
+    """Lê CSV exportado direto da base OU reaberto e salvo no Excel.
+
+    O Excel em português grava com `;` e em Windows-1252. Abrir o CSV do Scopus no Excel e
+    salvar de novo — passo comum para "dar uma olhada" — fazia a importação falhar com erro
+    de codificação (auditoria 2026-09, W1). O separador vem do cabeçalho; a codificação é
+    tentada em UTF-8 e, se não servir, em Windows-1252.
+    """
+    with open(caminho, "rb") as f:
+        cabeca = f.read(65536)
+    for codificacao in ("utf-8-sig", "cp1252"):
+        try:
+            texto = cabeca.decode(codificacao)
+        except UnicodeDecodeError:
+            continue
+        primeira = texto.splitlines()[0] if texto else ""
+        sep = ";" if primeira.count(";") > primeira.count(",") else ","
+        try:
+            return pd.read_csv(caminho, sep=sep, encoding=codificacao, **kwargs)
+        except UnicodeDecodeError:
+            continue
+    return pd.read_csv(caminho, encoding="latin-1", **kwargs)
+
+
 class BibliometricParser:
     def __init__(self, file_path: str):
         self.file_path = Path(file_path)
@@ -120,8 +144,7 @@ class BibliometricParser:
         `docs/sample_dataset.csv`. Sem este leitor o arquivo caía no leitor Scopus, que não
         acha nenhuma coluna e devolve 0 registros sem erro (B1, auditoria 2026-09)."""
         from core.project import normalize_dataframe
-        raw = pd.read_csv(self.file_path, encoding="utf-8-sig", dtype=str,
-                          keep_default_na=False)
+        raw = ler_csv_tolerante(self.file_path, dtype=str, keep_default_na=False)
         df = normalize_dataframe(raw)
         if "origin" in df.columns:
             df["origin"] = df["origin"].where(df["origin"].astype(str).str.strip() != "",
@@ -140,7 +163,7 @@ class BibliometricParser:
     #  Scopus CSV                                                          #
     # ------------------------------------------------------------------ #
     def load_scopus_csv(self) -> pd.DataFrame:
-        raw = pd.read_csv(self.file_path)
+        raw = ler_csv_tolerante(self.file_path)
         df = pd.DataFrame()
         df["authors"]    = raw.get("Authors",       _EMPTY.copy()).fillna("")
         df["title"]      = raw.get("Title",          _EMPTY.copy()).fillna("")

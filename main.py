@@ -10,7 +10,7 @@ import re
 #: no rodapé e na janela Sobre, `0.9.0` no CHANGELOG e `2.0-upgrade` no CITATION.cff — e o
 #: `v3.0` não correspondia a nenhuma versão que tivesse existido. Ele aparecia nas capturas
 #: de tela da documentação.
-__version__ = "2.1.0-beta.1"
+__version__ = "2.1.0-beta.2"
 
 try:
     if os.path.exists(".env"):
@@ -4374,7 +4374,15 @@ class BlicsaApp(ctk.CTk):
     def _refresh_candidate_counts(self):
         if self._dataframe is None:
             return
-        threading.Thread(target=self._candidate_worker, daemon=True).start()
+        # Começa depois que a tela termina de se desenhar. A contagem é Python puro e, rodando
+        # junto com o redesenho, cada chamada do Tk esperava a vez no interpretador: abrir um
+        # projeto de 6 mil registros congelava a janela por ~3 s (auditoria 2026-09, T4).
+        def iniciar():
+            threading.Thread(target=self._candidate_worker, daemon=True).start()
+        try:
+            self.after(400, lambda: self.after_idle(iniciar))
+        except (RuntimeError, AttributeError):
+            iniciar()
 
     def _candidate_worker(self):
         try:
@@ -7603,9 +7611,9 @@ if __name__ == "__main__":
             # Check translation parity
             import json, os
             locales_dir = os.path.join(os.path.dirname(__file__), "locales")
-            with open(os.path.join(locales_dir, "en.json")) as f: en = json.load(f)
-            with open(os.path.join(locales_dir, "fr.json")) as f: fr = json.load(f)
-            with open(os.path.join(locales_dir, "pt_BR.json")) as f: pt = json.load(f)
+            with open(os.path.join(locales_dir, "en.json"), encoding="utf-8") as f: en = json.load(f)
+            with open(os.path.join(locales_dir, "fr.json"), encoding="utf-8") as f: fr = json.load(f)
+            with open(os.path.join(locales_dir, "pt_BR.json"), encoding="utf-8") as f: pt = json.load(f)
             en_keys = set(k for k in en.keys() if k != "_note")
             fr_keys = set(k for k in fr.keys() if k != "_note")
             pt_keys = set(k for k in pt.keys() if k != "_note")

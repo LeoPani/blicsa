@@ -1,7 +1,7 @@
 **Blicsa** é um aplicativo de desktop para análise bibliométrica: buscar literatura, montar um
 corpus, gerar mapas de conhecimento e extrair estatísticas — tudo na sua máquina.
 
-Esta é a versão pública de testes **Blicsa Beta 2.1.0-beta.1**. Ela reúne as melhorias
+Esta é a versão pública de testes **Blicsa Beta 2.1.0-beta.2**. Ela reúne as melhorias
 desenvolvidas depois do snapshot estável 2.0.0. Comece pela
 **[documentação](../../blob/main/docs/index.md)**.
 
@@ -24,6 +24,21 @@ Confira o download com o `SHA256SUMS.txt` anexado:
 ```bash
 sha256sum -c SHA256SUMS.txt
 ```
+
+## Novo nesta versão (beta.2)
+
+Correções de uma auditoria completa, com testes simulando o usuário que faz tudo errado.
+Nenhuma funcionalidade foi removida ou mudou de comportamento.
+
+- **O exemplo e o CSV exportado pelo próprio Blicsa voltam a importar** (antes vinham 0 registros, sem aviso).
+- **CSV do Scopus aberto e salvo no Excel em português importa** (separador `;` e acentos).
+- **Galeria, Exportação em Lote e exportar PNG/SVG/PDF/Plotly voltam a funcionar.**
+- **Stopwords extras passam a valer para palavras-chave** — antes o termo excluído continuava no mapa.
+- **Toda falha explica o que fazer, em português, inglês ou francês**: chave de IA recusada, limite
+  da IA, sem internet, arquivo aberto no Excel, campo numérico com texto, período vazio.
+- **Menos travadas**: abrir um projeto grande (6 mil registros) e "Revisar termos" não congelam
+  mais a janela por vários segundos.
+- **No executável, mapas e galeria ficam em `Blicsa/` na sua pasta pessoal** (antes podiam sumir ao fechar).
 
 ## ⚠️ Leia antes de atualizar
 

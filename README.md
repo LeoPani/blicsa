@@ -184,7 +184,7 @@ blicsa/
 
 Use the **Cite this repository** button on GitHub, which reads `CITATION.cff`, or:
 
-> Paniago, L. (2026). *Blicsa* (version 2.1.0-beta.1) [Computer software].
+> Paniago, L. (2026). *Blicsa* (version 2.1.0-beta.2) [Computer software].
 > https://github.com/LeoPani/blicsa
 
 Once the archival DOI is issued, cite the DOI instead — it is the stable identifier and
