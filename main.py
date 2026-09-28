@@ -2315,7 +2315,7 @@ class BlicsaApp(ctk.CTk):
         self._tipo_combo.pack(fill="x", padx=10, pady=(0, 6))
         # Aviso ANTES de clicar quando o corpus não tem os dados que o tipo exige (M2).
         self._aviso_tipo_lbl = ctk.CTkLabel(sc, text="", font=ctk.CTkFont(size=11), text_color=RED,
-                                            wraplength=240, justify="left", anchor="w")
+                                            wraplength=205, justify="left", anchor="w")
         
         # 2. Campo
         lbl_campo = ctk.CTkLabel(sc, text="Campo:", font=ctk.CTkFont(size=11, weight="bold"))
@@ -4377,10 +4377,32 @@ class BlicsaApp(ctk.CTk):
             messagebox.showerror("Erro ao carregar thesaurus", str(exc))
 
     # ── Threshold preview ──────────────────────────────────────────────
-    def _refresh_candidate_counts(self):
+    def _atualizar_ui_do_corpus(self):
+        """Selo "N registros" da barra lateral e aviso do tipo de mapa — sempre na thread do Tk.
+
+        O selo nascia "Nenhum corpus" e nunca mudava: com 6 mil registros carregados a barra
+        lateral continuava dizendo que não havia corpus.
+        """
         try:
+            df = self._dataframe
+            n = 0 if df is None else len(df)
+            if getattr(self, "_corpus_badge", None) is not None:
+                self._corpus_badge.configure(
+                    text=t("corpus.badge_count", n=n) if n
+                    else t("corpus.badge_none"))
             self._atualizar_tipo_de_mapa()      # o corpus mudou: reavaliar o aviso do tipo (M2)
         except Exception:
+            pass
+
+    def _refresh_candidate_counts(self):
+        # Pode ser chamada de dentro de _load_worker (thread de importação): widget só se
+        # mexe na thread da interface.
+        try:
+            if threading.current_thread() is threading.main_thread():
+                self._atualizar_ui_do_corpus()
+            else:
+                self.after(0, self._atualizar_ui_do_corpus)
+        except (RuntimeError, AttributeError):
             pass
         if self._dataframe is None:
             return
@@ -6695,6 +6717,7 @@ class BlicsaApp(ctk.CTk):
             .reset_index(drop=True)
         )
         removed = before - len(self._dataframe)
+        self._refresh_candidate_counts()        # contagens e selo do corpus ficavam desatualizados
         msg = t("dedup.removed", k=removed, x=by.get("doi", 0),
                 y=by.get("title", 0), z=by.get("author_year", 0))
         self._last_dedup_msg = msg

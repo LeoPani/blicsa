@@ -542,7 +542,7 @@
   "ai.falha_sem_chave": "Aucune clé d’IA configurée. Collez votre clé (par exemple Groq) dans l’onglet Identifiants.",
   "map.inviavel_sem_autores": "Ce corpus n’a pas assez d’auteurs pour une carte de co-autorat.",
   "map.inviavel_sem_referencias": "Ce corpus n’a pas de références (la liste de ce que cite chaque article). Co-citation, couplage et citation directe en ont besoin : importez depuis une base qui exporte les références (Scopus, Web of Science ou OpenAlex).",
-  "map.inviavel_citdir_openalex": "La citation directe ne fonctionne pas encore avec les données OpenAlex : les références arrivent sous forme de codes OpenAlex et le corpus ne garde pas le code de chaque article. Utilisez la co-citation ou le couplage.",
+  "map.inviavel_citdir_openalex": "Ce projet a été créé par une version antérieure de Blicsa, qui ne gardait pas le code OpenAlex de chaque article ; c’est ce code qui permet à la citation directe de relier l’article citant à l’article cité. Relancez la recherche OpenAlex pour obtenir le code, ou utilisez la Co-citation ou le Couplage bibliographique.",
   "map.inviavel_sem_ipc": "Ce corpus n’a pas de codes de classification de brevets (CIB). Cette carte est réservée aux bases de brevets.",
   "map.inviavel_embeddings": "Le regroupement sémantique n’est pas encore disponible dans cette version.",
   "map.min_label.0": "Fréq. minimale (occurrences du terme) :",
@@ -555,5 +555,6 @@
   "map.limiar_ajustado": "Avec le minimum {pedido}, aucun élément n’a passé le filtre. Pour ne pas vous laisser sans carte, Blicsa a utilisé le minimum {usado}.",
   "map.inviavel_titulo": "Cette carte ne peut pas être générée avec ce corpus",
   "map.warn_empty_citdir": "Aucun article du corpus ne cite un autre article du même corpus : la citation directe n’a donc aucun lien à tracer. C’est fréquent pour les recherches petites ou récentes. Essayez la Co-citation ou le Couplage bibliographique, qui utilisent les références même hors du corpus.",
-  "map.warn_empty_mesmo_com_1": "Même avec un minimum de 1, aucun élément n’est relié à un autre. Décochez « Supprimer les nœuds isolés » et « Garder uniquement la plus grande composante », vérifiez la période et les mots vides, ou élargissez le corpus."
+  "map.warn_empty_mesmo_com_1": "Même avec un minimum de 1, aucun élément n’est relié à un autre. Décochez « Supprimer les nœuds isolés » et « Garder uniquement la plus grande composante », vérifiez la période et les mots vides, ou élargissez le corpus.",
+  "corpus.badge_count": "{n} notices"
 }

@@ -387,3 +387,31 @@ def test_m4_mapa_vazio_explica_a_causa_certa(app, monkeypatch):
     assert app._graph is None
     assert avisos and "cita outro artigo" in avisos[-1], avisos
     assert "Reduza a frequência" not in avisos[-1]
+
+
+def test_selo_do_corpus_mostra_quantos_registros(app):
+    """O selo da barra lateral dizia "Nenhum corpus" para sempre, mesmo com corpus aberto."""
+    app._dataframe = _df_refs(n=30)
+    app._refresh_candidate_counts()
+    app.update()
+    assert app._corpus_badge.cget("text").startswith("30 ")
+
+
+def test_importacao_nao_mexe_em_widget_fora_da_thread_da_interface(app, monkeypatch):
+    """_refresh_candidate_counts é chamada pela thread de importação: não pode configurar
+    widget ali (Tk não é thread-safe — travamento aleatório no Windows/Mac)."""
+    import threading
+    fora = []
+    original = app._atualizar_tipo_de_mapa
+    def espiao():
+        if threading.current_thread() is not threading.main_thread():
+            fora.append(1)
+        return original()
+    monkeypatch.setattr(app, "_atualizar_tipo_de_mapa", espiao)
+    app._dataframe = _df_refs(n=10)
+    # Com o mainloop rodando, como no app de verdade: a importação acontece durante ele.
+    app.after(20, lambda: threading.Thread(target=app._refresh_candidate_counts).start())
+    app.after(600, app.quit)
+    app.mainloop()
+    assert not fora
+    assert app._corpus_badge.cget("text").startswith("10 ")

@@ -178,6 +178,10 @@ O que mudou (nenhum tipo de mapa removido, nenhum parâmetro com outro significa
 - Bug de teste: um teste gravava o idioma "fr" nas preferências reais — rodar a suíte no Mac
   trocava o Blicsa para francês. Os testes agora usam preferências isoladas.
 - `tk.eval` com texto formatado (sinalizado pelo teste de segurança) trocado por `tk.call`.
+- Revisão antes do push, olhando a tela: o selo da barra lateral nascia "Nenhum corpus" e nunca
+  mudava (agora "671 registros"); o aviso do tipo de mapa saía cortado na borda do painel; e a
+  atualização desse aviso, chamada pela thread de importação, mexia em widget fora da thread da
+  interface (risco de travamento aleatório) — agora é agendada na thread do Tk, com teste.
 
 Fica para a camada 3 (precisa de internet; prompt em `docs/PROMPT-MAPAS-CAMADA3.md`):
 completar `openalex_id` em projetos antigos, mostrar referências como "Sobrenome (ano)" e

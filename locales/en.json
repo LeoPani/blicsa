@@ -541,7 +541,7 @@
   "ai.falha_sem_chave": "No AI key configured. Paste your key (for example, from Groq) in the Credentials tab.",
   "map.inviavel_sem_autores": "This corpus does not have enough authors for a co-authorship map.",
   "map.inviavel_sem_referencias": "This corpus has no references (the list of what each paper cites). Co-citation, coupling and direct citation need them: import from a source that exports references (Scopus, Web of Science or OpenAlex).",
-  "map.inviavel_citdir_openalex": "Direct citation does not work with OpenAlex data yet: references come as OpenAlex codes and the corpus does not store each paper's code. Use co-citation or coupling.",
+  "map.inviavel_citdir_openalex": "This project was built by an earlier version of Blicsa, which did not store each paper's OpenAlex code, and direct citation uses that code to link citing and cited papers. Run the OpenAlex search again to get the code, or use Co-citation or Bibliographic Coupling.",
   "map.inviavel_sem_ipc": "This corpus has no patent classification codes (IPC). This map is for patent databases only.",
   "map.inviavel_embeddings": "Semantic clustering is not available in this version yet.",
   "map.min_label.0": "Min. frequency (term occurrences):",
@@ -554,5 +554,6 @@
   "map.limiar_ajustado": "With minimum {pedido}, no item passed the filter. So you are not left without a map, Blicsa used minimum {usado}.",
   "map.inviavel_titulo": "This map cannot be generated with this corpus",
   "map.warn_empty_citdir": "No paper in the corpus cites another paper in the same corpus, so direct citation has no links to draw. This is common with small or recent searches. Try Co-citation or Bibliographic Coupling, which use references even when they fall outside the corpus.",
-  "map.warn_empty_mesmo_com_1": "Even with a minimum of 1, no item formed a link with another. Uncheck “Remove isolated nodes” and “Keep only largest component”, check the period and stopwords, or broaden the corpus."
+  "map.warn_empty_mesmo_com_1": "Even with a minimum of 1, no item formed a link with another. Uncheck “Remove isolated nodes” and “Keep only largest component”, check the period and stopwords, or broaden the corpus.",
+  "corpus.badge_count": "{n} records"
 }

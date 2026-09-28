@@ -16,6 +16,7 @@ descoberto só depois de clicar. Detalhes em [`docs/AUDITORIA-2026-09.md`](docs/
 - Mensagem de mapa vazio mandava "reduzir a frequência mínima" mesmo quando ela já era 1.
 - Rótulo do limiar era o mesmo para os sete tipos; referências do OpenAlex apareciam como URL inteira.
 - Rodar os testes gravava o idioma francês nas preferências reais do usuário.
+- Barra lateral dizia "Nenhum corpus" mesmo com o corpus carregado; agora mostra quantos registros há.
 
 ## [2.1.0-beta.2] - 2026-09-28
 

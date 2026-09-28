@@ -541,7 +541,7 @@
   "ai.falha_sem_chave": "Nenhuma chave de IA configurada. Cole sua chave (por exemplo, do Groq) na aba Credenciais.",
   "map.inviavel_sem_autores": "Este corpus não tem autores suficientes para um mapa de coautoria.",
   "map.inviavel_sem_referencias": "Este corpus não tem referências (lista do que cada artigo cita). Cocitação, acoplamento e citação direta precisam delas: importe de uma base que exporte referências (Scopus, Web of Science ou OpenAlex).",
-  "map.inviavel_citdir_openalex": "Citação direta ainda não funciona com dados do OpenAlex: as referências vêm como códigos do OpenAlex e o corpus não guarda o código de cada artigo. Use cocitação ou acoplamento.",
+  "map.inviavel_citdir_openalex": "Este projeto foi montado por uma versão anterior do Blicsa, que não guardava o código do OpenAlex de cada artigo, e é por esse código que a citação direta liga quem cita a quem é citado. Refaça a busca no OpenAlex para ter o código, ou use Cocitação ou Acoplamento Bibliográfico.",
   "map.inviavel_sem_ipc": "Este corpus não tem códigos de classificação de patentes (IPC). Este mapa é só para bases de patentes.",
   "map.inviavel_embeddings": "O agrupamento semântico ainda não está disponível nesta versão.",
   "map.min_label.0": "Freq. mínima (ocorrências do termo):",
@@ -554,5 +554,6 @@
   "map.limiar_ajustado": "Com o mínimo {pedido}, nenhum item passou pelo filtro. Para não deixar você sem mapa, o Blicsa usou o mínimo {usado}.",
   "map.inviavel_titulo": "Este mapa não pode ser gerado com este corpus",
   "map.warn_empty_citdir": "Nenhum artigo do corpus cita outro artigo do mesmo corpus, então não há ligações para a citação direta. Isso é comum em buscas pequenas ou recentes. Experimente Cocitação ou Acoplamento Bibliográfico, que usam as referências mesmo quando elas estão fora do corpus.",
-  "map.warn_empty_mesmo_com_1": "Mesmo com o mínimo 1, nenhum item formou ligação com outro. Desmarque “Remover nós isolados” e “Manter apenas maior componente”, confira o período e as stopwords, ou amplie o corpus."
+  "map.warn_empty_mesmo_com_1": "Mesmo com o mínimo 1, nenhum item formou ligação com outro. Desmarque “Remover nós isolados” e “Manter apenas maior componente”, confira o período e as stopwords, ou amplie o corpus.",
+  "corpus.badge_count": "{n} registros"
 }
