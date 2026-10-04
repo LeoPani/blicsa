@@ -255,3 +255,15 @@ def test_botao_completar_ids_aparece_e_destrava_citacao_direta(app, monkeypatch)
     app.mainloop()
     assert app._dataframe["openalex_id"].str.startswith("https://openalex.org/W").all()
     assert not app._btn_completar_ids.winfo_ismapped()     # aviso some: agora dá
+
+
+def test_doi_inexistente_404_vira_nao_encontrado(monkeypatch):
+    import urllib.error
+    from core.sources import openalex as O
+
+    def fetch(self, url, *a, **k):
+        raise urllib.error.HTTPError(url, 404, "Not Found", {}, None)
+    monkeypatch.setattr(O.OpenAlexProvider, "fetch_url", fetch)
+    obter, _ = AC.obter_padrao(api_key="")
+    with pytest.raises(AC.ErroExplorar, match="nao_achado"):
+        AC.explorar("10.1000/naoexiste", obter)

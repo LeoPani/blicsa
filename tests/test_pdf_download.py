@@ -245,3 +245,28 @@ def test_corpus_vazio_avisa(app, monkeypatch):
     app._dataframe = None
     app._download_oa_pdfs()
     assert avisos and "corpus" in avisos[0]
+
+
+def test_sem_conexao_nao_vira_sem_acesso_aberto(tmp_path):
+    """Unpaywall/OpenAlex fora do ar: o relatório diz que falhou, não que o artigo é fechado."""
+    def buscar_quebrado(url):
+        raise OSError("Tunnel connection failed")
+    reg = {"title": "T", "year": 2020, "authors": "A", "doi": "10.1000/abc"}
+    r = P.baixar_corpus([reg], str(tmp_path), buscar_json=buscar_quebrado,
+                        abrir_url=lambda u: (_ for _ in ()).throw(OSError("x")),
+                        intervalo_por_host=0)
+    assert r.resultados[0].situacao == P.FALHOU
+    assert "Unpaywall" in r.resultados[0].detalhe
+
+
+def test_buscar_json_padrao_404_e_none_e_rede_levanta(monkeypatch):
+    import urllib.error
+    def abrir_404(url, email, timeout=20):
+        raise urllib.error.HTTPError(url, 404, "Not Found", {}, None)
+    monkeypatch.setattr(P, "abrir_url_padrao", abrir_404)
+    assert P.buscar_json_padrao("https://api.unpaywall.org/v2/x") is None
+    def abrir_rede(url, email, timeout=20):
+        raise OSError("sem rede")
+    monkeypatch.setattr(P, "abrir_url_padrao", abrir_rede)
+    with pytest.raises(OSError):
+        P.buscar_json_padrao("https://api.unpaywall.org/v2/x")

@@ -107,6 +107,7 @@ def _id_openalex(valor) -> str:
 @dataclass
 class Candidatos:
     pdfs: list[str] = field(default_factory=list)      # links que deveriam ser PDF
+    erros_consulta: list[str] = field(default_factory=list)  # Unpaywall/OpenAlex sem resposta
     paginas: list[str] = field(default_factory=list)   # páginas do artigo (landing pages)
     conhecido_aberto: bool = False                      # alguma fonte diz que há versão aberta
 
@@ -130,6 +131,14 @@ def _parece_pdf(url: str) -> bool:
     return caminho.endswith(".pdf") or "/pdf/" in caminho or "/pdf" == caminho[-4:]
 
 
+def _consultar(c: "Candidatos", buscar_json, url: str, fonte: str):
+    try:
+        return buscar_json(url)
+    except Exception as exc:          # rede, 5xx, 429: anotado para o relatório
+        c.erros_consulta.append(f"{fonte}: {type(exc).__name__}: {exc}"[:120])
+        return None
+
+
 def candidatos(registro: dict, buscar_json: Callable[[str], Optional[dict]],
                email: str = MAILTO) -> Candidatos:
     """Junta os links possíveis do PDF deste registro, do mais provável ao menos."""
@@ -150,8 +159,8 @@ def candidatos(registro: dict, buscar_json: Callable[[str], Optional[dict]],
 
     # 3. Unpaywall pelo DOI: cobre corpus do Scopus/WoS, que não trazem acesso aberto.
     if doi:
-        dados = buscar_json(f"https://api.unpaywall.org/v2/{urllib.parse.quote(doi)}"
-                            f"?email={urllib.parse.quote(email)}")
+        dados = _consultar(c, buscar_json, f"https://api.unpaywall.org/v2/{urllib.parse.quote(doi)}"
+                           f"?email={urllib.parse.quote(email)}", "Unpaywall")
         if isinstance(dados, dict) and dados.get("is_oa"):
             c.conhecido_aberto = True
             locais = [dados.get("best_oa_location") or {}] + list(dados.get("oa_locations") or [])
@@ -167,8 +176,8 @@ def candidatos(registro: dict, buscar_json: Callable[[str], Optional[dict]],
     alvo = (f"https://api.openalex.org/works/{oa_id}" if oa_id else
             f"https://api.openalex.org/works/https://doi.org/{doi}" if doi else "")
     if alvo:
-        dados = buscar_json(f"{alvo}?mailto={urllib.parse.quote(email)}"
-                            "&select=open_access,best_oa_location,locations")
+        dados = _consultar(c, buscar_json, f"{alvo}?mailto={urllib.parse.quote(email)}"
+                           "&select=open_access,best_oa_location,locations", "OpenAlex")
         if isinstance(dados, dict):
             if (dados.get("open_access") or {}).get("is_oa"):
                 c.conhecido_aberto = True
@@ -214,11 +223,16 @@ def abrir_url_padrao(url: str, email: str = MAILTO, timeout: float = TIMEOUT):
 
 
 def buscar_json_padrao(url: str, email: str = MAILTO) -> Optional[dict]:
+    """JSON da API; None se a obra não existe lá (404). Falha de rede LEVANTA: "sem conexão"
+    não pode virar "sem acesso aberto" no relatório."""
+    import urllib.error
     try:
         with abrir_url_padrao(url, email, timeout=20) as r:
             return json.loads(r.read(5_000_000).decode("utf-8", "replace"))
-    except Exception:
-        return None
+    except urllib.error.HTTPError as e:
+        if e.code == 404:
+            return None
+        raise
 
 
 _META_PDF = re.compile(
@@ -326,7 +340,10 @@ def _processar(i: int, registro: dict, pasta: str, nome: str, buscar_json, abrir
     r.link = (c.paginas[0] if c.paginas else c.pdfs[0] if c.pdfs else
               f"https://doi.org/{doi}" if doi else "")
     if not c.todos():
-        r.situacao = SEM_ACESSO_ABERTO if (doi or c.conhecido_aberto) else SEM_IDENTIFICADOR
+        if c.erros_consulta:
+            r.situacao, r.detalhe = FALHOU, "sem resposta de " + "; ".join(c.erros_consulta)
+        else:
+            r.situacao = SEM_ACESSO_ABERTO if (doi or c.conhecido_aberto) else SEM_IDENTIFICADOR
         return r
 
     erros, viu_pagina = [], False

@@ -181,7 +181,13 @@ def obter_padrao(api_key: str | None = None):
     prov = OpenAlexProvider(api_key=api_key)
 
     def obter(url: str) -> Optional[dict]:
-        return json.loads(prov.fetch_url(url))
+        import urllib.error
+        try:
+            return json.loads(prov.fetch_url(url))
+        except urllib.error.HTTPError as e:
+            if e.code == 404:          # DOI/ID que o OpenAlex não tem: "não encontrado"
+                return None
+            raise
     return obter, prov.mailto
 
 
