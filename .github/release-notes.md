@@ -1,7 +1,7 @@
 **Blicsa** é um aplicativo de desktop para análise bibliométrica: buscar literatura, montar um
 corpus, gerar mapas de conhecimento e extrair estatísticas — tudo na sua máquina.
 
-Esta é a versão pública de testes **Blicsa Beta 2.1.0-beta.3**. Ela reúne as melhorias
+Esta é a versão pública de testes **Blicsa Beta 2.1.0-beta.4**. Ela reúne as melhorias
 desenvolvidas depois do snapshot estável 2.0.0. Comece pela
 **[documentação](../../blob/main/docs/index.md)**.
 
@@ -25,7 +25,27 @@ Confira o download com o `SHA256SUMS.txt` anexado:
 sha256sum -c SHA256SUMS.txt
 ```
 
-## Novo nesta versão (beta.3)
+## Novo nesta versão (beta.4)
+
+- **Explorar a partir de um artigo** (aba Coletar): cole o DOI de um ou mais artigos-chave e o
+  Blicsa monta, pelo OpenAlex, o grafo dos artigos mais parecidos com eles (acoplamento
+  bibliográfico + cocitação), com as **obras anteriores** em que o grupo se apoia e as
+  **obras derivadas** que vieram depois. Marque o que interessar e adicione ao corpus.
+- **Baixar PDFs de acesso aberto de verdade**: procura a versão aberta no Unpaywall, OpenAlex,
+  arXiv e na página do editor, confere se o arquivo é PDF, deixa escolher a pasta, tem
+  Cancelar e grava um relatório com o link de cada artigo que não foi possível baixar.
+  Funciona também com corpus do Scopus e do Web of Science.
+- **Importação mais confiável**: 14 correções nos leitores de RIS, Web of Science, BibTeX,
+  PubMed, Scopus, OpenAlex e Crossref. Antes, um arquivo RIS inteiro podia virar um registro
+  só, e o "tab-delimited" do WoS voltava vazio sem aviso. Guia novo:
+  [como exportar de cada base](../../blob/main/docs/GUIA-IMPORTACAO.md).
+- **Mapas**: tipos agrupados pela pergunta que respondem, com uma frase explicando cada um;
+  na cocitação, referências do OpenAlex aparecem como "Silva et al. (2020)"; projetos antigos
+  ganham "Completar códigos do OpenAlex" para a citação direta funcionar.
+- **Busca**: DOI errado no PubMed corrigido; filtros de ano e acesso aberto agora valem também
+  na contagem do PubMed; autor institucional deixa de virar nome vazio no Crossref.
+
+## Da versão anterior (beta.3)
 
 Mapas mais fáceis de gerar. Nenhum tipo de mapa foi removido.
 
@@ -35,7 +55,7 @@ Mapas mais fáceis de gerar. Nenhum tipo de mapa foi removido.
 - **Limiar alto demais não deixa ninguém sem mapa**: o Blicsa reduz, avisa e mostra o valor usado.
 - **O controle de limiar diz o que ele conta** em cada tipo de mapa (termos, autores, pares de referências…).
 
-## Da versão anterior (beta.2)
+## Da beta.2
 
 Correções de uma auditoria completa, com testes simulando o usuário que faz tudo errado.
 Nenhuma funcionalidade foi removida ou mudou de comportamento.

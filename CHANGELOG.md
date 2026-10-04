@@ -2,6 +2,36 @@
 
 All notable changes to this project will be documented in this file.
 
+## [2.1.0-beta.4] - 2026-10-04
+
+Novidades pedidas para a apresentação: explorar a partir de um artigo, download de PDFs abertos
+e importação revisada formato a formato. Detalhes em `docs/AUDITORIA-2026-09.md` (Parte 6).
+
+### Adicionado
+- Explorar a partir de um artigo (`core/artigos_conectados.py`): grafo de artigos parecidos pelo
+  OpenAlex (acoplamento + cocitação, cosseno de Salton), obras anteriores e derivadas, adicionar
+  ao corpus sem duplicar.
+- Download de PDFs de acesso aberto (`core/pdf_download.py`): Unpaywall, OpenAlex, arXiv e
+  `citation_pdf_url` da página do editor; confere `%PDF-`; pasta, Cancelar, relatório CSV.
+- Mapas: tipos agrupados por pergunta com descrição; rótulos "Sobrenome (ano)" para referências
+  do OpenAlex na cocitação (cache em `~/Blicsa/cache`); "Completar códigos do OpenAlex".
+- `openalex_id` no schema dos registros (projetos antigos abrem com a coluna vazia).
+- `scripts/auditar_bases.py`: compara o que cada base declara com o que o Blicsa baixou.
+- `docs/GUIA-IMPORTACAO.md`.
+
+### Corrigido
+- RIS: arquivo inteiro virava um registro (fim de registro `ER  - ` não reconhecido); editores
+  entravam como autores; citações e referências do RIS do Scopus se perdiam.
+- WoS: tab-delimited real voltava vazio sem erro; registro sem ano derrubava o arquivo; título e
+  palavras-chave partidos em linhas de continuação.
+- BibTeX: Windows-1252 derrubava a importação; acentos LaTeX e chaves ficavam no texto.
+- PubMed (arquivo e busca): DOI errado quando o primeiro identificador era do editor.
+- PubMed (busca): filtros de ano e acesso aberto ignorados na contagem e na navegação.
+- Crossref: autor institucional virava nome vazio.
+- Scopus: "[No author name available]" virava autor; "[No abstract available]" virava resumo.
+- OpenAlex JSON: autor sem nome derrubava o arquivo; referências e código do artigo eram ignorados.
+- Download de PDFs gravava a página do editor como `.pdf` e contava como sucesso.
+
 ## [2.1.0-beta.3] - 2026-09-28
 
 Fluxo de mapas mais permissivo — só correções, nenhum tipo de mapa removido.

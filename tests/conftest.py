@@ -105,6 +105,8 @@ def _preferencias_isoladas(tmp_path, monkeypatch):
     import core.settings as cs
     from core import i18n
     monkeypatch.setattr(cs, "_OVERRIDE_PATH", tmp_path / "settings_teste.json")
+    # Nenhum teste consulta a internet por acidente (rótulos do OpenAlex no mapa etc.).
+    monkeypatch.setenv("BLICSA_SEM_REDE", "1")
     idioma = i18n.get_lang()
     yield
     if i18n.get_lang() != idioma:

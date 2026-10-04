@@ -42,6 +42,20 @@ def _record_matches_language(record: Dict[str, Any], wanted: str) -> bool:
     return det.lower()[:2] == wanted
 
 
+def _nome_autor(a: Dict[str, Any]) -> str:
+    """Nome de um autor do Crossref no formato do app ("Sobrenome Nome").
+
+    Autor institucional (consórcio, grupo de trabalho) vem só com `name`, sem `family` nem
+    `given`. Antes virava string vazia: a lista ganhava um "; " solto, o primeiro autor
+    sumia quando era o grupo e a contagem de autores ficava errada (auditoria das bases,
+    2026-10).
+    """
+    if not isinstance(a, dict):
+        return ""
+    nome = f"{a.get('family') or ''} {a.get('given') or ''}".strip()
+    return nome or str(a.get("name") or "").strip()
+
+
 class CrossrefProvider(SearchProvider):
     DISPLAY_NAME = "Crossref"
 
@@ -104,9 +118,7 @@ class CrossrefProvider(SearchProvider):
             for lic in (w.get("license") or [])
         )
         authors = "; ".join(
-            f"{a.get('family', '')} {a.get('given', '')}".strip()
-            for a in w.get("author", [])
-        )
+            n for n in (_nome_autor(a) for a in w.get("author", [])) if n)
         issued = (w.get("issued") or {}).get("date-parts", [[0]])[0]
         year = issued[0] if issued else 0
         return {
@@ -275,9 +287,7 @@ class CrossrefProvider(SearchProvider):
                         continue
 
                 authors = "; ".join(
-                    f"{a.get('family', '')} {a.get('given', '')}".strip()
-                    for a in w.get("author", [])
-                )
+                    n for n in (_nome_autor(a) for a in w.get("author", [])) if n)
                 
                 issued = (w.get("issued") or {}).get("date-parts", [[0]])[0]
                 year = issued[0] if issued else 0

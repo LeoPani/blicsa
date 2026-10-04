@@ -83,18 +83,13 @@ class PubMedProvider(SearchProvider):
         return super().fetch_url(url, *a, **kw)
 
     def count(self, query: str, filters: Optional[Dict[str, Any]] = None, cancel_event=None) -> int:
-        """Total de resultados (esearchresult.count) com retmax=0 — request barata."""
-        term_parts = [query.strip()] if query.strip() else []
-        f = filters or {}
-        if f.get("year_start") and f.get("year_end"):
-            term_parts.append(f"({f['year_start']}:{f['year_end']}[DP])")
-        if f.get("type"):
-            term_parts.append(f"({f['type']}[PT])")
-        if f.get("language"):
-            la = _pubmed_lang_code(f["language"])
-            if la:
-                term_parts.append(f"{la}[LA]")
-        term = " AND ".join(term_parts) if term_parts else "all[Filter]"
+        """Total de resultados (esearchresult.count) com retmax=0 — request barata.
+
+        Usa o MESMO `term` da importação (`_term`). Antes montava o seu, sem ano
+        só-inicial/só-final nem acesso aberto, e a contagem do aviso de volume divergia do
+        que a importação depois baixava.
+        """
+        term = self._term(query, filters)
         params = {"db": "pubmed", "term": term, "retmode": "json", "retmax": 0}
         url = "https://eutils.ncbi.nlm.nih.gov/entrez/eutils/esearch.fcgi?" + urllib.parse.urlencode(params)
         data = json.loads(self.fetch_url(url, cancel_event=cancel_event, rate_limit_delay=0.35))
@@ -104,17 +99,34 @@ class PubMedProvider(SearchProvider):
     FACETS: Dict[str, str] = {}
 
     def _term(self, query: str, filters: Optional[Dict[str, Any]] = None) -> str:
-        """Monta o `term` do E-utilities a partir da query + filtros."""
+        """Monta o `term` do E-utilities a partir da query + filtros.
+
+        Fonte ÚNICA do termo para `count`, `browse` e `search`. Antes eram três cópias e só a
+        do `search` tratava ano só-inicial/só-final e acesso aberto: na navegação, preencher
+        só o "ano inicial" ou marcar "acesso aberto" era ignorado em silêncio, e o total
+        mostrado não era o da importação (auditoria das bases, 2026-10).
+        """
         partes = [query.strip()] if query.strip() else []
         f = filters or {}
         if f.get("year_start") and f.get("year_end"):
             partes.append(f"({f['year_start']}:{f['year_end']}[DP])")
+        elif f.get("year_start"):
+            partes.append(f"({f['year_start']}:3000[DP])")
+        elif f.get("year_end"):
+            partes.append(f"(1800:{f['year_end']}[DP])")
         if f.get("type"):
             partes.append(f"({f['type']}[PT])")
+        if f.get("is_oa"):
+            partes.append("free full text[SB]")
         if f.get("language"):
             la = _pubmed_lang_code(f["language"])
             if la:
                 partes.append(f"{la}[LA]")
+            else:
+                logger.warning(
+                    f"Idioma '{f['language']}' sem mapeamento ISO 639-2; "
+                    f"filtro de idioma NÃO aplicado no PubMed (evita zero silencioso)."
+                )
         return " AND ".join(partes) if partes else "all[Filter]"
 
     def _parse_medline(self, texto: str) -> list[Dict[str, Any]]:
@@ -164,8 +176,15 @@ class PubMedProvider(SearchProvider):
         kw = r.get("MH", r.get("OT", r.get("KW", "")))
         dp = r.get("DP", r.get("DA", "0"))
         m_ano = re.search(r"\b(19|20)\d{2}\b", dp)
-        doi_raw = r.get("LID", r.get("AID", ""))
-        m_doi = re.search(r"([^\s]+)\s+\[doi\]", doi_raw)
+        # O DOI pode estar no LID ou só no AID (o LID às vezes traz apenas o [pii]). Antes só
+        # o LID era olhado e, sem "[doi]" nele, o texto inteiro do LID virava o DOI:
+        # "S0140-6736(20)30183-5 [pii]" ia para o campo `doi`, quebrando link, exportação e a
+        # deduplicação por DOI entre bases (auditoria das bases, 2026-10).
+        m_doi = None
+        for tag in ("LID", "AID"):
+            m_doi = re.search(r"(\S+)\s+\[doi\]", r.get(tag, "") or "")
+            if m_doi:
+                break
         return {
             "authors": r.get("AU", r.get("FAU", "")),
             "title": r.get("TI", ""),
@@ -175,7 +194,7 @@ class PubMedProvider(SearchProvider):
             "keywords": kw,
             "abstract": r.get("AB", ""),
             "citations": 0,
-            "doi": m_doi.group(1) if m_doi else doi_raw.strip(),
+            "doi": m_doi.group(1) if m_doi else "",
             "references": "",
             "origin": "PubMed",
             "language": r.get("LA", ""),
@@ -222,31 +241,8 @@ class PubMedProvider(SearchProvider):
         # PubMed Rate Limit: max 3 requests per second
         rate_limit_delay = 0.35
         
-        # 1. Build term
-        term_parts = [query.strip()] if query.strip() else []
-        if filters:
-            if filters.get("year_start") and filters.get("year_end"):
-                term_parts.append(f"({filters['year_start']}:{filters['year_end']}[DP])")
-            elif filters.get("year_start"):
-                term_parts.append(f"({filters['year_start']}:3000[DP])")
-            elif filters.get("year_end"):
-                term_parts.append(f"(1800:{filters['year_end']}[DP])")
-                
-            if filters.get("type"):
-                term_parts.append(f"({filters['type']}[PT])")
-            if filters.get("is_oa"):
-                term_parts.append("free full text[SB]")
-            if filters.get("language"):
-                la = _pubmed_lang_code(filters["language"])
-                if la:
-                    term_parts.append(f"{la}[LA]")
-                else:
-                    logger.warning(
-                        f"Idioma '{filters['language']}' sem mapeamento ISO 639-2; "
-                        f"filtro de idioma NÃO aplicado no PubMed (evita zero silencioso)."
-                    )
-
-        term = " AND ".join(term_parts) if term_parts else "all[Filter]"
+        # 1. Build term — mesma fonte que `count` e `browse`.
+        term = self._term(query, filters)
 
         # BUG-A: rastreio de parada.
         self.stop_reason = None

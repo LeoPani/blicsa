@@ -187,3 +187,30 @@ Fica para a camada 3 (precisa de internet; prompt em `docs/PROMPT-MAPAS-CAMADA3.
 completar `openalex_id` em projetos antigos, mostrar referências como "Sobrenome (ano)" e
 agrupar o seletor de tipos por pergunta ("Sobre o que se escreve? / Quem escreve com quem? /
 Em que o campo se apoia?").
+
+## Parte 6 — imports, bases, PDFs e "explorar a partir de um artigo" (04/10)
+
+Pedido: confiança nos imports e nas bases, download de PDFs, recursos do Connected Papers.
+
+- **Imports**: 20 arquivos de exemplo fiéis aos formatos reais (Scopus CSV, WoS texto e
+  tab-delimited, BibTeX do Scopus e do Zotero, RIS do Scopus/Zotero/Mendeley/EndNote, PubMed,
+  OpenAlex e Crossref JSON, CSV do Blicsa, PDF) em `tests/fixtures/importacao/`. 79 testes em
+  `tests/test_importacao_formatos.py`; 55 deles falhavam no código anterior. 14 defeitos
+  corrigidos (lista no CHANGELOG, beta.4). Guia para o pesquisador: `docs/GUIA-IMPORTACAO.md`.
+- **Bases**: `scripts/auditar_bases.py` pergunta direto a cada API o total da consulta, roda a
+  mesma busca pelo Blicsa e confere 20 registros por base campo a campo. Precisa de internet:
+  rodar no Mac (`python scripts/auditar_bases.py --email ...`). Três defeitos de busca
+  corrigidos (PubMed e Crossref); os pendentes estão em `docs/BUGS-ENCONTRADOS-BUSCA.md`.
+- **PDFs**: o botão existente só olhava registros marcados como acesso aberto (corpus do Scopus
+  e do WoS nunca têm essa marca) e gravava a página do editor como `.pdf`, contando sucesso.
+  Reescrito em `core/pdf_download.py`, 14 testes offline; prova visual da janela antes, durante
+  e depois do download.
+- **Explorar a partir de um artigo**: `core/artigos_conectados.py`, 13 testes com um OpenAlex
+  simulado (inclui a janela e o mapa). Mapa renderizado no Chromium sem erro de JavaScript.
+  Ainda não testado contra o OpenAlex de verdade (a nuvem não alcança a API): primeiro uso
+  real no Mac.
+- **Mapas**: tipos agrupados por pergunta; rótulos "Sobrenome (ano)" na cocitação com tempo
+  máximo de 15 s (sem internet o mapa sai com o rótulo curto); "Completar códigos do
+  OpenAlex". Matriz de 200 combinações nos 4 projetos reais: mesmo resultado da Parte 5
+  (150 mapas, 45 avisos antes de clicar, 5 vazios com a causa certa), máximo de 5,9 s.
+- **Testes não acessam a internet**: `BLICSA_SEM_REDE=1` no `conftest.py`.

@@ -96,3 +96,34 @@ O contrato de saída dos providers tem **13 chaves** (sem `language_source`). O 
 `main.py:1745-1767`. Não é defeito, mas a lógica de detecção de idioma vive dentro de
 uma thread de UI e **não é testável isoladamente** — recomenda-se extraí-la para uma
 função pura em `core/` (ver relatório).
+
+---
+
+## Auditoria das bases (2026-10) — `scripts/auditar_bases.py`
+
+Encontrados lendo o código de busca ao escrever a auditoria (que compara o Blicsa com as
+APIs consultadas diretamente). Testes em `tests/test_auditar_bases.py`.
+
+### BUG-04 — PubMed: identificador do editor gravado como DOI — ✅ CORRIGIDO
+`PubMedProvider._record_from_medline` lia só o `LID`; quando ele trazia apenas
+`S0140-6736(20)30183-5 [pii]`, esse texto ia para o campo `doi`, e um DOI presente só no
+`AID` era ignorado. Agora procura `[doi]` no LID e depois no AID; sem DOI, fica vazio.
+
+### BUG-05 — PubMed: `count`/`browse` com termo diferente do `search` — ✅ CORRIGIDO
+`count()` e `_term()` (usado pela navegação) não tratavam ano só-inicial/só-final nem
+acesso aberto, que o `search()` tratava. Na navegação esses filtros eram ignorados em
+silêncio. Agora `_term()` é a fonte única dos três.
+
+### BUG-06 — Crossref: autor institucional sumia — ✅ CORRIGIDO
+Autor só com `name` (consórcio/grupo) virava string vazia em `authors`. Agora usa `name`
+(`_nome_autor`).
+
+### Abertos (não corrigidos)
+- Crossref + `is_oa`: filtro aplicado localmente, mas "Encontrados" é o `total-results`
+  sem filtro e a trilha não informa os descartados.
+- Crossref, ordenar por data: `search` usa `sort=published`, `browse` usa `sort=issued`.
+- Crossref guarda só referências com DOI.
+- OpenAlex: `count()` não converte a sintaxe legada TITLE()/AUTHOR()/YEAR() como `search()`.
+- `main.py::_search_worker`: o `except TypeError` refaz a busca inteira sem filtros (e sem passar o
+  cancelamento ao provider) para qualquer TypeError no meio do download, somando aos registros já
+  baixados (não alterado: main.py em edição por outra pessoa).

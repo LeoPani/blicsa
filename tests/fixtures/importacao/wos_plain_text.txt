@@ -1,0 +1,112 @@
+﻿FN Clarivate Analytics Web of Science
+VR 1.0
+PT J
+AU Aria, M
+   Cuccurullo, C
+AF Aria, Massimo
+   Cuccurullo, Corrado
+TI bibliometrix: An R-tool for comprehensive science mapping analysis
+SO JOURNAL OF INFORMETRICS
+LA English
+DT Article
+DE Bibliometrics; Co-citation analysis; Science mapping; R package;
+   Knowledge structure
+ID WEB; CITATION; SCIENCE; COCITATION; KNOWLEDGE
+AB The use of bibliometrics is gradually extending to all disciplines. It is particularly suitable for science mapping at a time when the emphasis on empirical contributions is producing voluminous, fragmented, and controversial research streams.
+C1 [Aria, Massimo] Univ Naples Federico II, Dept Econ & Stat, Naples, Italy.
+   [Cuccurullo, Corrado] Univ Campania Luigi Vanvitelli, Dept Econ, Capua, Italy.
+RP Aria, M (corresponding author), Univ Naples Federico II, Naples, Italy.
+EM aria@unina.it
+CR Borner K, 2003, ANNU REV INFORM SCI, V37, P179, DOI 10.1002/aris.1440370106
+   Cobo MJ, 2011, J AM SOC INF SCI TEC, V62, P1382, DOI 10.1002/asi.21525
+   Small H, 1973, J AM SOC INFORM SCI, V24, P265, DOI 10.1002/asi.4630240406
+   van Eck NJ, 2010, SCIENTOMETRICS, V84, P523, DOI 10.1007/s11192-009-0146-3
+   Zupic I, 2015, ORGAN RES METHODS, V18, P429, DOI 10.1177/1094428114562629
+NR 5
+TC 4210
+Z9 4598
+U1 120
+U2 980
+PU ELSEVIER
+PI AMSTERDAM
+PA RADARWEG 29, 1043 NX AMSTERDAM, NETHERLANDS
+SN 1751-1577
+EI 1875-5879
+J9 J INFORMETR
+JI J. Informetr.
+PD NOV
+PY 2017
+VL 11
+IS 4
+BP 959
+EP 975
+DI 10.1016/j.joi.2017.08.007
+PG 17
+WC Computer Science, Interdisciplinary Applications; Information Science &
+   Library Science
+WE Science Citation Index Expanded (SCI-EXPANDED); Social Science Citation Index (SSCI)
+SC Computer Science; Information Science & Library Science
+GA FM8BC
+UT WOS:000416523800011
+DA 2026-10-04
+ER
+
+PT J
+AU Gonçalves, JM
+   Müller, H
+   Ñúñez, P
+AF Gonçalves, João Marcos
+   Müller, Hans
+   Ñúñez, Pilar
+TI Catadores e "economia circular": cooperativas; políticas e ação coletiva
+   no Brasil urbano contemporâneo
+SO REVISTA DE ADMINISTRACAO PUBLICA
+LA Portuguese
+DT Article; Early Access
+DE Economia circular; Cooperativas; Resíduos sólidos
+AB Este artigo analisa a coleta seletiva com catadores no Brasil.
+CR Ostrom E, 1990, GOVERNING COMMONS
+NR 1
+TC 0
+Z9 0
+EA JAN 2026
+EY 2026
+DI 10.1590/0034-761220250001
+UT WOS:001100000000001
+DA 2026-10-04
+ER
+
+PT B
+AU [Anonymous]
+TI Handbook without DOI or keywords
+SO HANDBOOK SERIES
+LA English
+DT Book
+NR 0
+TC 3
+Z9 3
+PY 2015
+UT WOS:000300000000002
+ER
+
+PT J
+AU Small, H
+AF Small, Henry
+TI Co-citation in the scientific literature: A new measure of the
+   relationship between two documents
+SO JOURNAL OF THE AMERICAN SOCIETY FOR INFORMATION SCIENCE
+LA English
+DT Article
+NR 0
+TC 3800
+Z9 4100
+PY 1973
+VL 24
+IS 4
+BP 265
+EP 269
+DI 10.1002/asi.4630240406
+UT WOS:A1973Q813800005
+ER
+
+EF

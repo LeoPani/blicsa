@@ -27,6 +27,9 @@ SCHEMA_REGISTRO: dict[str, object] = {
     "document_type": "",
     "abstract": "", "citations": 0, "doi": "", "references": "", "origin": "",
     "language": "", "is_oa": False, "oa_url": "",
+    # Código do artigo no OpenAlex. A citação direta depende dele com corpus do OpenAlex
+    # (as referências vêm como códigos, não DOIs). Projeto antigo abre com a coluna vazia.
+    "openalex_id": "",
 }
 
 #: Colunas que precisam ser numéricas: o filtro de período faz `df["year"] >= n`, que

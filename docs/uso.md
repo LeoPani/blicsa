@@ -111,3 +111,37 @@ cluster, histórico de buscas e todos os parâmetros. Reabrir devolve exatamente
 > serem reabertos: até a v2.0 a ordem de inserção dos nós não era determinística, e o Louvain
 > podia chegar a uma partição distinta com a mesma entrada. A partir da v2.0 o resultado é
 > reproduzível. O corpus e as métricas não mudam — só o agrupamento pode diferir.
+
+## 9. Explorar a partir de um artigo
+
+Na aba **Coletar**, botão **Explorar a partir de um artigo…**. Cole o DOI (ou o link do
+OpenAlex) de um ou mais artigos que você já sabe que são centrais e clique em **Explorar**.
+
+O Blicsa reúne, pelo OpenAlex, as referências desses artigos, os trabalhos mais citados que os
+citam e os artigos que o próprio OpenAlex considera relacionados. Entre esses candidatos, fica
+com os mais parecidos com os seus artigos de partida. Dois artigos são parecidos quando citam
+as mesmas obras (acoplamento bibliográfico) ou quando são citados juntos (cocitação).
+
+O resultado tem três listas:
+
+- **No grafo**: os artigos mais parecidos. **Abrir mapa** mostra o grafo (tamanho = citações,
+  cor = cluster; o modo Sobreposição colore por ano).
+- **Obras anteriores**: o que esse grupo mais cita e não está no grafo. Costumam ser os clássicos.
+- **Obras derivadas**: trabalhos que citam vários artigos do grafo. Costumam ser revisões e o
+  estado da arte posterior.
+
+Marque o que interessar e clique em **Adicionar marcados ao corpus**. Artigos que já estão no
+corpus não entram de novo.
+
+## 10. Baixar os PDFs de acesso aberto
+
+Na aba **Corpus**, botão **Baixar PDFs abertos**. Escolha a pasta e clique em **Baixar**. O
+Blicsa procura uma versão aberta e legal de cada artigo (Unpaywall, OpenAlex, arXiv e a página
+do editor) e só grava o que for PDF de verdade. Artigos fechados não são baixados: o relatório
+`blicsa_pdfs_relatorio.csv`, na mesma pasta, lista cada um com o link para você tentar pelo
+acesso da universidade. Rodar de novo na mesma pasta não baixa outra vez o que já está lá.
+
+## 11. Formatos de importação
+
+Como exportar de cada base, o que o Blicsa lê de cada formato e qual mapa funciona com cada
+um: [GUIA-IMPORTACAO.md](GUIA-IMPORTACAO.md).

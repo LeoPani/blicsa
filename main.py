@@ -10,7 +10,7 @@ import re
 #: no rodapé e na janela Sobre, `0.9.0` no CHANGELOG e `2.0-upgrade` no CITATION.cff — e o
 #: `v3.0` não correspondia a nenhuma versão que tivesse existido. Ele aparecia nas capturas
 #: de tela da documentação.
-__version__ = "2.1.0-beta.3"
+__version__ = "2.1.0-beta.4"
 
 try:
     if os.path.exists(".env"):
@@ -34,6 +34,7 @@ except Exception:
 import contextlib
 import json
 import threading
+import gc
 import webbrowser
 import tempfile
 from pathlib import Path
@@ -110,6 +111,45 @@ MAP_TYPES = [
     "Co-classificação IPC (patentes)",
     "Agrupamento Semântico (Embeddings)",
 ]
+def _ThreadDaTela(*args, **kwargs):
+    """`threading.Thread(...)` que, criada pela interface, coleta o lixo ANTES.
+
+    Janelas fechadas (Revisar termos, Rankings…) deixam variáveis e imagens do Tk em ciclos
+    de referência. Se a coleta automática do Python roda dentro de uma thread de trabalho, o
+    `__del__` desses objetos chama o Tk fora da thread da tela, e o Tk pode abortar o
+    programa inteiro ("Tcl_AsyncDelete: async handler deleted by the wrong thread"). Foi
+    visto 1 vez em 4 medições do cálculo de mapa logo após fechar "Revisar termos". Coletar
+    na thread da tela antes de cada trabalho em segundo plano tira esses objetos do caminho;
+    custa menos de 1 ms. Todos os pontos criam e iniciam a thread na mesma linha.
+
+    É função (e não subclasse) para que `threading.Thread` seja lido na hora da chamada:
+    os testes que trocam a thread por uma síncrona continuam valendo.
+    """
+    if threading.current_thread() is threading.main_thread():
+        try:
+            gc.collect()
+        except Exception:
+            pass
+    return threading.Thread(*args, **kwargs)
+
+
+#: Tipos (índices de MAP_TYPES) agrupados pela pergunta que o mapa responde. Os títulos
+#: entram na lista do seletor e não são escolhíveis; os nomes dos tipos não mudam porque
+#: ficam gravados nos projetos.
+GRUPOS_TIPO_DE_MAPA = (("map.grupo.termos", (0,)),
+                       ("map.grupo.autores", (1,)),
+                       ("map.grupo.referencias", (2, 3, 4)),
+                       ("map.grupo.outros", (5, 6)))
+
+
+def valores_tipo_de_mapa() -> list[str]:
+    valores = []
+    for chave, indices in GRUPOS_TIPO_DE_MAPA:
+        valores.append(t(chave).upper())
+        valores.extend(MAP_TYPES[i] for i in indices)
+    return valores
+
+
 VIZ_MODES  = [
     "Clusters", "Grau (Degree)", "Ano Médio",
     "Betweenness", "PageRank",
@@ -1796,14 +1836,14 @@ class BlicsaApp(ctk.CTk):
                         if indicator_row.winfo_exists(): indicator_row.destroy()
                         self._add_ai_error_row(
                             self._research_chat_history_main, detail=str(e),
-                            retry_cb=lambda: threading.Thread(target=worker, daemon=True).start())
+                            retry_cb=lambda: _ThreadDaTela(target=worker, daemon=True).start())
                     self.after(0, err_ui)
                 except Exception as ex:
                     def err_ui(e=ex):
                         if indicator_row.winfo_exists(): indicator_row.destroy()
                         self._add_ai_error_row(self._research_chat_history_main, detail=str(e))
                     self.after(0, err_ui)
-            threading.Thread(target=worker, daemon=True).start()
+            _ThreadDaTela(target=worker, daemon=True).start()
             
         self._research_chat_input_main.bind("<Return>", send_main_chat)
         #: O envio do Blink é um closure (precisa de `chat_container`, `insert_markdown` e
@@ -1892,6 +1932,14 @@ class BlicsaApp(ctk.CTk):
 
         act_sf = ctk.CTkFrame(scard, fg_color="transparent")
         act_sf.grid(row=4, column=0, columnspan=2, padx=16, pady=(4, 16), sticky="e")
+
+        # Explorar a partir de um artigo (grafo de artigos parecidos, à la Connected Papers)
+        exp_f = ctk.CTkFrame(scard, fg_color="transparent")
+        exp_f.grid(row=4, column=0, padx=16, pady=(4, 16), sticky="w")
+        ctk.CTkButton(exp_f, text=t("explorar.botao"), command=self._abrir_explorar,
+                      height=30, corner_radius=0, fg_color=WHITE_CARD, hover_color=PAPER,
+                      text_color=INK, border_width=2, border_color=INK,
+                      font=ctk.CTkFont(size=12, weight="bold")).pack(side="left")
 
         ctk.CTkLabel(act_sf, text="Qtd:").pack(side="left", padx=4)
         self._search_max_entry = ctk.CTkEntry(act_sf, width=60, placeholder_text="1000", placeholder_text_color=MUTED, fg_color=WHITE_CARD, text_color=INK)
@@ -2310,9 +2358,23 @@ class BlicsaApp(ctk.CTk):
         lbl_tipo = ctk.CTkLabel(sc, text="Tipo de Mapa:", font=ctk.CTkFont(size=11, weight="bold"))
         lbl_tipo.pack(anchor="w", padx=10, pady=(8, 2))
         HoverTooltip(lbl_tipo, "O tipo de rede a ser construída.\n- Coocorrência: Itens que aparecem juntos no mesmo artigo.\n- Coautoria: Autores que publicam juntos.\n- Cocitação: Duas referências citadas pelo mesmo artigo.\n- Acoplamento: Artigos que citam as mesmas referências.")
-        self._tipo_combo = ctk.CTkComboBox(sc, values=MAP_TYPES, variable=self._map_type_var, height=28, button_color=ACCENT, border_color=ACCENT,
-                        command=lambda _v: self._atualizar_tipo_de_mapa())
-        self._tipo_combo.pack(fill="x", padx=10, pady=(0, 6))
+        # Lista agrupada por pergunta. Os títulos dos grupos não são escolhíveis; os nomes dos
+        # tipos não mudam porque ficam gravados nos projetos (`map_type`).
+        var_tipo = self._map_type_var
+        self._tipo_anterior = var_tipo.get() if hasattr(var_tipo, "get") else MAP_TYPES[0]
+
+        def _lembrar_tipo(*_a):
+            v = var_tipo.get()
+            if v in MAP_TYPES:
+                self._tipo_anterior = v
+        if hasattr(var_tipo, "trace_add"):
+            var_tipo.trace_add("write", _lembrar_tipo)
+        self._tipo_combo = ctk.CTkComboBox(sc, values=valores_tipo_de_mapa(), variable=self._map_type_var, height=28, button_color=ACCENT, border_color=ACCENT,
+                        state="readonly", command=getattr(self, "_ao_escolher_tipo_de_mapa", None))
+        self._tipo_combo.pack(fill="x", padx=10, pady=(0, 2))
+        self._desc_tipo_lbl = ctk.CTkLabel(sc, text="", font=ctk.CTkFont(size=11), text_color=MUTED,
+                                           wraplength=205, justify="left", anchor="w")
+        self._desc_tipo_lbl.pack(anchor="w", fill="x", padx=10, pady=(0, 6))
         # Aviso ANTES de clicar quando o corpus não tem os dados que o tipo exige (M2).
         self._aviso_tipo_lbl = ctk.CTkLabel(sc, text="", font=ctk.CTkFont(size=11), text_color=RED,
                                             wraplength=205, justify="left", anchor="w")
@@ -2736,11 +2798,18 @@ class BlicsaApp(ctk.CTk):
             return "bibtex"
         if ext == ".nbib":
             return "pubmed"
+        if ext == ".pdf":
+            return "pdf"
             
-        # Lê o começo do arquivo para inspecionar cabeçalho e etiquetas.
+        # Lê o começo do arquivo para inspecionar cabeçalho e etiquetas. UTF-16 com BOM é o
+        # "Tab-delimited (Win)" antigo do WoS: lido como UTF-8 vira lixo e caía em "ambíguo".
         try:
-            with open(p, "r", encoding="utf-8", errors="ignore") as f:
-                head = f.read(4096)
+            with open(p, "rb") as f:
+                bruto = f.read(8192)
+            if bruto.startswith((b"\xff\xfe", b"\xfe\xff")):
+                head = bruto.decode("utf-16", errors="ignore")
+            else:
+                head = bruto.decode("utf-8", errors="ignore").lstrip("\ufeff")
         except Exception:
             return "ambiguous" # fallback to dropdown
             
@@ -2755,9 +2824,17 @@ class BlicsaApp(ctk.CTk):
         # 2. PubMed Medline / Tagged text
         if "PMID-" in head or "OWN -" in head:
             return "pubmed"
-            
-        # 3. Web of Science TXT
-        if "FN " in head or "VR " in head or "PT " in head:
+
+        # RIS e BibTeX salvos como .txt (EndNote, "Other file formats" do WoS): antes caíam
+        # em "ambíguo" → leitor do Scopus → registros com todos os campos "nan".
+        if re.search(r"^TY  -", head, re.M):
+            return "ris"
+        if re.search(r"^\s*@\w+\s*\{", head, re.M):
+            return "bibtex"
+
+        # 3. Web of Science TXT. Etiqueta no INÍCIO da linha: "PT " em qualquer lugar casava
+        # com "CONCEPT " ou "SCRIPT " dentro de um resumo de CSV do Scopus.
+        if re.search(r"^(FN|VR|PT)[ \t]", head, re.M):
             return "wos"
             
         # 4. CSV analysis: Scopus vs Web of Science CSV
@@ -2854,7 +2931,7 @@ class BlicsaApp(ctk.CTk):
         if not self._file_paths:
             messagebox.showwarning("Sem arquivo", "Adicione pelo menos um arquivo.")
             return
-        threading.Thread(target=self._load_worker, daemon=True).start()
+        _ThreadDaTela(target=self._load_worker, daemon=True).start()
 
     def _load_worker(self):
         self.after(0, self._set_busy, "Carregando arquivos…")
@@ -3694,7 +3771,7 @@ class BlicsaApp(ctk.CTk):
             except Exception as e:
                 err = str(e)
             self.after(0, lambda: self._render_preview(recs, total, err))
-        threading.Thread(target=worker, daemon=True).start()
+        _ThreadDaTela(target=worker, daemon=True).start()
 
     def _ensure_preview_frame(self):
         if getattr(self, "_preview_frame", None) is not None and self._preview_frame.winfo_exists():
@@ -3897,7 +3974,7 @@ class BlicsaApp(ctk.CTk):
                 facetas = sessao.fetch_facets()
                 self.after(0, lambda: self._browse_render_facets(facetas))
 
-        threading.Thread(target=worker, daemon=True).start()
+        _ThreadDaTela(target=worker, daemon=True).start()
 
     def _browse_goto(self, pagina: int, force: bool = False):
         """Troca de página (ou tentar de novo) sem travar a UI."""
@@ -3913,7 +3990,7 @@ class BlicsaApp(ctk.CTk):
             p = sessao.fetch_page(pagina, use_cache=not force)
             self.after(0, lambda: self._browse_render(p))
 
-        threading.Thread(target=worker, daemon=True).start()
+        _ThreadDaTela(target=worker, daemon=True).start()
 
     def _browse_render(self, pagina, primeira: bool = False):
         """Desenha a página, descartando resposta obsoleta."""
@@ -3956,7 +4033,7 @@ class BlicsaApp(ctk.CTk):
             facetas = sessao.fetch_facets()
             self.after(0, lambda: (self._browse_render(p), self._browse_render_facets(facetas)))
 
-        threading.Thread(target=worker, daemon=True).start()
+        _ThreadDaTela(target=worker, daemon=True).start()
 
     def _browse_remove_chip(self, campo: str, chave: str):
         sessao = getattr(self, "_browse_session", None)
@@ -3978,7 +4055,7 @@ class BlicsaApp(ctk.CTk):
             facetas = sessao.fetch_facets()
             self.after(0, lambda: (self._browse_render(p), self._browse_render_facets(facetas)))
 
-        threading.Thread(target=worker, daemon=True).start()
+        _ThreadDaTela(target=worker, daemon=True).start()
 
     def _browse_import_all(self, sessao, total: int):
         """Importa o conjunto INTEIRO da busca corrente, com aviso de volume.
@@ -4044,7 +4121,7 @@ class BlicsaApp(ctk.CTk):
         self._search_cancel_event = threading.Event()
         self._search_cancel_btn.pack(side="left", padx=4)
         
-        threading.Thread(target=self._search_worker, args=(query, provider_name, max_results, filters, self._search_cancel_event), daemon=True).start()
+        _ThreadDaTela(target=self._search_worker, args=(query, provider_name, max_results, filters, self._search_cancel_event), daemon=True).start()
 
     def _search_worker(self, query: str, provider_name: str, max_results: int, filters: dict, cancel_event):
         self.after(0, self._set_busy, f"Buscando em {provider_name.upper()}...")
@@ -4314,7 +4391,7 @@ class BlicsaApp(ctk.CTk):
                                 out.insert("1.0", f'{t("ai.error_title")}\n\n{t("ai.error_body")}\n{e}')
                                 out.configure(state="disabled")
                         self.after(0, _set_err)
-                threading.Thread(target=_stream_worker_ai, daemon=True).start()
+                _ThreadDaTela(target=_stream_worker_ai, daemon=True).start()
                 
             # Liga os callbacks reais aos lambdas do feed (criado em begin_feed).
             def on_refilter(server_filters):
@@ -4410,7 +4487,7 @@ class BlicsaApp(ctk.CTk):
         # junto com o redesenho, cada chamada do Tk esperava a vez no interpretador: abrir um
         # projeto de 6 mil registros congelava a janela por ~3 s (auditoria 2026-09, T4).
         def iniciar():
-            threading.Thread(target=self._candidate_worker, daemon=True).start()
+            _ThreadDaTela(target=self._candidate_worker, daemon=True).start()
         try:
             self.after(400, lambda: self.after_idle(iniciar))
         except (RuntimeError, AttributeError):
@@ -4508,7 +4585,7 @@ class BlicsaApp(ctk.CTk):
                 return
             self.after(0, self._set_idle, "")
             self.after(0, self._mostrar_revisao_termos, res)
-        threading.Thread(target=worker, name="term_review_worker", daemon=True).start()
+        _ThreadDaTela(target=worker, name="term_review_worker", daemon=True).start()
 
     def _mostrar_revisao_termos(self, resultado):
         if not resultado.terms:
@@ -4618,6 +4695,11 @@ class BlicsaApp(ctk.CTk):
         except ValueError:
             return 0
 
+    def _ao_escolher_tipo_de_mapa(self, valor: str):
+        if valor not in MAP_TYPES:          # clicou num título de grupo: volta ao que era
+            self._map_type_var.set(getattr(self, "_tipo_anterior", MAP_TYPES[0]))
+        self._atualizar_tipo_de_mapa()
+
     def _atualizar_tipo_de_mapa(self):
         """Rótulo do limiar conforme o tipo, e aviso quando o corpus não serve para ele (M2).
 
@@ -4628,6 +4710,8 @@ class BlicsaApp(ctk.CTk):
         indice = self._indice_tipo_de_mapa()
         if getattr(self, "_lbl_freq", None) is not None:
             self._lbl_freq.configure(text=t(f"map.min_label.{indice}"))
+        if getattr(self, "_desc_tipo_lbl", None) is not None:
+            self._desc_tipo_lbl.configure(text=t(f"map.descricao.{indice}"))
         aviso = getattr(self, "_aviso_tipo_lbl", None)
         if aviso is None:
             return
@@ -4636,10 +4720,63 @@ class BlicsaApp(ctk.CTk):
         if motivo:
             aviso.configure(text=t(motivo))
             if not aviso.winfo_ismapped():
-                aviso.pack(anchor="w", fill="x", padx=10, pady=(0, 6), after=self._tipo_combo)
+                aviso.pack(anchor="w", fill="x", padx=10, pady=(0, 6), after=self._desc_tipo_lbl)
         else:
             aviso.configure(text="")
             aviso.pack_forget()
+        # Projeto antigo sem o código do OpenAlex: oferecer completar (citação direta).
+        btn = getattr(self, "_btn_completar_ids", None)
+        if motivo == "map.inviavel_citdir_openalex":
+            if btn is None:
+                btn = ctk.CTkButton(aviso.master, text=t("map.completar_ids"),
+                                    command=self._completar_ids_openalex, height=28,
+                                    corner_radius=0, fg_color=WHITE_CARD, hover_color=PAPER,
+                                    text_color=INK, border_width=2, border_color=INK,
+                                    font=ctk.CTkFont(size=11, weight="bold"))
+                self._btn_completar_ids = btn
+            if not btn.winfo_ismapped():
+                btn.pack(anchor="w", fill="x", padx=10, pady=(0, 8), after=aviso)
+        elif btn is not None:
+            btn.pack_forget()
+
+    def _completar_ids_openalex(self):
+        """Preenche `openalex_id` pelo DOI (lotes de 50) para a citação direta funcionar."""
+        if self._dataframe is None or self._dataframe.empty or getattr(self, "_completando_ids", False):
+            return
+        from core import artigos_conectados as AC
+        self._completando_ids = True
+        df = self._dataframe.copy()
+        btn = getattr(self, "_btn_completar_ids", None)
+        if btn is not None:
+            btn.configure(state="disabled", text=t("map.completando_ids"))
+
+        def fim(n=None, erro=None):
+            self._completando_ids = False
+            if btn is not None and btn.winfo_exists():
+                btn.configure(state="normal", text=t("map.completar_ids"))
+            if erro is not None:
+                self._set_idle("")
+                messagebox.showerror(t("map.completar_ids"), t("explorar.erro_rede", erro=
+                                     _mensagem_para_usuario(erro, t("explorar.erro_generico"))))
+                return
+            if n:
+                self._dataframe = df
+                self._refresh_candidate_counts()
+                self._backlog("completar_ids", {"preenchidos": n})
+            self._set_idle(t("map.ids_completados", n=n))
+            messagebox.showinfo(t("map.completar_ids"), t("map.ids_completados", n=n))
+
+        def worker():
+            try:
+                obter, mailto = AC.obter_padrao()
+                n = AC.completar_ids(df, obter, mailto=mailto, ao_progresso=lambda f, tot:
+                                     self.after(0, self._set_busy, t("map.completando_ids_n", feitos=f, total=tot)))
+                self.after(0, lambda: fim(n))
+            except Exception as exc:          # noqa: BLE001
+                log.exception("[Mapa] completar códigos do OpenAlex")
+                self.after(0, lambda e=exc: fim(erro=e))
+        self._set_busy(t("map.completando_ids"))
+        _ThreadDaTela(target=worker, daemon=True, name="completar_ids_worker").start()
 
     def _on_field_change(self):
         self._refresh_candidate_counts()
@@ -4689,13 +4826,13 @@ class BlicsaApp(ctk.CTk):
             if terms_data:
                 VerificationDialog(
                     self, terms_data,
-                    on_confirm=lambda selected: threading.Thread(
+                    on_confirm=lambda selected: _ThreadDaTela(
                         target=self._mapping_worker, args=(selected,), daemon=True
                     ).start(),
                 )
                 return
 
-        threading.Thread(target=self._mapping_worker, args=(None,), daemon=True).start()
+        _ThreadDaTela(target=self._mapping_worker, args=(None,), daemon=True).start()
 
     def _mapping_worker(self, allowed_terms: set[str] | None):
         """Um mapa por vez. Clique duplo em "Gerar Mapa" (ou Ctrl+G repetido) disparava dois
@@ -4879,6 +5016,17 @@ class BlicsaApp(ctk.CTk):
                     messagebox.showinfo(t("map.warn_empty_title"), msg)
                 self.after(0, _mostrar_limiar)
 
+            # Cocitação com corpus do OpenAlex: nós são IDs (W2741…). Troca o rótulo por
+            # "Sobrenome (ano)" pelo OpenAlex, com cache e tempo máximo; sem internet fica o curto.
+            if map_type == MAP_TYPES[2]:
+                try:
+                    from core.rotulos_referencias import aplicar_no_grafo
+                    n_rot = aplicar_no_grafo(gen.G)
+                    if n_rot:
+                        log.info(f"[Mapa] {n_rot} referências do OpenAlex com nome e ano\n")
+                except Exception as exc_rot:
+                    log.warning("[Mapa] rótulos do OpenAlex indisponíveis: %s", exc_rot)
+
             self._generator = gen
             self._graph = gen.G
 
@@ -4924,7 +5072,7 @@ class BlicsaApp(ctk.CTk):
             
             if self._api_key_var.get().strip() or os.environ.get("GROQ_API_KEY"):
                 self._show_ai_modal = False
-                self.after(200, lambda: threading.Thread(target=self._trigger_map_ai_insights, daemon=True).start())
+                self.after(200, lambda: _ThreadDaTela(target=self._trigger_map_ai_insights, daemon=True).start())
         except Exception as exc:
             log.info(f"[ERRO] {type(exc).__name__}: {exc}\n")
             # Mensagem escrita para gente; erro interno inesperado não vai cru para a tela.
@@ -4946,7 +5094,7 @@ class BlicsaApp(ctk.CTk):
         if node is None:
             return
         self._bottom_tabs.set("Nó Selecionado")
-        threading.Thread(target=self._build_node_info, args=(node,), daemon=True).start()
+        _ThreadDaTela(target=self._build_node_info, args=(node,), daemon=True).start()
 
     def _build_node_info(self, node: str):
         lines: list[str] = []
@@ -5243,7 +5391,7 @@ class BlicsaApp(ctk.CTk):
             self.after(0, self._set_idle, "Erro IA")
             import threading
             self.after(0, lambda e=exc: self._show_ai_error_dialog(
-                str(e), retry_cb=lambda: threading.Thread(target=self._ai_sankey_worker, daemon=True).start()))
+                str(e), retry_cb=lambda: _ThreadDaTela(target=self._ai_sankey_worker, daemon=True).start()))
         except Exception as exc:
             self.after(0, self._set_idle, "Erro IA")
             self.after(0, lambda e=exc: messagebox.showerror("Erro IA", f"Erro ao analisar Sankey:\n{e}"))
@@ -5272,7 +5420,7 @@ class BlicsaApp(ctk.CTk):
             self.after(0, self._set_idle, "Erro IA")
             import threading
             self.after(0, lambda e=exc: self._show_ai_error_dialog(
-                str(e), retry_cb=lambda: threading.Thread(target=self._ai_thematic_worker, daemon=True).start()))
+                str(e), retry_cb=lambda: _ThreadDaTela(target=self._ai_thematic_worker, daemon=True).start()))
         except Exception as exc:
             self.after(0, self._set_idle, "Erro IA")
             self.after(0, lambda e=exc: messagebox.showerror("Erro IA", f"Erro ao analisar Mapa Temático:\n{e}"))
@@ -5300,7 +5448,7 @@ class BlicsaApp(ctk.CTk):
             self.after(0, self._set_idle, "Erro IA")
             import threading
             self.after(0, lambda e=exc: self._show_ai_error_dialog(
-                str(e), retry_cb=lambda: threading.Thread(target=self._ai_historiograph_worker, daemon=True).start()))
+                str(e), retry_cb=lambda: _ThreadDaTela(target=self._ai_historiograph_worker, daemon=True).start()))
         except Exception as exc:
             self.after(0, self._set_idle, "Erro IA")
             self.after(0, lambda e=exc: messagebox.showerror("Erro IA", f"Erro ao analisar Historiografia:\n{e}"))
@@ -5399,9 +5547,9 @@ class BlicsaApp(ctk.CTk):
                             if indicator_row.winfo_exists(): indicator_row.destroy()
                             self._add_ai_error_row(
                                 self._research_chat_history_main, detail=str(e),
-                                retry_cb=lambda: threading.Thread(target=_stream_worker, daemon=True).start())
+                                retry_cb=lambda: _ThreadDaTela(target=_stream_worker, daemon=True).start())
                         self.after(0, _err_row)
-                threading.Thread(target=_stream_worker, daemon=True).start()
+                _ThreadDaTela(target=_stream_worker, daemon=True).start()
                 
             self.after(0, _start_streaming)
             
@@ -5490,9 +5638,9 @@ class BlicsaApp(ctk.CTk):
                             if indicator_row.winfo_exists(): indicator_row.destroy()
                             self._add_ai_error_row(
                                 self._research_chat_history_main, detail=str(e),
-                                retry_cb=lambda: threading.Thread(target=_stream_worker, daemon=True).start())
+                                retry_cb=lambda: _ThreadDaTela(target=_stream_worker, daemon=True).start())
                         self.after(0, _err_row)
-                threading.Thread(target=_stream_worker, daemon=True).start()
+                _ThreadDaTela(target=_stream_worker, daemon=True).start()
                 
             self.after(0, _start_streaming)
             
@@ -5599,9 +5747,9 @@ class BlicsaApp(ctk.CTk):
                             if indicator_row.winfo_exists(): indicator_row.destroy()
                             self._add_ai_error_row(
                                 self._research_chat_history_main, detail=str(e),
-                                retry_cb=lambda: threading.Thread(target=_stream_worker, daemon=True).start())
+                                retry_cb=lambda: _ThreadDaTela(target=_stream_worker, daemon=True).start())
                         self.after(0, _err_row)
-                threading.Thread(target=_stream_worker, daemon=True).start()
+                _ThreadDaTela(target=_stream_worker, daemon=True).start()
                 
             self.after(0, _start_streaming)
             
@@ -5668,7 +5816,7 @@ class BlicsaApp(ctk.CTk):
             return
 
         self._set_busy(t("seminal.analisando"))
-        threading.Thread(target=self._seminal_insights_worker, args=(top,),
+        _ThreadDaTela(target=self._seminal_insights_worker, args=(top,),
                          daemon=True).start()
 
     @staticmethod
@@ -5778,7 +5926,7 @@ class BlicsaApp(ctk.CTk):
                 return
                 
             self._set_busy("Buscando metadados dos artigos seminais (OpenAlex)...")
-            threading.Thread(
+            _ThreadDaTela(
                 target=self._create_seminal_library_worker,
                 args=(full_path, top_refs),
                 daemon=True
@@ -6266,7 +6414,7 @@ class BlicsaApp(ctk.CTk):
         if not caminho:
             return
         self._set_busy(t("anim.gerando"))
-        threading.Thread(target=self._map_animation_worker, args=(caminho,),
+        _ThreadDaTela(target=self._map_animation_worker, args=(caminho,),
                          daemon=True).start()
 
     def _map_animation_worker(self, caminho: str):
@@ -6746,7 +6894,7 @@ class BlicsaApp(ctk.CTk):
             return
 
         self._set_busy("Gerando Nuvem de Palavras…")
-        threading.Thread(target=self._wordcloud_worker, daemon=True).start()
+        _ThreadDaTela(target=self._wordcloud_worker, daemon=True).start()
 
     def _wordcloud_worker(self):
         try:
@@ -6863,7 +7011,7 @@ class BlicsaApp(ctk.CTk):
         if self._generator is None:
             messagebox.showwarning("Sem mapa", "Gere o mapa primeiro.")
             return
-        threading.Thread(target=self._label_clusters_worker, daemon=True).start()
+        _ThreadDaTela(target=self._label_clusters_worker, daemon=True).start()
 
     def _label_clusters_worker(self):
         try:
@@ -6887,7 +7035,7 @@ class BlicsaApp(ctk.CTk):
             if isinstance(exc, AIClientError):
                 import threading
                 self.after(0, lambda e=exc: self._show_ai_error_dialog(
-                    str(e), retry_cb=lambda: threading.Thread(target=self._label_clusters_worker, daemon=True).start()))
+                    str(e), retry_cb=lambda: _ThreadDaTela(target=self._label_clusters_worker, daemon=True).start()))
             else:
                 self.after(0, lambda e=exc: messagebox.showerror("Erro IA", f"Erro ao nomear clusters com IA:\n{e}"))
 
@@ -7017,7 +7165,7 @@ class BlicsaApp(ctk.CTk):
                     self.after(0, self._escrever_estatisticas, linhas)
                 except RuntimeError:
                     pass
-        threading.Thread(target=worker, name="stats_worker", daemon=True).start()
+        _ThreadDaTela(target=worker, name="stats_worker", daemon=True).start()
 
     def _escrever_estatisticas(self, lines):
         if lines is None:
@@ -7367,7 +7515,7 @@ class BlicsaApp(ctk.CTk):
                     self._gallery_chat_history.see("end")
                     self._gallery_chat_history.configure(state="disabled")
                 self.after(0, update_ui)
-            threading.Thread(target=worker, daemon=True).start()
+            _ThreadDaTela(target=worker, daemon=True).start()
             
         self._gallery_chat_input.bind("<Return>", send_chat)
         ctk.CTkButton(input_f, text="➤", width=36, height=36, fg_color=RED, hover_color=RED_HOVER, corner_radius=0, command=send_chat).grid(row=0, column=1)
@@ -7439,76 +7587,412 @@ class BlicsaApp(ctk.CTk):
 
     
     def _download_oa_pdfs(self):
+        """Janela "Baixar PDFs de acesso aberto" (lógica em core/pdf_download.py).
+
+        O botão antigo só olhava registros marcados como acesso aberto (corpus do Scopus e
+        do WoS nunca têm essa marca), gravava a página do editor como `.pdf` contando como
+        sucesso, não deixava escolher a pasta nem cancelar.
+        """
         if self._dataframe is None or self._dataframe.empty:
+            messagebox.showinfo(t("pdfs.titulo"), t("pdfs.sem_corpus"))
             return
-            
-        oa_records = self._dataframe[self._dataframe.get("is_oa", False) == True].to_dict('records')
-        if not oa_records:
-            messagebox.showinfo("PDFs", "Nenhum documento Open Access encontrado no corpus.")
+        if getattr(self, "_pdf_janela", None) is not None and self._pdf_janela.winfo_exists():
+            self._pdf_janela.focus()
             return
-            
-        import threading
-        import urllib.request
-        import urllib.error
-        import os
-        import re
-        
-        # Determine project name for folder
-        proj_name = "Projeto_Sem_Nome"
-        if getattr(self, "_current_tab_key", "") == "projects":
-            # Can't reliably get current from tab, fallback to a timestamp or default
-            pass
-            
-        import time
-        proj_name = f"projeto_{int(time.time())}"
-        out_dir = os.path.expanduser(f"~/Blicsa/pdfs/{proj_name}")
-        os.makedirs(out_dir, exist_ok=True)
-        
-        self._pdf_cancel_event = threading.Event()
-        
-        def slugify(value):
-            value = str(value).lower().strip()
-            value = re.sub(r'[^\w\s-]', '', value)
-            value = re.sub(r'[-\s]+', '-', value)
-            return value[:50]
-            
-        def worker():
-            downloaded = 0
-            failed = 0
-            
-            for i, r in enumerate(oa_records):
-                if self._pdf_cancel_event.is_set():
-                    break
-                    
-                self.after(0, self._set_busy, f"Baixando PDF {i+1}/{len(oa_records)}...")
-                
-                url = r.get("oa_url")
-                if not url:
-                    failed += 1
-                    continue
-                    
-                authors = str(r.get("authors", "Autor"))
-                first_author = authors.split(";")[0].split(",")[0].strip()
-                first_author = slugify(first_author)
-                
-                year = str(r.get("year", "0000"))
-                title = slugify(r.get("title", "Sem titulo"))
-                
-                filename = f"{first_author}_{year}_{title}.pdf"
-                filepath = os.path.join(out_dir, filename)
-                
+        from core import pdf_download as PD
+
+        registros = self._dataframe.to_dict("records")
+        import time as _tempo
+        slug = getattr(self, "_active_project", None) or _tempo.strftime("corpus-%Y-%m-%d")
+        pasta = {"v": os.path.join(os.path.expanduser("~"), "Blicsa", "pdfs", str(slug))}
+
+        dlg = ctk.CTkToplevel(self)
+        self._pdf_janela = dlg
+        dlg.title(t("pdfs.titulo"))
+        dlg.geometry("560x420")
+        dlg.configure(fg_color=PAPER)
+        self._janela_secundaria(dlg)
+
+        ctk.CTkLabel(dlg, text=t("pdfs.titulo"), font=ctk.CTkFont(size=17, weight="bold"),
+                     text_color=INK).pack(anchor="w", padx=24, pady=(20, 4))
+        ctk.CTkLabel(dlg, text=t("pdfs.explicacao", n=len(registros)), wraplength=510,
+                     justify="left", text_color=MUTED, font=ctk.CTkFont(size=12)
+                     ).pack(anchor="w", padx=24, pady=(0, 12))
+
+        linha = ctk.CTkFrame(dlg, fg_color="transparent")
+        linha.pack(fill="x", padx=24, pady=(0, 10))
+        lbl_pasta = ctk.CTkLabel(linha, text=pasta["v"], anchor="w", justify="left",
+                                 wraplength=380, text_color=INK, font=ctk.CTkFont(size=12))
+        lbl_pasta.pack(side="left", fill="x", expand=True)
+
+        def escolher():
+            from tkinter import filedialog
+            os.makedirs(os.path.dirname(pasta["v"]), exist_ok=True)
+            novo = filedialog.askdirectory(parent=dlg, initialdir=os.path.dirname(pasta["v"]),
+                                           title=t("pdfs.escolher_pasta"))
+            if novo:
+                pasta["v"] = novo
+                lbl_pasta.configure(text=novo)
+        btn_pasta = ctk.CTkButton(linha, text=t("pdfs.escolher_pasta"), command=escolher,
+                                  height=30, corner_radius=0, fg_color=WHITE_CARD,
+                                  hover_color=PAPER, text_color=INK, border_width=2,
+                                  border_color=INK, font=ctk.CTkFont(size=12, weight="bold"))
+        btn_pasta.pack(side="right")
+
+        barra = ctk.CTkProgressBar(dlg, corner_radius=0, progress_color=BLUE, height=10)
+        barra.set(0)
+        barra.pack(fill="x", padx=24, pady=(6, 8))
+        lbl_status = ctk.CTkLabel(dlg, text="", justify="left", anchor="w", wraplength=510,
+                                  text_color=INK, font=ctk.CTkFont(size=12))
+        lbl_status.pack(fill="x", padx=24)
+
+        botoes = ctk.CTkFrame(dlg, fg_color="transparent")
+        botoes.pack(side="bottom", fill="x", padx=24, pady=18)
+        cancelar = threading.Event()
+        estado = {"rodando": False, "resumo": None}
+
+        def texto_contagem(c, feitos, total):
+            return t("pdfs.progresso", feitos=feitos, total=total, baixados=c[PD.BAIXADO],
+                     ja=c[PD.JA_EXISTIA], fechados=c[PD.SEM_ACESSO_ABERTO],
+                     pagina=c[PD.SO_PAGINA], falhas=c[PD.FALHOU] + c[PD.SEM_IDENTIFICADOR])
+
+        def ao_progresso(feitos, total, resumo):
+            c = resumo.contagem()
+            def ui():
+                if dlg.winfo_exists():
+                    barra.set(feitos / max(1, total))
+                    lbl_status.configure(text=texto_contagem(c, feitos, total))
+            self.after(0, ui)
+
+        def abrir(caminho):
+            import subprocess
+            try:
+                if sys.platform == "darwin":
+                    subprocess.Popen(["open", caminho])
+                elif os.name == "nt":
+                    os.startfile(caminho)  # type: ignore[attr-defined]
+                else:
+                    subprocess.Popen(["xdg-open", caminho])
+            except Exception as exc:
+                messagebox.showerror(t("pdfs.titulo"), str(exc), parent=dlg)
+
+        def terminou(resumo, erro=None):
+            estado["rodando"] = False
+            if not dlg.winfo_exists():
+                return
+            btn_iniciar.pack_forget()
+            btn_cancelar.pack_forget()
+            if erro:
+                lbl_status.configure(text=t("pdfs.erro", erro=_mensagem_para_usuario(erro, t("pdfs.erro_generico"))),
+                                     text_color=RED)
+                return
+            c = resumo.contagem()
+            barra.set(1)
+            txt = texto_contagem(c, resumo.total, resumo.total)
+            if c[PD.CANCELADO]:
+                txt += "\n" + t("pdfs.cancelado", n=c[PD.CANCELADO])
+            txt += "\n\n" + t("pdfs.relatorio_explica")
+            lbl_status.configure(text=txt)
+            self._btn(botoes, t("pdfs.abrir_pasta"), lambda: abrir(resumo.pasta), height=36,
+                      color=BLUE, hover=BLUE_HOV, corner_radius=0).pack(side="left")
+            self._btn(botoes, t("pdfs.abrir_relatorio"), lambda: abrir(resumo.relatorio),
+                      height=36, color=INK, hover=INK_HOV, corner_radius=0
+                      ).pack(side="left", padx=8)
+            try:
+                self._backlog("pdfs", {"pasta": resumo.pasta, **c})
+            except Exception:
+                pass
+            log.info(f"[PDFs] {txt}\n")
+
+        def iniciar():
+            if estado["rodando"]:
+                return
+            try:
+                os.makedirs(pasta["v"], exist_ok=True)
+                teste = os.path.join(pasta["v"], ".blicsa_teste_escrita")
+                open(teste, "w").close()
+                os.remove(teste)
+            except OSError as exc:
+                messagebox.showerror(t("pdfs.titulo"), t("pdfs.pasta_sem_permissao",
+                                     pasta=pasta["v"], erro=exc), parent=dlg)
+                return
+            estado["rodando"] = True
+            btn_iniciar.configure(state="disabled")
+            btn_pasta.configure(state="disabled")
+            btn_cancelar.pack(side="right")
+            lbl_status.configure(text=t("pdfs.procurando"))
+
+            def worker():
                 try:
-                    req = urllib.request.Request(url, headers={'User-Agent': 'Mozilla/5.0'})
-                    with urllib.request.urlopen(req, timeout=10) as response, open(filepath, 'wb') as out_file:
-                        out_file.write(response.read())
-                    downloaded += 1
+                    resumo = PD.baixar_corpus(registros, pasta["v"], cancelar=cancelar,
+                                              ao_progresso=ao_progresso)
+                    self.after(0, lambda: terminou(resumo))
+                except Exception as exc:
+                    log.exception("[PDFs] falha geral")
+                    self.after(0, lambda e=exc: terminou(None, e))
+            _ThreadDaTela(target=worker, daemon=True, name="pdf_worker").start()
+
+        def cancelar_click():
+            cancelar.set()
+            btn_cancelar.configure(state="disabled", text=t("pdfs.cancelando"))
+
+        def fechar():
+            cancelar.set()
+            self._pdf_janela = None
+            dlg.destroy()
+        dlg.protocol("WM_DELETE_WINDOW", fechar)
+
+        btn_iniciar = self._btn(botoes, t("pdfs.iniciar"), iniciar, height=36,
+                                corner_radius=0)
+        btn_iniciar.pack(side="left")
+        btn_cancelar = self._btn(botoes, t("pdfs.cancelar"), cancelar_click, height=36,
+                                 color=INK, hover=INK_HOV, corner_radius=0)
+        self._pdf_iniciar = iniciar          # usado pelos testes
+
+    # ── Explorar a partir de um artigo ───────────────────────────────────────────────
+    def _html_mapa_autocontido(self, G, positions, destino: str) -> str:
+        """HTML do mapa Sigma com dados, bibliotecas e textos embutidos (abre sem servidor)."""
+        import tempfile
+        from core.sigma_exporter import export_sigma_json, inline_graph_data
+        from core.i18n import get_map_i18n
+        with tempfile.NamedTemporaryFile("w+", delete=False, suffix=".json",
+                                         encoding="utf-8") as tmp:
+            caminho_json = tmp.name
+        try:
+            export_sigma_json(G, positions, caminho_json)
+            graph_json = open(caminho_json, encoding="utf-8").read()
+        finally:
+            os.remove(caminho_json)
+        assets = OUTPUT_DIR / "assets"
+        template = (assets / "map_template.html").read_text(encoding="utf-8")
+        map_js = inline_graph_data((assets / "map.js").read_text(encoding="utf-8"), graph_json)
+        vendor = (assets / "vendor" / "blicsa-vendor.min.js").read_text(encoding="utf-8")
+        i18n_json = json.dumps(get_map_i18n(), ensure_ascii=False)
+        template = template.replace('<script src="vendor/blicsa-vendor.min.js"></script>',
+                                    f"<script>\n{vendor}\n</script>")
+        template = template.replace('<script src="map.js"></script>',
+                                    f"<script>\nwindow.BLICSA_I18N = {i18n_json};\n{map_js}\n</script>")
+        os.makedirs(os.path.dirname(destino), exist_ok=True)
+        with open(destino, "w", encoding="utf-8") as f:
+            f.write(template)
+        return destino
+
+    def _abrir_explorar(self):
+        """Janela "Explorar a partir de um artigo" (lógica em core/artigos_conectados.py)."""
+        if getattr(self, "_explorar_janela", None) is not None and self._explorar_janela.winfo_exists():
+            self._explorar_janela.focus()
+            return
+        from core import artigos_conectados as AC
+
+        dlg = ctk.CTkToplevel(self)
+        self._explorar_janela = dlg
+        dlg.title(t("explorar.titulo"))
+        dlg.geometry("780x680")
+        dlg.configure(fg_color=PAPER)
+        self._janela_secundaria(dlg)
+
+        ctk.CTkLabel(dlg, text=t("explorar.titulo"), font=ctk.CTkFont(size=17, weight="bold"),
+                     text_color=INK).pack(anchor="w", padx=24, pady=(18, 4))
+        ctk.CTkLabel(dlg, text=t("explorar.explicacao"), wraplength=730, justify="left",
+                     text_color=MUTED, font=ctk.CTkFont(size=12)).pack(anchor="w", padx=24)
+        entrada = ctk.CTkTextbox(dlg, height=64, corner_radius=0, fg_color=WHITE_CARD,
+                                 text_color=INK, border_width=2, border_color=INK)
+        entrada.pack(fill="x", padx=24, pady=(10, 6))
+
+        linha = ctk.CTkFrame(dlg, fg_color="transparent")
+        linha.pack(fill="x", padx=24)
+        ctk.CTkLabel(linha, text=t("explorar.quantos"), text_color=INK,
+                     font=ctk.CTkFont(size=12)).pack(side="left")
+        qtd = ctk.CTkEntry(linha, width=56, corner_radius=0, fg_color=WHITE_CARD, text_color=INK)
+        qtd.insert(0, str(AC.N_PADRAO))
+        qtd.pack(side="left", padx=(6, 16))
+        status = ctk.CTkLabel(dlg, text="", text_color=INK, anchor="w", justify="left",
+                              wraplength=730, font=ctk.CTkFont(size=12))
+        cancelar = threading.Event()
+        estado = {"ex": None, "rodando": False, "marcas": {}}
+
+        resultado = ctk.CTkTabview(dlg, corner_radius=0, fg_color=WHITE_CARD,
+                                   segmented_button_selected_color=RED,
+                                   segmented_button_selected_hover_color=RED_HOV,
+                                   segmented_button_unselected_color=CARD2_BG,
+                                   text_color=INK)
+        acoes = ctk.CTkFrame(dlg, fg_color="transparent")
+
+        def preencher(ex):
+            estado["ex"] = ex
+            estado["marcas"] = {}
+            for nome in list(resultado._tab_dict.keys()) if hasattr(resultado, "_tab_dict") else []:
+                resultado.delete(nome)
+            grupos = [
+                (t("explorar.aba_grafo", n=len(ex.grafo)),
+                 sorted(ex.grafo.nodes, key=lambda i: -ex.semelhanca.get(i, 99 if ex.grafo.nodes[i].get("semente") else 0)),
+                 lambda i: t("explorar.semente") if ex.grafo.nodes[i].get("semente") else ""),
+                (t("explorar.aba_anteriores", n=len(ex.anteriores)), [i for i, _ in ex.anteriores],
+                 lambda i, d=dict(ex.anteriores): t("explorar.citado_por_n", n=d[i])),
+                (t("explorar.aba_derivadas", n=len(ex.derivadas)), [i for i, _ in ex.derivadas],
+                 lambda i, d=dict(ex.derivadas): t("explorar.cita_n", n=d[i])),
+            ]
+            for nome, ids, extra in grupos:
+                aba = resultado.add(nome)
+                lista = ctk.CTkScrollableFrame(aba, corner_radius=0, fg_color=WHITE_CARD)
+                lista.pack(fill="both", expand=True)
+                for i in ids:
+                    w = ex.obras.get(i)
+                    if not w:
+                        continue
+                    var = ctk.BooleanVar(value=False)
+                    estado["marcas"][i] = var
+                    titulo = str(w.get("title") or w.get("display_name") or "")
+                    txt = (f"{AC.rotulo(w)} · {titulo[:90]}"
+                           f" · {int(w.get('cited_by_count') or 0)} {t('explorar.citacoes')}")
+                    if extra(i):
+                        txt += f" · {extra(i)}"
+                    ctk.CTkCheckBox(lista, text=txt, variable=var, corner_radius=0,
+                                    border_width=2, fg_color=BLUE, hover_color=BLUE_HOV,
+                                    text_color=INK, font=ctk.CTkFont(size=12)
+                                    ).pack(anchor="w", pady=2, padx=4)
+            resultado.pack(fill="both", expand=True, padx=24, pady=(8, 4))
+            acoes.pack(fill="x", padx=24, pady=(4, 16))
+
+        def abrir_mapa():
+            ex = estado["ex"]
+            if not ex:
+                return
+            from core.visualizer import compute_fa2_layout
+            pos = compute_fa2_layout(ex.grafo, iterations=300)
+            import time as _time
+            destino = str(Path(REPORTS_DIR) / f"blicsa_explorar_{int(_time.time())}.html")
+            self._html_mapa_autocontido(ex.grafo, pos, destino)
+            try:
+                self._record_export("html", destino, action="explorar")
+            except Exception:
+                pass
+            if not getattr(self, "_demo_no_browser", False):
+                import webbrowser
+                webbrowser.open(Path(destino).as_uri())
+            status.configure(text=t("explorar.mapa_salvo", caminho=destino))
+
+        def marcar_todos():
+            for v in estado["marcas"].values():
+                v.set(True)
+
+        def adicionar():
+            ex = estado["ex"]
+            ids = [i for i, v in estado["marcas"].items() if v.get()]
+            if not ex or not ids:
+                messagebox.showinfo(t("explorar.titulo"), t("explorar.nada_marcado"), parent=dlg)
+                return
+            from core.project import normalize_dataframe
+            novos = AC.para_registros(ex, ids)
+            ja = set()
+            if self._dataframe is not None and not self._dataframe.empty:
+                for col in ("doi", "openalex_id"):
+                    if col in self._dataframe.columns:
+                        ja |= {str(v).lower().replace("https://doi.org/", "").strip()
+                               for v in self._dataframe[col].dropna() if str(v).strip()}
+            def chave(r):
+                return {str(r.get("doi") or "").lower().replace("https://doi.org/", "").strip(),
+                        str(r.get("openalex_id") or "").lower().strip()} - {""}
+            entram = [r for r in novos if not (chave(r) & ja)]
+            repetidos = len(novos) - len(entram)
+            if entram:
+                df_novo = normalize_dataframe(pd.DataFrame(entram))
+                base = self._dataframe if self._dataframe is not None else None
+                self._dataframe = (df_novo if base is None or base.empty else
+                                   pd.concat([base, df_novo], ignore_index=True))
+                self._refresh_candidate_counts()
+                try:
+                    self._update_stats_tab()
                 except Exception:
-                    failed += 1
-                    
-            self.after(0, self._set_idle, f"PDFs baixados. {downloaded} sucessos, {failed} falhas.")
-            self.after(0, lambda: messagebox.showinfo("Download Concluído", f"{downloaded} baixados, {failed} falhas.\n\nSalvos em:\n{out_dir}"))
-            
-        threading.Thread(target=worker, daemon=True).start()
+                    pass
+                self._backlog("explorar", {"sementes": ex.sementes, "adicionados": len(entram),
+                                           "ja_estavam": repetidos})
+            messagebox.showinfo(t("explorar.titulo"), t("explorar.adicionados",
+                                n=len(entram), repetidos=repetidos,
+                                total=0 if self._dataframe is None else len(self._dataframe)),
+                                parent=dlg)
+
+        def terminou(ex=None, erro=None):
+            estado["rodando"] = False
+            if not dlg.winfo_exists():
+                return
+            btn_explorar.configure(state="normal")
+            btn_cancelar.pack_forget()
+            if erro is not None:
+                if isinstance(erro, InterruptedError):
+                    status.configure(text=t("explorar.cancelado"), text_color=INK)
+                elif isinstance(erro, AC.ErroExplorar):
+                    status.configure(text=t(f"explorar.erro_{erro}"), text_color=RED)
+                else:
+                    status.configure(text=t("explorar.erro_rede", erro=_mensagem_para_usuario(
+                        erro, t("explorar.erro_generico"))), text_color=RED)
+                return
+            msg = t("explorar.pronto", n=len(ex.grafo) - len(ex.sementes),
+                    sementes=len(ex.sementes), pedidos=ex.pedidos)
+            for a in ex.avisos:
+                if a.startswith("nao_achados:"):
+                    msg += "\n" + t("explorar.nao_achados", lista=a.split(":", 1)[1])
+            status.configure(text=msg, text_color=INK)
+            preencher(ex)
+            log.info(f"[Explorar] {msg}\n")
+            self._backlog("explorar", {"sementes": ex.sementes, "nos": len(ex.grafo),
+                                       "anteriores": len(ex.anteriores),
+                                       "derivadas": len(ex.derivadas)})
+
+        def explorar():
+            if estado["rodando"]:
+                return
+            texto = entrada.get("1.0", "end").strip()
+            try:
+                n = max(5, min(100, int(qtd.get().strip() or AC.N_PADRAO)))
+            except ValueError:
+                n = AC.N_PADRAO
+            if not AC.interpretar_entrada(texto):
+                status.configure(text=t("explorar.erro_sem_entrada"), text_color=RED)
+                return
+            estado["rodando"] = True
+            cancelar.clear()
+            btn_explorar.configure(state="disabled")
+            btn_cancelar.pack(side="left", padx=8)
+            status.configure(text=t("explorar.etapa.sementes"), text_color=INK)
+
+            def progresso(etapa):
+                self.after(0, lambda: dlg.winfo_exists() and status.configure(
+                    text=t(f"explorar.etapa.{etapa}")))
+
+            def worker():
+                try:
+                    obter, mailto = AC.obter_padrao()
+                    ex = AC.explorar(texto, obter, mailto=mailto, n=n, cancelar=cancelar,
+                                     ao_progresso=progresso)
+                    self.after(0, lambda: terminou(ex))
+                except BaseException as exc:      # noqa: BLE001 — vira mensagem na janela
+                    if not isinstance(exc, (InterruptedError, AC.ErroExplorar)):
+                        log.exception("[Explorar] falha")
+                    self.after(0, lambda e=exc: terminou(erro=e))
+            _ThreadDaTela(target=worker, daemon=True, name="explorar_worker").start()
+
+        btn_explorar = self._btn(linha, t("explorar.iniciar"), explorar, height=32, corner_radius=0)
+        btn_explorar.pack(side="left")
+        btn_cancelar = self._btn(linha, t("pdfs.cancelar"), cancelar.set, height=32,
+                                 color=INK, hover=INK_HOV, corner_radius=0)
+        status.pack(fill="x", padx=24, pady=(8, 0))
+        self._btn(acoes, t("explorar.abrir_mapa"), abrir_mapa, height=34, color=BLUE,
+                  hover=BLUE_HOV, corner_radius=0).pack(side="left")
+        self._btn(acoes, t("explorar.marcar_todos"), marcar_todos, height=34, color=INK,
+                  hover=INK_HOV, corner_radius=0).pack(side="left", padx=8)
+        self._btn(acoes, t("explorar.adicionar"), adicionar, height=34,
+                  corner_radius=0).pack(side="right")
+
+        def fechar():
+            cancelar.set()
+            self._explorar_janela = None
+            dlg.destroy()
+        dlg.protocol("WM_DELETE_WINDOW", fechar)
+        # ganchos para os testes
+        self._explorar_api = {"entrada": entrada, "explorar": explorar, "adicionar": adicionar,
+                              "abrir_mapa": abrir_mapa, "estado": estado, "status": status,
+                              "marcar_todos": marcar_todos}
 
     def _build_tab_corpus(self) -> ctk.CTkFrame:
         self._corpus_tab_frame = self._tab()
@@ -7556,7 +8040,7 @@ class BlicsaApp(ctk.CTk):
         btns_f.grid(row=0, column=2, rowspan=2, sticky="e")
         self._btn(btns_f, t("dedup.button"), self._run_dedup, height=40, color=INK, hover=INK_HOV).pack(side="left", padx=(0, 10))
         self._btn(btns_f, "Análise IA do Corpus", self._trigger_corpus_ai_insights, height=40, color=YELLOW, hover=YELLOW_HOV).pack(side="left", padx=(0, 10))
-        self._btn(btns_f, "Baixar PDFs abertos", self._download_oa_pdfs, height=40, color="#1E4DA0").pack(side="left", padx=(0, 10))
+        self._btn(btns_f, t("pdfs.botao"), self._download_oa_pdfs, height=40, color="#1E4DA0").pack(side="left", padx=(0, 10))
         self._btn(btns_f, "Ir para Análises", lambda: self._switch_tab("analises"), height=40, color=RED).pack(side="left")
         
         # Main content

@@ -415,3 +415,50 @@ def test_importacao_nao_mexe_em_widget_fora_da_thread_da_interface(app, monkeypa
     app.mainloop()
     assert not fora
     assert app._corpus_badge.cget("text").startswith("10 ")
+
+
+def test_tipos_de_mapa_agrupados_por_pergunta(app):
+    import main as M
+    valores = app._tipo_combo.cget("values")
+    assert valores[0] == "SOBRE O QUE SE ESCREVE?"
+    assert [v for v in valores if v in M.MAP_TYPES] == M.MAP_TYPES   # mesmos 7, mesma ordem
+    app._map_type_var.set(M.MAP_TYPES[2])
+    app._ao_escolher_tipo_de_mapa(M.MAP_TYPES[2])
+    assert "citadas juntas" in app._desc_tipo_lbl.cget("text")
+    # clicar num título de grupo não troca o tipo
+    app._map_type_var.set("QUEM ESCREVE COM QUEM?")
+    app._ao_escolher_tipo_de_mapa("QUEM ESCREVE COM QUEM?")
+    assert app._map_type_var.get() == M.MAP_TYPES[2]
+    # projeto aberto muda o tipo por fora do seletor: o título também volta a ele
+    app._map_type_var.set(M.MAP_TYPES[1])
+    app._map_type_var.set("EM QUE O CAMPO SE APOIA?")
+    app._ao_escolher_tipo_de_mapa("EM QUE O CAMPO SE APOIA?")
+    assert app._map_type_var.get() == M.MAP_TYPES[1]
+
+
+def test_lixo_de_janela_fechada_nao_e_coletado_na_thread_de_trabalho(app):
+    """Tk abortava o programa ("Tcl_AsyncDelete") quando a coleta automática do Python apagava
+    variáveis/imagens de uma janela fechada dentro de uma thread de trabalho."""
+    import gc
+    import sys
+    import threading
+    import tkinter as tk
+    import main as M
+    fora = []
+    original = sys.unraisablehook
+    sys.unraisablehook = lambda u: fora.append(str(u.exc_value))
+    try:
+        gc.disable()                                  # só a coleta que provocarmos conta
+        top = tk.Toplevel(app)
+        for _ in range(20):
+            v = tk.StringVar(top, value="x")
+            v.ciclo = v                               # ciclo: só a coleta de lixo o desfaz
+        top.destroy()
+        del top, v
+        th = M._ThreadDaTela(target=gc.collect, daemon=True)   # coleta DENTRO da thread
+        th.start()
+        th.join(5)
+    finally:
+        gc.enable()
+        sys.unraisablehook = original
+    assert not [e for e in fora if "main thread is not in main loop" in e], fora

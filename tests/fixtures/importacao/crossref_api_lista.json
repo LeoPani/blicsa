@@ -1,0 +1,49 @@
+{
+  "status": "ok",
+  "message-type": "work-list",
+  "message-version": "1.0.0",
+  "message": {
+    "facets": {},
+    "total-results": 2,
+    "items": [
+      {
+        "indexed": {"date-parts": [[2026, 9, 1]]},
+        "reference-count": 3,
+        "publisher": "Elsevier BV",
+        "license": [{"URL": "https://www.elsevier.com/tdm/userlicense/1.0/", "content-version": "tdm"}],
+        "DOI": "10.1016/j.jbusres.2021.04.070",
+        "type": "journal-article",
+        "title": ["How to conduct a bibliometric analysis: An overview and guidelines"],
+        "container-title": ["Journal of Business Research"],
+        "author": [
+          {"given": "Naveen", "family": "Donthu", "sequence": "first", "affiliation": []},
+          {"given": "Satish", "family": "Kumar", "sequence": "additional", "affiliation": []},
+          {"name": "Bibliometrics Working Group", "sequence": "additional", "affiliation": []}
+        ],
+        "abstract": "<jats:title>Abstract</jats:title><jats:p>Bibliometric analysis is a popular and rigorous method.</jats:p>",
+        "is-referenced-by-count": 3105,
+        "issued": {"date-parts": [[2021, 9]]},
+        "subject": ["Marketing"],
+        "reference": [
+          {"key": "ref1", "doi-asserted-by": "publisher", "DOI": "10.1016/j.joi.2017.08.007"},
+          {"key": "ref2", "unstructured": "Small H. Co-citation in the scientific literature. 1973."},
+          {"key": "ref3", "DOI": "10.1177/1094428114562629"}
+        ],
+        "language": "en"
+      },
+      {
+        "DOI": "10.1590/0034-761220250001",
+        "type": "journal-article",
+        "title": ["Catadores e economia circular"],
+        "container-title": [],
+        "author": [{"given": "João", "family": "Gonçalves", "sequence": "first", "affiliation": []}],
+        "is-referenced-by-count": 0,
+        "issued": {"date-parts": [[null]]},
+        "reference": [{"key": "r1", "DOI": "10.1016/j.joi.2017.08.007"}],
+        "license": [{"URL": "https://creativecommons.org/licenses/by/4.0/"}]
+      }
+    ],
+    "items-per-page": 20,
+    "query": {"start-index": 0, "search-terms": null}
+  }
+}

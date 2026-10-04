@@ -1,5 +1,10 @@
 # Prompt — Mapas, camada 3 (rodar no Claude Code, no terminal do Mac)
 
+> **Situação (04/10, beta.4): feito.** Os três itens foram implementados direto na beta.4
+> (`openalex_id` no schema e "Completar códigos do OpenAlex"; rótulos "Sobrenome (ano)" em
+> `core/rotulos_referencias.py`; tipos agrupados por pergunta). O que falta é só a verificação
+> ao vivo com internet (critério 4 abaixo). Prompt mantido como registro.
+
 Uso: `cd ~/PyBibliomics && claude` e cole tudo abaixo da linha.
 
 ---

@@ -36,19 +36,19 @@ def projeto_completo():
          "abstract": "Resumo com acentuação e ponto e vírgula; segunda parte.",
          "citations": 142, "doi": "10.1234/abc.2019/xyz", "references": "W1; W2; W3",
          "origin": "OpenAlex", "language": "pt", "is_oa": True,
-         "oa_url": "https://exemplo.org/a.pdf"},
+         "oa_url": "https://exemplo.org/a.pdf", "openalex_id": "https://openalex.org/W111"},
         {"authors": "Pereira C", "title": "Co-word analysis in regional studies",
          "year": 2021, "source": "Journal of Scientometrics", "keywords": "co-word; clusters",
          "document_type": "review",
          "abstract": "", "citations": 0, "doi": "10.5678/def",
          "references": "", "origin": "Crossref", "language": "en", "is_oa": False,
-         "oa_url": ""},
+         "oa_url": "", "openalex_id": ""},
         {"authors": "Nakamura T; Öztürk M", "title": "Bibliometrics of emerging fields",
          "year": 2024, "source": "Scientometrics", "keywords": "bibliometrics",
          "document_type": "conference-paper",
          "abstract": "Third abstract.", "citations": 7, "doi": "10.9999/ghi",
          "references": "W9", "origin": "PubMed", "language": "en", "is_oa": True,
-         "oa_url": "https://exemplo.org/c.pdf"},
+         "oa_url": "https://exemplo.org/c.pdf", "openalex_id": "https://openalex.org/W333"},
     ])
 
     G = nx.Graph()
@@ -225,7 +225,7 @@ def test_arquivo_contem_todas_as_entradas_esperadas(tmp_path, projeto_completo):
             "network.json", "clusters.json", "searches.json"} <= entradas, entradas
 
 
-def test_dataset_gravado_tem_as_14_colunas_no_disco(tmp_path, projeto_completo):
+def test_dataset_gravado_tem_todas_as_colunas_no_disco(tmp_path, projeto_completo):
     """Olha o BYTE gravado, não o objeto recarregado: se a normalização da carga estivesse
     mascarando uma perda na gravação, este é o teste que veria."""
     destino, _ = _salva_e_recarrega(tmp_path, projeto_completo)

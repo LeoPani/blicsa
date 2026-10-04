@@ -1,0 +1,85 @@
+PMID- 32000001
+OWN - NLM
+STAT- MEDLINE
+DCOM- 20200415
+LR  - 20240101
+IS  - 1474-547X (Electronic)
+IS  - 0140-6736 (Linking)
+VI  - 395
+IP  - 10223
+DP  - 2020 Feb 15
+TI  - Clinical features of patients infected with 2019 novel coronavirus in
+      Wuhan, China.
+PG  - 497-506
+LID - S0140-6736(20)30183-5 [pii]
+LID - 10.1016/S0140-6736(20)30183-5 [doi]
+AB  - BACKGROUND: A recent cluster of pneumonia cases in Wuhan, China, was caused by a
+      novel betacoronavirus. METHODS: We prospectively collected and analysed data on
+      patients with laboratory-confirmed infection.
+CI  - Copyright (c) 2020 Elsevier Ltd. All rights reserved.
+FAU - Huang, Chaolin
+AU  - Huang C
+AD  - Jin Yin-tan Hospital, Wuhan, China.
+FAU - Wang, Yeming
+AU  - Wang Y
+FAU - Li, Xingwang
+AU  - Li X
+LA  - eng
+PT  - Journal Article
+PT  - Research Support, Non-U.S. Gov't
+DEP - 20200124
+PL  - England
+TA  - Lancet
+JT  - Lancet (London, England)
+JID - 2985213R
+SB  - IM
+MH  - Adult
+MH  - *Betacoronavirus/genetics/isolation & purification
+MH  - China/epidemiology
+MH  - *Coronavirus Infections/diagnosis/epidemiology
+MH  - Humans
+OTO - NOTNLM
+OT  - pneumonia
+OT  - coronavirus
+EDAT- 2020/01/28 06:00
+PHST- 2020/01/20 00:00 [received]
+AID - S0140-6736(20)30183-5 [pii]
+AID - 10.1016/S0140-6736(20)30183-5 [doi]
+PST - ppublish
+SO  - Lancet. 2020 Feb 15;395(10223):497-506. doi: 10.1016/S0140-6736(20)30183-5. Epub
+      2020 Jan 24.
+
+PMID- 32000002
+OWN - NLM
+STAT- Publisher
+DP  - 2021
+TI  - Revisão sistemática: saúde pública e coleta seletiva no Brasil.
+LID - e2021001 [pii]
+AB  - Resumo em português com acentuação: avaliação e ação.
+FAU - Gonçalves, João
+AU  - Gonçalves J
+FAU - Müller, Hans
+AU  - Müller H
+LA  - por
+PT  - Journal Article
+PT  - Review
+TA  - Cad Saude Publica
+JT  - Cadernos de saude publica
+OT  - coleta seletiva
+OT  - saúde pública
+AID - 10.1590/0102-311X00000021 [doi]
+AID - e2021001 [pii]
+SO  - Cad Saude Publica. 2021;37:e2021001.
+
+PMID- 32000003
+OWN - NLM
+STAT- In-Data-Review
+DP  - 2022 Mar
+TI  - Article with no DOI, no keywords and no abstract.
+FAU - Smith, John
+AU  - Smith J
+LA  - eng
+PT  - Letter
+TA  - BMJ
+JT  - BMJ (Clinical research ed.)
+SO  - BMJ. 2022 Mar.

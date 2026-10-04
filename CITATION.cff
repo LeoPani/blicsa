@@ -14,7 +14,7 @@ contact:
   - family-names: "Paniago"
     given-names: "Leonardo Luiz Costa"
     email: "blicsa.app@gmail.com"
-version: "2.1.0-beta.3"
+version: "2.1.0-beta.4"
 date-released: "2026-09-25"
 license: MIT
 url: "https://github.com/LeoPani/blicsa"

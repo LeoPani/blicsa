@@ -581,9 +581,9 @@ def test_main_py_never_calls_browse_on_the_main_thread():
 
     def despachado(nome: str, corpo: str, profundidade: int = 2) -> bool:
         """A função roda fora da thread principal — dela mesma ou de quem a chama."""
-        if "threading.Thread" in corpo:
+        if "threading.Thread" in corpo or "_ThreadDaTela(" in corpo:
             return True
-        if re.search(rf'threading\.Thread\([^)]*target\s*=\s*(self\.)?{re.escape(nome)}\b', src):
+        if re.search(rf'(?:threading\.Thread|_ThreadDaTela)\([^)]*target\s*=\s*(self\.)?{re.escape(nome)}\b', src):
             return True
         if profundidade <= 0:
             return False

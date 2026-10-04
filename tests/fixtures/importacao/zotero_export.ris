@@ -1,0 +1,44 @@
+TY  - JOUR
+TI  - Software survey: VOSviewer, a computer program for bibliometric mapping
+AU  - van Eck, Nees Jan
+AU  - Waltman, Ludo
+T2  - Scientometrics
+AB  - We present VOSviewer, a freely available computer program that we have developed for constructing and viewing bibliometric maps.
+DA  - 2010/08//
+PY  - 2010
+DO  - 10.1007/s11192-009-0146-3
+DP  - DOI.org (Crossref)
+VL  - 84
+IS  - 2
+SP  - 523
+EP  - 538
+J2  - Scientometrics
+LA  - en
+SN  - 0138-9130, 1588-2861
+ST  - Software survey
+UR  - http://link.springer.com/10.1007/s11192-009-0146-3
+Y2  - 2026/09/01/
+KW  - Bibliometric mapping
+KW  - VOSviewer
+KW  - Science mapping
+ER  -
+
+TY  - CHAP
+TI  - Bibliometria no Brasil: um panorama
+AU  - García, María
+AU  - Conceição, Luís
+T2  - Métricas da ciência
+A2  - Pereira, Editor
+CY  - São Paulo
+DA  - 2020///
+PY  - 2020
+SP  - 10
+EP  - 30
+PB  - Editora Exemplo
+SN  - 978-85-0000-000-0
+ER  -
+
+TY  - RPRT
+TI  - Relatório técnico sem autor e sem data
+UR  - https://example.org/relatorio
+ER  -

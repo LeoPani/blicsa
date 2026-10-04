@@ -1,0 +1,8 @@
+TY  - JOUR
+AU  - Araújo, Inês
+TI  - Gestão pública e inovação
+JO  - Revista de Administração
+PY  - 2017
+KW  - gestão
+KW  - inovação
+ER  - 
