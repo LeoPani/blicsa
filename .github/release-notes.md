@@ -27,6 +27,11 @@ sha256sum -c SHA256SUMS.txt
 
 ## Novo nesta versão (beta.4)
 
+> **Antes de buscar, crie uma chave gratuita do OpenAlex** (openalex.org/settings/api) e cole na
+> aba **Credenciais**. Sem chave, o OpenAlex dá uma franquia diária pequena por conexão, que
+> acaba em poucas buscas grandes; com a chave gratuita ela é cerca de dez vezes maior. A
+> franquia zera à meia-noite UTC (21h em Brasília).
+
 - **Explorar a partir de um artigo** (aba Coletar): cole o DOI de um ou mais artigos-chave e o
   Blicsa monta, pelo OpenAlex, o grafo dos artigos mais parecidos com eles (acoplamento
   bibliográfico + cocitação), com as **obras anteriores** em que o grupo se apoia e as

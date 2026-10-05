@@ -35,6 +35,8 @@ import contextlib
 import json
 import threading
 import gc
+from core.tk_seguro import instalar as _instalar_tk_seguro
+_instalar_tk_seguro()   # finalizadores do Tk nunca chamam o Tk fora da thread da tela
 import webbrowser
 import tempfile
 from pathlib import Path

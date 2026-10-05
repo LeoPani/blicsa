@@ -462,3 +462,49 @@ def test_lixo_de_janela_fechada_nao_e_coletado_na_thread_de_trabalho(app):
         gc.enable()
         sys.unraisablehook = original
     assert not [e for e in fora if "main thread is not in main loop" in e], fora
+
+
+def test_fonte_e_variavel_apagadas_em_outra_thread_nao_travam(app, monkeypatch):
+    """Uma página da busca em paralelo ficou parada em `tkinter/font.py __del__`: a coleta de
+    lixo rodou na thread da busca e apagou uma fonte do Tk ali. Nenhum finalizador pode
+    chamar o Tk fora da thread da tela."""
+    import gc
+    import threading
+    import tkinter as tk
+    import tkinter.font as tkfont
+    chamadas_fora = []
+    original_call = app.tk.call
+
+    class Espiao:
+        def __getattr__(self, nome):
+            return getattr(app.tk, nome)
+
+        def call(self, *a):
+            if threading.current_thread() is not threading.main_thread():
+                chamadas_fora.append(a[:2])
+            return original_call(*a)
+    espiao = Espiao()
+    objs = [tkfont.Font(app, family="Helvetica", size=11), tk.StringVar(app, value="x"),
+            tk.PhotoImage(master=app, width=2, height=2)]
+    for o in objs:
+        o.tk = espiao                       # Variable/Image usam self._tk/self.tk
+        if hasattr(o, "_tk"):
+            o._tk = espiao
+        o.ciclo = o
+    objs[0]._call = espiao.call             # Font usa self._call
+    del o
+    gc.disable()
+    try:
+        caixa = {"objs": objs}
+        del objs
+
+        def apagar():
+            caixa.clear()
+            gc.collect()
+        th = threading.Thread(target=apagar, daemon=True)
+        th.start()
+        th.join(10)
+        assert not th.is_alive(), "o finalizador do Tk travou a thread de trabalho"
+    finally:
+        gc.enable()
+    assert not chamadas_fora, f"finalizador chamou o Tk fora da thread da tela: {chamadas_fora}"

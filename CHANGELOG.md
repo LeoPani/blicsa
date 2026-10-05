@@ -39,6 +39,7 @@ e importação revisada formato a formato. Detalhes em `docs/AUDITORIA-2026-09.m
 - Scopus: "[No author name available]" virava autor; "[No abstract available]" virava resumo.
 - OpenAlex JSON: autor sem nome derrubava o arquivo; referências e código do artigo eram ignorados.
 - Download de PDFs gravava a página do editor como `.pdf` e contava como sucesso.
+- Finalizadores do Tk (fontes, variáveis, imagens) não chamam mais o Tk fora da thread da tela: a coleta de lixo numa thread de busca ou de mapa podia travar a thread ou abortar o app (`Tcl_AsyncDelete`).
 
 ## [2.1.0-beta.3] - 2026-09-28
 
