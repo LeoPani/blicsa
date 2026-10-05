@@ -261,7 +261,11 @@ def test_medicao_dos_dois_eixos_e_origem(lang):
         root.update_idletasks()
 
         cabecalho = b.rotulo.master
-        largura_disponivel = cabecalho.winfo_width() or 860
+        # Janela ainda não desenhada mede 1 px (Tk 8.6 no Linux) ou 0 (macOS): nos dois
+        # casos vale a largura de projeto da barra.
+        largura_disponivel = cabecalho.winfo_width()
+        if largura_disponivel <= 1:
+            largura_disponivel = 860
         pedido = (b.rotulo.winfo_reqwidth() + b.indicador.winfo_reqwidth()
                   + b.contador.winfo_reqwidth() + 8)
         assert pedido <= largura_disponivel, (

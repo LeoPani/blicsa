@@ -2,6 +2,17 @@
 
 All notable changes to this project will be documented in this file.
 
+## [Não lançado]
+
+### Corrigido
+- Busca: um erro no meio do download refazia a busca inteira **sem os filtros** (sem Cancelar)
+  e somava os resultados aos já baixados. Agora os filtros são decididos pela assinatura do
+  provedor antes de buscar, e o erro aparece como erro.
+- Galeria: mapas salvos mostram "tipo de mapa · projeto" em vez de "Mapa 1791170373"
+  (arquivos antigos continuam com o nome de antes).
+- CI: dois testes comparavam valores do Tk que mudam de tipo entre versões (`transient()` e a
+  largura de janela ainda não desenhada); o CI no Linux volta a passar.
+
 ## [2.1.0-beta.4] - 2026-10-04
 
 Novidades pedidas para a apresentação: explorar a partir de um artigo, download de PDFs abertos

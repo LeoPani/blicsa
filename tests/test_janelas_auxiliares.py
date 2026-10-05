@@ -73,7 +73,7 @@ def test_a_janela_acompanha_a_principal(app, metodo):
     """`transient`: sobe e some junto com o Blicsa, e fica acima DELE — de mais nada."""
     dlg = _abrir(app, metodo)
     try:
-        assert dlg.transient() == str(app)
+        assert str(dlg.transient()) == str(app)
     finally:
         dlg.destroy()
 

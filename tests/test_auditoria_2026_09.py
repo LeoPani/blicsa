@@ -508,3 +508,14 @@ def test_fonte_e_variavel_apagadas_em_outra_thread_nao_travam(app, monkeypatch):
     finally:
         gc.enable()
     assert not chamadas_fora, f"finalizador chamou o Tk fora da thread da tela: {chamadas_fora}"
+
+
+def test_galeria_mostra_titulo_legivel(app, tmp_path, monkeypatch):
+    import main as M
+    monkeypatch.setattr(M, "REPORTS_DIR", tmp_path)
+    (tmp_path / "blicsa_mapa_1700000000.html").write_text("<html><head></head></html>", encoding="utf-8")
+    novo = tmp_path / "blicsa_mapa_1800000000.html"
+    novo.write_text("<html><head>\n" + M._meta_titulo('Coautoria · Projeto "A&B"') + "</head></html>",
+                    encoding="utf-8")
+    assert M.titulo_da_galeria(novo) == 'Coautoria · Projeto "A&B"'
+    assert M.titulo_da_galeria(tmp_path / "blicsa_mapa_1700000000.html") == "Mapa 1700000000"

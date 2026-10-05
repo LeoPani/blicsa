@@ -144,6 +144,27 @@ GRUPOS_TIPO_DE_MAPA = (("map.grupo.termos", (0,)),
                        ("map.grupo.outros", (5, 6)))
 
 
+def titulo_da_galeria(caminho) -> str:
+    """Título legível de um mapa salvo: a meta `blicsa-titulo` gravada no HTML; nos arquivos
+    antigos (sem a meta), o nome do arquivo como antes ("Mapa 1791170373")."""
+    import html as _html
+    import re as _re
+    try:
+        with open(caminho, encoding="utf-8", errors="replace") as f:
+            inicio = f.read(4096)
+        m = _re.search(r'<meta name="blicsa-titulo" content="([^"]*)"', inicio)
+        if m and m.group(1).strip():
+            return _html.unescape(m.group(1).strip())
+    except OSError:
+        pass
+    return Path(caminho).stem.replace("blicsa_", "").replace("_", " ").title()
+
+
+def _meta_titulo(titulo: str) -> str:
+    import html as _html
+    return f'<meta name="blicsa-titulo" content="{_html.escape(titulo, quote=True)}">'
+
+
 def valores_tipo_de_mapa() -> list[str]:
     valores = []
     for chave, indices in GRUPOS_TIPO_DE_MAPA:
@@ -2199,6 +2220,12 @@ class BlicsaApp(ctk.CTk):
                 f'<script>\nwindow.BLICSA_I18N = {i18n_json};\n{map_js}\n</script>')
 
             path = str(REPORTS_DIR / f"blicsa_mapa_{int(time.time())}.html")
+            # Título legível na galeria: tipo de mapa · projeto (antes: "Mapa 1791170373").
+            partes = [self._map_type_var.get()]
+            projeto = getattr(self, "_active_project_name", None) or getattr(self, "_active_project", None)
+            if projeto:
+                partes.append(str(projeto))
+            template = template.replace("<head>", "<head>\n" + _meta_titulo(" · ".join(partes)), 1)
             with open(path, "w", encoding="utf-8") as f:
                 f.write(template)
             self._record_export("html", path, action="map")
@@ -4200,8 +4227,27 @@ class BlicsaApp(ctk.CTk):
                     else:
                         self.after(0, self._set_busy, f"Baixando ({prov_name}): {current}/{total} (Total na base: {real_total})")
 
+                # Filtros só ficam de fora se o provedor não os declara — decidido pela
+                # assinatura, ANTES de buscar. Antes era `except TypeError`: qualquer
+                # TypeError no meio do download refazia a busca inteira SEM os filtros, sem
+                # o Cancelar, e somava esses resultados aos já baixados (resultado errado e
+                # silencioso). Hoje todos os provedores aceitam `filters`.
+                import inspect as _inspect
                 try:
-                    for r in prov.search(query=query, filters=filters, max_results=max_per_provider, progress_cb=progress, cancel_event=cancel_event):
+                    _params = _inspect.signature(prov.search).parameters
+                except (TypeError, ValueError):
+                    _params = {"filters": None, "cancel_event": None}
+                _kw = dict(query=query, max_results=max_per_provider, progress_cb=progress)
+                if "filters" in _params:
+                    _kw["filters"] = filters
+                elif filters:
+                    log.warning(f"[Busca] {prov_name} não aceita filtros; buscando sem eles")
+                if "cancel_event" in _params:
+                    _kw["cancel_event"] = cancel_event
+                try:
+                    for r in prov.search(**_kw):
+                        if cancel_event.is_set():
+                            break
                         records.append(r)
                         n = len(records)
                         if n == 1 or n % BATCH == 0:
@@ -4212,17 +4258,6 @@ class BlicsaApp(ctk.CTk):
                 except InterruptedError:
                     print(f"Busca em {prov_name} abortada pelo usuário.")
                     break
-                except TypeError:
-                    # Fallback if filters argument is not supported by the provider
-                    for r in prov.search(query=query, max_results=max_per_provider, progress_cb=progress):
-                        if cancel_event.is_set(): break
-                        records.append(r)
-                        n = len(records)
-                        if n == 1 or n % BATCH == 0:
-                            if not _first_batch[0]:
-                                log.info(f"[feed] primeiro lote em {_time.perf_counter() - _t_start:.1f}s")
-                                _first_batch[0] = True
-                            push_batch()
 
                 lang_filtered_total += getattr(prov, "language_filtered_count", 0)
                 # Total real da base mesmo quando o progress_cb não chegou a rodar
@@ -7552,7 +7587,7 @@ class BlicsaApp(ctk.CTk):
         for idx, fpath in enumerate(files):
             mtime = os.path.getmtime(fpath)
             date_str = time.strftime("%d/%m/%Y %H:%M", time.localtime(mtime))
-            name = fpath.stem.replace("blicsa_", "").replace("_", " ").title()
+            name = titulo_da_galeria(fpath)
             
             card = ctk.CTkFrame(self._gallery_scroll, fg_color=CARD_BG, border_width=1, border_color=INK, corner_radius=4)
             card.pack(fill="x", padx=10, pady=5)
@@ -7865,6 +7900,14 @@ class BlicsaApp(ctk.CTk):
             import time as _time
             destino = str(Path(REPORTS_DIR) / f"blicsa_explorar_{int(_time.time())}.html")
             self._html_mapa_autocontido(ex.grafo, pos, destino)
+            try:
+                semente = ex.obras.get(ex.sementes[0], {})
+                titulo = t("explorar.titulo") + " · " + AC.rotulo(semente)
+                conteudo = Path(destino).read_text(encoding="utf-8")
+                Path(destino).write_text(conteudo.replace("<head>", "<head>\n" + _meta_titulo(titulo), 1),
+                                         encoding="utf-8")
+            except Exception:
+                pass
             try:
                 self._record_export("html", destino, action="explorar")
             except Exception:

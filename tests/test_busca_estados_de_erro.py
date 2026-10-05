@@ -196,3 +196,27 @@ def test_as_mensagens_de_busca_sao_traduzidas_de_fato():
     copiadas = [c for c in _chaves_de_busca()
                 if len({catalogos[i][c] for i in IDIOMAS}) < 3]
     assert not copiadas, f"mensagens idênticas em dois ou mais catálogos: {copiadas}"
+
+
+def test_erro_no_meio_do_download_nao_refaz_a_busca_sem_filtros(app):
+    """Antes: qualquer TypeError no meio do download caía num `except TypeError` que refazia a
+    busca inteira SEM os filtros, sem Cancelar, e somava os resultados aos já baixados."""
+    import core.sources.openalex as oa
+    chamadas = []
+
+    def fake(self, query, filters=None, max_results=100, progress_cb=None, cancel_event=None):
+        chamadas.append(dict(filters or {}))
+        yield {"title": "Artigo 1", "authors": "A", "year": 2020, "doi": "10.1000/1"}
+        raise TypeError("campo inesperado na resposta da API")
+
+    app._vistos.clear()
+    original = oa.OpenAlexProvider.search
+    oa.OpenAlexProvider.search = fake
+    try:
+        app._search_worker("clima", "openalex", 50, {"year_start": 2020}, threading.Event())
+        for _ in range(20):
+            app.update()
+            time.sleep(0.05)
+    finally:
+        oa.OpenAlexProvider.search = original
+    assert chamadas == [{"year_start": 2020}], f"a busca foi refeita: {chamadas}"
