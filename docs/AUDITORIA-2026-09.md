@@ -214,3 +214,22 @@ Pedido: confiança nos imports e nas bases, download de PDFs, recursos do Connec
   OpenAlex". Matriz de 200 combinações nos 4 projetos reais: mesmo resultado da Parte 5
   (150 mapas, 45 avisos antes de clicar, 5 vazios com a causa certa), máximo de 5,9 s.
 - **Testes não acessam a internet**: `BLICSA_SEM_REDE=1` no `conftest.py`.
+
+## Parte 7 — verificação ao vivo no Mac do Leonardo (04/10, noite)
+
+A nuvem não alcança as APIs; a verificação rodou no Mac, com a internet dele, por
+`_ao_vivo/verificar.py` (aberto por um `.command` no Finder).
+
+- **Mapas, 8 projetos reais, 400 combinações** (7 tipos × 5 limiares, coocorrência em 4
+  campos), pelo código do app: 290 mapas, 105 avisos antes de calcular, 5 vazios com a causa
+  certa (corpus sem citações internas), **nenhuma exceção**. Mais lento: 17 s (cocitação,
+  6.098 registros). Cocitação com "Peffers et al. (2007)", "Hevner et al. (2004)"…
+- **Explorar**: sementes reais (PatentBERT e gestão do conhecimento), 41 nós em 8–9 s com 5–6
+  consultas. Obras anteriores coerentes (Nonaka 1994, Szulanski 1996, Huber 1991).
+- **PDFs**: amostra de 50 artigos reais: 26 baixados, todos PDF válido (`%PDF-`); o resto,
+  página do editor sem PDF, 403 do editor ou falha de rede, cada um com link no relatório.
+- **Busca**: o modo novo trouxe os mesmos IDs do jeito antigo; 3.000 resultados de 37,1 s
+  para 9,0 s. No fim do dia o OpenAlex passou a responder HTTP 429 (cota diária esgotada pelos
+  testes); a importação para e diz isso, sem travar.
+- **Suíte no macOS**: 1558 passam, nenhuma falha.
+

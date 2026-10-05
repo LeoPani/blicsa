@@ -100,6 +100,138 @@ class OpenAlexProvider(SearchProvider):
             fp.append(f"default.search:{query.strip()}")
         return ",".join(fp)
 
+    #: Campos que `_normalize_work` usa (o resto da obra não é lido na importação).
+    CAMPOS_IMPORTACAO = ("id,doi,title,publication_year,authorships,keywords,concepts,"
+                         "abstract_inverted_index,cited_by_count,referenced_works,"
+                         "primary_location,open_access,type,language")
+    #: Teto da paginação numerada do OpenAlex (page × per_page). Acima, só cursor.
+    LIMITE_PAGINACAO = 10_000
+    #: Páginas pedidas ao mesmo tempo (o OpenAlex aceita 10 pedidos por segundo).
+    PAGINAS_PARALELAS = 4
+
+    def _search_paginas(self, base_url, params, max_results, progress_cb, cancel_event):
+        """Importação por páginas numeradas, 4 de cada vez, entregues EM ORDEM.
+
+        A página 1 vem sozinha (traz o total); as demais saem em paralelo. Uma página que
+        falha encerra a importação ali, com o mesmo `stop_reason`/`stop_error` do cursor:
+        o que já chegou fica, e a trilha de contagem diz onde parou.
+        """
+        import math
+        from concurrent.futures import ThreadPoolExecutor
+
+        params = {k: v for k, v in params.items() if k != "cursor"}
+        per_page = int(params.get("per_page") or 200)
+        count_fetched = 0
+
+        def pagina(n):
+            if cancel_event and cancel_event.is_set():
+                raise InterruptedError("Search cancelled by user")
+            q = dict(params, page=n)
+            return json.loads(self.fetch_url(f"{base_url}?{urllib.parse.urlencode(q)}",
+                                              cancel_event=cancel_event))
+
+        self.pages_fetched = 1
+        try:
+            data = pagina(1)
+        except InterruptedError:
+            self.stop_reason = "cancelado"
+            raise
+        except Exception as e:
+            self.stop_reason = f"erro de rede na página 1: {e}"
+            self.stop_error = True
+            logger.error(f"[OpenAlex] parou: {self.stop_reason}")
+            return
+        results = data.get("results", []) or []
+        total = int((data.get("meta") or {}).get("count", len(results)) or 0)
+        self.total_available = total
+        alvo = min(max_results, total)
+        if not results:
+            self.stop_reason = "exauriu (sem resultados)"
+            logger.info(f"[OpenAlex] parou: {self.stop_reason} · páginas=1 · registros=0")
+            return
+        # A ordem por relevância pode mudar um pouco entre pedidos de páginas diferentes:
+        # na verificação ao vivo (04/10), 2 de 3000 vieram repetidos. Repetido é descartado
+        # e, no fim, mais páginas completam o que faltou.
+        vistos: set = set()
+
+        def novos(lote):
+            for w in lote:
+                chave = w.get("id") or id(w)
+                if chave in vistos:
+                    continue
+                vistos.add(chave)
+                yield w
+
+        for w in list(novos(results))[:alvo]:
+            yield self._normalize_work(w)
+            count_fetched += 1
+        if progress_cb and total:
+            progress_cb(count_fetched, alvo)
+
+        n_paginas = min(math.ceil(alvo / per_page), self.LIMITE_PAGINACAO // per_page)
+        if n_paginas > 1 and count_fetched < alvo:
+            ex = ThreadPoolExecutor(max_workers=self.PAGINAS_PARALELAS)
+            try:
+                futuros = [ex.submit(pagina, n) for n in range(2, n_paginas + 1)]
+                for n, fut in enumerate(futuros, start=2):
+                    if cancel_event and cancel_event.is_set():
+                        self.stop_reason = "cancelado"
+                        raise InterruptedError("Search cancelled by user")
+                    try:
+                        dados = fut.result()
+                    except InterruptedError:
+                        self.stop_reason = "cancelado"
+                        raise
+                    except Exception as e:
+                        self.stop_reason = f"erro de rede na página {n}: {e}"
+                        self.stop_error = True
+                        logger.error(f"[OpenAlex] parou: {self.stop_reason}")
+                        break
+                    self.pages_fetched = n
+                    lote = dados.get("results", []) or []
+                    if not lote:
+                        self.stop_reason = "exauriu (sem resultados)"
+                        break
+                    for w in novos(lote):
+                        if count_fetched >= alvo:
+                            break
+                        yield self._normalize_work(w)
+                        count_fetched += 1
+                    if progress_cb:
+                        progress_cb(count_fetched, alvo)
+                    if count_fetched >= alvo:
+                        break
+            finally:
+                ex.shutdown(wait=False, cancel_futures=True)
+            # Completa o que os repetidos tiraram, página a página, dentro do teto da API.
+            extra = n_paginas + 1
+            while (not self.stop_error and self.stop_reason is None and count_fetched < alvo
+                   and extra * per_page <= self.LIMITE_PAGINACAO):
+                try:
+                    dados = pagina(extra)
+                except InterruptedError:
+                    self.stop_reason = "cancelado"
+                    raise
+                except Exception as e:
+                    self.stop_reason = f"erro de rede na página {extra}: {e}"
+                    self.stop_error = True
+                    break
+                self.pages_fetched = extra
+                lote = dados.get("results", []) or []
+                if not lote:
+                    break
+                for w in novos(lote):
+                    if count_fetched >= alvo:
+                        break
+                    yield self._normalize_work(w)
+                    count_fetched += 1
+                extra += 1
+        if self.stop_reason is None:
+            self.stop_reason = ("atingiu limite" if count_fetched >= max_results
+                                else "fim dos resultados")
+        logger.info(f"[OpenAlex] parou: {self.stop_reason} · páginas={self.pages_fetched} · "
+                    f"registros={count_fetched}")
+
     def _normalize_work(self, w: Dict[str, Any]) -> Dict[str, Any]:
         authors = "; ".join(
             a.get("author", {}).get("display_name", "")
@@ -345,6 +477,15 @@ class OpenAlexProvider(SearchProvider):
         # recebe min(limite, total) porque é alvo de barra de progresso — usar aquele valor
         # como "Encontrados" escondia do usuário que existiam mais resultados.
         self.total_available = 0
+
+        # Só os campos que `_normalize_work` lê: a resposta cai de ~15 para ~1,7 MB por 1000.
+        params["select"] = self.CAMPOS_IMPORTACAO
+        if max_results <= self.LIMITE_PAGINACAO and self.PAGINAS_PARALELAS > 1:
+            # Até 10.000 (o teto da paginação numerada do OpenAlex): páginas em paralelo.
+            # Medido em 04/10 na internet do autor: 1000 registros de 18,1 s para 5,5 s, mesmos IDs.
+            yield from self._search_paginas(base_url, params, max_results, progress_cb,
+                                            cancel_event)
+            return
 
         while count_fetched < max_results:
             if cancel_event and cancel_event.is_set():

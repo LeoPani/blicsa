@@ -16,6 +16,8 @@ def _obra(i, nome, ano):
 def _obter(obras, pedidos):
     def obter(url):
         pedidos.append(url)
+        if "openalex_id:" not in url:                 # consulta direta /works/W…
+            return obras.get(url.split("?")[0].rsplit("/", 1)[-1])
         ids = url.split("openalex_id:")[1].split("&")[0].split("|")
         return {"results": [obras[i] for i in ids if i in obras]}
     return obter
@@ -27,9 +29,9 @@ def test_rotula_cacheia_e_nao_pergunta_de_novo(tmp_path):
     cache = tmp_path / "c.json"
     r = R.rotulos(["https://openalex.org/W1", "W2", "W3"], _obter(obras, pedidos), cache=cache)
     assert r == {"W1": "Silva et al. (2020)", "W2": "Costa et al. (2018)"}
-    assert len(pedidos) == 1                       # um lote só
-    r2 = R.rotulos(["W1", "W2"], _obter(obras, pedidos), cache=cache)
-    assert r2 == r and len(pedidos) == 1           # veio do cache
+    assert len(pedidos) == 2                       # um lote + W3, que não veio nele
+    r2 = R.rotulos(["W1", "W2", "W3"], _obter(obras, pedidos), cache=cache)
+    assert r2 == r and len(pedidos) == 2           # tudo do cache, inclusive "W3 não existe"
 
 
 def test_homonimos_viram_a_e_b(tmp_path):
@@ -70,3 +72,37 @@ def test_aplica_no_grafo_de_cocitacao(tmp_path):
     assert R.aplicar_no_grafo(G, _obter(obras, []), cache=tmp_path / "c.json") == 2
     assert sorted(G.nodes[n]["label"] for n in G) == ["Costa et al. (2018)", "Silva et al. (2020)"]
     assert "Título 1" in G.nodes["https://openalex.org/W1"]["title"]
+
+
+def test_dois_autores_e_obra_fundida(tmp_path):
+    """Dois autores: "Gregor e Hevner (2013)". Obra fundida no OpenAlex: o lote não a
+    devolve, a consulta direta segue o redirecionamento (visto ao vivo em 04/10)."""
+    from core.artigos_conectados import rotulo
+    w2 = {"id": "https://openalex.org/W2", "publication_year": 2013,
+          "authorships": [{"author": {"display_name": "Shirley Gregor"}},
+                          {"author": {"display_name": "Alan R. Hevner"}}]}
+    assert rotulo(w2) == "Gregor e Hevner (2013)"
+    fundida = {"id": "https://openalex.org/W99", "publication_year": 2019,
+               "authorships": [{"author": {"display_name": "Jacob Devlin"}}]}
+    pedidos = []
+
+    def obter(url):
+        pedidos.append(url)
+        if "openalex_id:" in url:
+            return {"results": [w2]}                 # W7 não vem no lote
+        if url.split("?")[0].endswith("/W7"):
+            return fundida                           # redirecionada para W99
+        return None
+    r = R.rotulos(["W2", "W7"], obter, cache=tmp_path / "c.json")
+    assert r == {"W2": "Gregor e Hevner (2013)", "W7": "Devlin (2019)"}
+
+
+def test_cache_de_formato_antigo_e_refeito(tmp_path):
+    import json
+    cache = tmp_path / "c.json"
+    cache.write_text(json.dumps({"W2": {"rotulo": "Gregor e outro (2013)"}}))
+    w2 = {"id": "https://openalex.org/W2", "publication_year": 2013,
+          "authorships": [{"author": {"display_name": "Shirley Gregor"}},
+                          {"author": {"display_name": "Alan Hevner"}}]}
+    r = R.rotulos(["W2"], lambda url: {"results": [w2]}, cache=cache)
+    assert r == {"W2": "Gregor e Hevner (2013)"}

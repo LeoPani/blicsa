@@ -270,3 +270,27 @@ def test_buscar_json_padrao_404_e_none_e_rede_levanta(monkeypatch):
     monkeypatch.setattr(P, "abrir_url_padrao", abrir_rede)
     with pytest.raises(OSError):
         P.buscar_json_padrao("https://api.unpaywall.org/v2/x")
+
+
+def test_semantic_scholar_quando_so_ha_pagina_do_editor(tmp_path):
+    reg = {"title": "T", "year": 2020, "authors": "A", "doi": "10.1000/xyz"}
+    jsons = {"api.unpaywall.org": {"is_oa": True, "best_oa_location":
+                                   {"url_for_landing_page": "https://editor.com/a"}},
+             "api.semanticscholar.org": {"openAccessPdf": {"url": "https://repo.edu/a.pdf"}}}
+    r, pedidos = _baixar(tmp_path, [reg], {"https://editor.com/a": b"<html></html>",
+                                          "https://repo.edu/a.pdf": PDF}, jsons)
+    assert r.resultados[0].situacao == P.BAIXADO
+    assert "https://repo.edu/a.pdf" in pedidos
+
+
+def test_semantic_scholar_nao_e_consultado_se_ja_ha_pdf(tmp_path):
+    consultas = []
+    reg = {"title": "T", "year": 2020, "authors": "A", "doi": "10.1000/xyz",
+           "oa_url": "https://repo.edu/b.pdf"}
+
+    def buscar(url):
+        consultas.append(url)
+        return None
+    P.baixar_corpus([reg], str(tmp_path), buscar_json=buscar,
+                    abrir_url=_rede({"https://repo.edu/b.pdf": PDF})[0], intervalo_por_host=0)
+    assert not any("semanticscholar" in u for u in consultas)

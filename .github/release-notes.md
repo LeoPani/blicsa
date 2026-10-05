@@ -42,6 +42,8 @@ sha256sum -c SHA256SUMS.txt
 - **Mapas**: tipos agrupados pela pergunta que respondem, com uma frase explicando cada um;
   na cocitação, referências do OpenAlex aparecem como "Silva et al. (2020)"; projetos antigos
   ganham "Completar códigos do OpenAlex" para a citação direta funcionar.
+- **Busca do OpenAlex até 4 vezes mais rápida**: 3.000 resultados em 9 s (antes, 37 s), com os
+  mesmos artigos.
 - **Busca**: DOI errado no PubMed corrigido; filtros de ano e acesso aberto agora valem também
   na contagem do PubMed; autor institucional deixa de virar nome vazio no Crossref.
 

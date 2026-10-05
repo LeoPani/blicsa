@@ -1,5 +1,9 @@
 import time
 import urllib.request
+
+from core.rede import configurar_certificados
+
+configurar_certificados()
 import urllib.parse
 import logging
 from collections import OrderedDict
@@ -148,9 +152,11 @@ class SearchProvider:
             if cached is not None:
                 return cached
 
-        headers = headers or {}
+        headers = dict(headers or {})
         if "User-Agent" not in headers:
             headers["User-Agent"] = f"Blicsa/1.0 (mailto:{self.mailto})"
+        # Resposta comprimida: o JSON do OpenAlex chega ~6x menor (medido em 04/10).
+        headers.setdefault("Accept-Encoding", "gzip")
 
         # Rate limiting
         if rate_limit_delay > 0:
@@ -169,7 +175,16 @@ class SearchProvider:
                 self.last_request_time = time.time()
                 req = urllib.request.Request(url, headers=headers)
                 with urllib.request.urlopen(req, timeout=15) as response:
-                    data = response.read().decode("utf-8", errors="replace")
+                    corpo = response.read()
+                    # Só descomprime o que o servidor DISSE que comprimiu; se o cabeçalho
+                    # mentir, usa o corpo como veio (nunca "Error -3 ... incorrect header").
+                    if (response.headers.get("Content-Encoding") or "").lower() == "gzip":
+                        try:
+                            import gzip as _gzip
+                            corpo = _gzip.decompress(corpo)
+                        except OSError:
+                            pass
+                    data = corpo.decode("utf-8", errors="replace")
                     self._capture_rate_limit(response.headers)
                     if not no_cache:
                         self._cache_put(url, data)
@@ -181,8 +196,17 @@ class SearchProvider:
                 if e.code == 401:
                     raise AuthError(url, e.code, self.DISPLAY_NAME) from e
                 if e.code in (429, 500, 502, 503, 504):
-                    logger.warning(f"HTTP {e.code} received. Retrying in {backoff}s...")
-                    time.sleep(backoff)
+                    espera = backoff
+                    # 429: a API diz quanto esperar (Retry-After). Respeitar evita gastar as
+                    # tentativas em segundos e parar a importação no meio (visto em 04/10).
+                    try:
+                        ra = float((e.headers or {}).get("Retry-After") or 0)
+                        if 0 < ra <= 30:
+                            espera = max(espera, ra)
+                    except (TypeError, ValueError, AttributeError):
+                        pass
+                    logger.warning(f"HTTP {e.code} received. Retrying in {espera}s...")
+                    time.sleep(espera)
                     backoff *= 2
                     retries -= 1
                     ultimo_http = e.code

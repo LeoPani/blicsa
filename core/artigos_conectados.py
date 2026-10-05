@@ -82,20 +82,40 @@ def interpretar_entrada(texto: str) -> list[str]:
 
 
 # ── Rótulos ─────────────────────────────────────────────────────────────────────────
-def sobrenome(work: dict) -> str:
+def _sobrenome_de(nome: str) -> str:
+    nome = str(nome or "").strip()
+    if not nome:
+        return ""
+    return nome.split(",")[0].strip() if "," in nome else nome.split()[-1]
+
+
+def _sobrenomes(work: dict) -> list[str]:
+    out = []
     for a in work.get("authorships") or []:
-        nome = str(((a or {}).get("author") or {}).get("display_name") or "").strip()
-        if nome:
-            return nome.split(",")[0].strip() if "," in nome else nome.split()[-1]
-    return ""
+        sn = _sobrenome_de(((a or {}).get("author") or {}).get("display_name"))
+        if sn:
+            out.append(sn)
+    return out
+
+
+def sobrenome(work: dict) -> str:
+    sns = _sobrenomes(work)
+    return sns[0] if sns else ""
 
 
 def rotulo(work: dict) -> str:
-    sn = sobrenome(work) or (str(work.get("title") or work.get("display_name") or "?")[:25])
+    """"Silva (2020)", "Silva e Costa (2020)", "Silva et al. (2020)" (como nas citações)."""
+    sns = _sobrenomes(work)
+    if not sns:
+        base = str(work.get("title") or work.get("display_name") or "?")[:25]
+    elif len(sns) == 1:
+        base = sns[0]
+    elif len(sns) == 2:
+        base = f"{sns[0]} e {sns[1]}"
+    else:
+        base = f"{sns[0]} et al."
     ano = work.get("publication_year")
-    n = len([a for a in (work.get("authorships") or []) if a])
-    etal = " et al." if n > 2 else (" e outro" if n == 2 else "")
-    return f"{sn}{etal} ({ano})" if ano else f"{sn}{etal}"
+    return f"{base} ({ano})" if ano else base
 
 
 def _refs(work: dict) -> set[str]:

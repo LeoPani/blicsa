@@ -23,6 +23,8 @@ from typing import Callable, Iterable, Optional
 log = logging.getLogger("blicsa")
 
 _TRAVA = threading.Lock()
+#: Versão do formato do rótulo. Entradas antigas ("Gregor e outro (2013)") são refeitas.
+VERSAO = 2
 
 
 def caminho_cache() -> Path:
@@ -65,7 +67,8 @@ def rotulos(ids: Iterable[str], obter: Optional[Callable[[str], Optional[dict]]]
     cache = cache or caminho_cache()
     with _TRAVA:
         conhecidos = _ler_cache(cache)
-    faltam = [i for i in ids if i not in conhecidos]
+    faltam = [i for i in ids if not (isinstance(conhecidos.get(i), dict)
+                                     and conhecidos[i].get("v") == VERSAO)]
     if faltam:
         if obter is None and os.environ.get("BLICSA_SEM_REDE"):
             pass                                   # testes: nunca consultar a rede de verdade
@@ -78,13 +81,28 @@ def rotulos(ids: Iterable[str], obter: Optional[Callable[[str], Optional[dict]]]
                 obter = None
         if obter is not None:
             novos = {}
+
+            def guardar(i, w):
+                novos[i] = {"v": VERSAO, "rotulo": rotulo(w), "sobrenome": sobrenome(w),
+                            "ano": w.get("publication_year"),
+                            "titulo": str(w.get("title") or w.get("display_name") or "")}
             try:
-                for w in _Cliente(obter, mailto, cancelar).em_lote(faltam):
+                cli = _Cliente(obter, mailto, cancelar)
+                for w in cli.em_lote(faltam):
                     i = id_openalex(w.get("id"))
                     if i:
-                        novos[i] = {"rotulo": rotulo(w), "sobrenome": sobrenome(w),
-                                    "ano": w.get("publication_year"),
-                                    "titulo": str(w.get("title") or w.get("display_name") or "")}
+                        guardar(i, w)
+                # O filtro em lote não devolve obras que o OpenAlex fundiu com outra (o código
+                # antigo continua nas referências). A consulta direta segue o redirecionamento.
+                # Visto ao vivo em 04/10: "W2962739339" no mapa de cocitação.
+                for i in [x for x in faltam if x not in novos][:40]:
+                    w = cli.obra(i)
+                    if w:
+                        guardar(i, w)
+                    else:
+                        # O OpenAlex respondeu e não conhece: guarda isso para não perguntar
+                        # de novo a cada mapa. (Falha de rede levanta e não chega aqui.)
+                        novos[i] = {"v": VERSAO, "rotulo": "", "desconhecido": True}
             except InterruptedError:
                 raise
             except Exception as exc:

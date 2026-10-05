@@ -34,7 +34,7 @@ from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
 from typing import Callable, Iterable, Optional
 
-from core.sources.base import MAILTO
+from core.sources.base import MAILTO  # importa base: configura os certificados
 
 # ── Situações possíveis de cada registro ────────────────────────────────────────────
 BAIXADO = "baixado"
@@ -191,6 +191,16 @@ def candidatos(registro: dict, buscar_json: Callable[[str], Optional[dict]],
             oa = (dados.get("open_access") or {}).get("oa_url")
             if oa:
                 (c.pdf if _parece_pdf(oa) else c.pagina)(oa)
+
+    # 5. Semantic Scholar, só se ninguém deu link direto de PDF: muitas vezes o link aberto
+    #    das outras fontes é a página do editor (10 de 30 na verificação ao vivo de 04/10).
+    if doi and not c.pdfs:
+        dados = _consultar(c, buscar_json, "https://api.semanticscholar.org/graph/v1/paper/"
+                           f"DOI:{urllib.parse.quote(doi)}?fields=openAccessPdf", "Semantic Scholar")
+        url = ((dados or {}).get("openAccessPdf") or {}).get("url") if isinstance(dados, dict) else None
+        if url:
+            c.conhecido_aberto = True
+            c.pdf(url)
     return c
 
 

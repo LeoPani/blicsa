@@ -17,6 +17,14 @@ e importação revisada formato a formato. Detalhes em `docs/AUDITORIA-2026-09.m
   do OpenAlex na cocitação (cache em `~/Blicsa/cache`); "Completar códigos do OpenAlex".
 - `openalex_id` no schema dos registros (projetos antigos abrem com a coluna vazia).
 - `scripts/auditar_bases.py`: compara o que cada base declara com o que o Blicsa baixou.
+- Busca do OpenAlex mais rápida: até 10.000 resultados, páginas pedidas 4 de cada vez, resposta
+  comprimida e só os campos usados (medido ao vivo: 1.000 resultados de 13,3 s para 8,1 s;
+  3.000 de 37,1 s para 9,0 s). Acima de 10.000 continua o cursor. Repetidos entre páginas são
+  descartados e completados; `Retry-After` do HTTP 429 é respeitado.
+- Certificados do `certifi` em todas as conexões (o Python do macOS falhava em alguns
+  repositórios com CERTIFICATE_VERIFY_FAILED).
+- PDFs: Semantic Scholar como fonte extra; "sem conexão" não aparece mais como "sem acesso aberto".
+- Rótulos de referência: "Gregor e Hevner (2013)" para dois autores; obras fundidas no OpenAlex.
 - `docs/GUIA-IMPORTACAO.md`.
 
 ### Corrigido

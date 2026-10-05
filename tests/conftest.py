@@ -107,6 +107,11 @@ def _preferencias_isoladas(tmp_path, monkeypatch):
     monkeypatch.setattr(cs, "_OVERRIDE_PATH", tmp_path / "settings_teste.json")
     # Nenhum teste consulta a internet por acidente (rótulos do OpenAlex no mapa etc.).
     monkeypatch.setenv("BLICSA_SEM_REDE", "1")
+    # As fixtures de busca servem respostas NA ORDEM das chamadas (contrato do cursor). O
+    # modo de páginas em paralelo tem testes próprios (test_openalex_paginas_paralelas.py),
+    # que ligam o paralelismo explicitamente.
+    from core.sources.openalex import OpenAlexProvider
+    monkeypatch.setattr(OpenAlexProvider, "PAGINAS_PARALELAS", 1)
     idioma = i18n.get_lang()
     yield
     if i18n.get_lang() != idioma:

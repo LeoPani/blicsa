@@ -2,6 +2,7 @@
 # Extras opcionais: requirements-ai.txt (tópicos LDA/embeddings), requirements-pdf.txt (importar PDF).
 # Versões pinadas do ambiente de desenvolvimento (pip freeze) em 2026-07-14.
 bibtexparser==1.4.4
+certifi==2026.7.22
 customtkinter==5.2.2
 fa2-modified==0.4
 groq==1.4.0
